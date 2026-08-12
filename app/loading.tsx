@@ -1,0 +1,1 @@
+export default function Loading(){return <main style={{minHeight:"100vh",display:"grid",placeItems:"center",background:"#080a12",color:"#a8adbd",fontFamily:"Arial"}}><div style={{textAlign:"center"}}><div style={{fontSize:28,color:"#bd32ee"}}>◌</div><p style={{fontSize:12}}>StreamLiveX hazırlanıyor…</p></div></main>}

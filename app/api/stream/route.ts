@@ -1,0 +1,29 @@
+const blocked = /^(localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1\]?)/i;
+function target(value: string | null) { if (!value) throw new Error("Adres eksik"); const url = new URL(value); if (!/^https?:$/.test(url.protocol) || blocked.test(url.hostname)) throw new Error("Adres engellendi"); return url; }
+function proxied(value: string, base: URL) { return `/api/stream?url=${encodeURIComponent(new URL(value, base).href)}`; }
+
+export async function GET(request: Request) {
+  try {
+    const source = target(new URL(request.url).searchParams.get("url"));
+    const headers = new Headers({ "user-agent": "VLC/3.0.21 LibVLC/3.0.21", accept: "*/*", "accept-language": "tr-TR,tr;q=0.9,en;q=0.7" });
+    const range = request.headers.get("range"); if (range) headers.set("range", range);
+    const upstream = await fetch(source, { headers, redirect: "follow" });
+    if (!upstream.ok && upstream.status !== 206) return new Response("Yayın alınamadı", { status: upstream.status });
+    const type = upstream.headers.get("content-type") || ""; const finalSource=new URL(upstream.url||source.href);
+    const isPlaylist = type.includes("mpegurl") || /\.m3u8($|\?)/i.test(finalSource.href) || /\.m3u8($|\?)/i.test(source.href);
+    if (isPlaylist) {
+      let text = await upstream.text();
+      text = text.split(/\r?\n/).map(line => {
+        const trimmed = line.trim();
+        if (!trimmed) return line;
+        if (!trimmed.startsWith("#")) return proxied(trimmed, finalSource);
+        return line.replace(/URI="([^"]+)"/g, (_, uri) => `URI="${proxied(uri, finalSource)}"`);
+      }).join("\n");
+      return new Response(text, { headers: { "content-type": "application/vnd.apple.mpegurl", "cache-control": "no-store", "access-control-allow-origin": "*" } });
+    }
+    const out = new Headers();
+    ["content-type","content-length","content-range","accept-ranges","cache-control"].forEach(k => { const v=upstream.headers.get(k); if(v)out.set(k,v) });
+    out.set("access-control-allow-origin","*");
+    return new Response(upstream.body, { status: upstream.status, headers: out });
+  } catch (error) { return new Response(error instanceof Error ? error.message : "Yayın açılamadı", { status: 400 }); }
+}

@@ -1,0 +1,16 @@
+services:
+  streamlivex:
+    build:
+      context: .
+      target: development
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - streamlivex_node_modules:/app/node_modules
+    restart: unless-stopped
+
+volumes:
+  streamlivex_node_modules:
