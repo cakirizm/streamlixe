@@ -102,6 +102,16 @@ async function importRequest(payload:Record<string,string>){const r=await fetch(
 // oynatmanın sürekli başarısız motora düşüp yeniden denemesine (donarak yükleniyor hissi) sebep
 // oluyordu.
 const assetUrl=(url?:string)=>url?`${typeof window!=="undefined"?window.location.origin:""}/api/stream?url=${encodeURIComponent(url)}`:"";
+type PlaybackCandidate={url:string;type:"hls"|"mpegts"|"native";label:string};
+function playbackCandidates(original:string,kind:Kind):PlaybackCandidate[]{
+  const isTs=/\.ts($|\?)/i.test(original);let rows:PlaybackCandidate[];
+  if(isTs)rows=kind==="live"
+    ?[{url:assetUrl(original.replace(/\.ts(?=$|\?)/i,".m3u8")),type:"hls",label:"HLS"},{url:assetUrl(original),type:"mpegts",label:"MPEG-TS"},{url:original,type:"mpegts",label:"MPEG-TS doğrudan"}]
+    :[{url:assetUrl(original),type:"mpegts",label:"MPEG-TS"},{url:original,type:"mpegts",label:"MPEG-TS doğrudan"},{url:assetUrl(original.replace(/\.ts(?=$|\?)/i,".m3u8")),type:"hls",label:"HLS"}];
+  else if(/\.m3u8($|\?)/i.test(original))rows=[{url:assetUrl(original),type:"hls",label:"HLS"},{url:original,type:"hls",label:"HLS doğrudan"}];
+  else rows=[{url:assetUrl(original),type:"native",label:"Tarayıcı"},{url:original,type:"native",label:"Tarayıcı doğrudan"}];
+  return rows.filter((row,index,list)=>list.findIndex(candidate=>candidate.url===row.url&&candidate.type===row.type)===index);
+}
 
 export default function Home(){
   const [locale,setLocale]=useState<AppLocale>(getLocale);useDocumentLanguage(locale);
@@ -307,16 +317,7 @@ function Player({item,profileId,onBack}:{item:Media;profileId:string;onBack:()=>
   useEffect(()=>{video.current?.setAttribute("controlsList","nodownload noremoteplayback")},[]);
   useEffect(()=>{const receive=(event:Event)=>setPrefs((event as CustomEvent<PlayerPrefs>).detail||readPlayerPrefs(profileId));window.addEventListener("slx-playback-settings",receive);return()=>window.removeEventListener("slx-playback-settings",receive)},[profileId]);
   useEffect(()=>{const root=document.documentElement;root.style.setProperty("--subtitle-color",prefs.subtitleColor);root.style.setProperty("--subtitle-size",`${prefs.subtitleSize}%`);root.style.setProperty("--subtitle-shadow",prefs.subtitleBackground==="shadow"?"0 2px 4px #000,0 0 8px #000":"none");root.style.setProperty("--subtitle-bg",prefs.subtitleBackground==="box"?"rgba(0,0,0,.8)":"transparent");applySubtitlePreference()},[prefs.subtitleColor,prefs.subtitleSize,prefs.subtitleBackground,prefs.subtitleMode,prefs.subtitleLanguage,item.id]);
-  useEffect(()=>{const el=video.current;if(!el)return;let disposed=false;let cleanup:(()=>void)|undefined;let timer:ReturnType<typeof setTimeout>|undefined;setStatus("loading");setEngine("");setAudioTracks([]);setAudioNote("");hlsRef.current=null;const original=item.url.trim();const isTs=/\.ts($|\?)/i.test(original);type Candidate={url:string;type:"hls"|"mpegts"|"native";label:string};
-        // .ts uzantılı canlı kanallarda sağlayıcı genelde aynı akışı bir .m3u8 uçtan da verir, o yüzden
-        // önce HLS denemek adaptif oynatma sağlar. Ama film/dizi (VOD) bölümlerinde bu .m3u8 ucu çoğu
-        // zaman yoktur — her denemede işe yaramayan bu adım, gerçekten çalışan MPEG-TS motoruna
-        // geçilene kadar 15 saniyeye kadar boşa bekletip "donarak yükleniyor" hissi yaratıyordu.
-        // VOD içerikte doğrudan işe yarayan motoru önce deniyoruz.
-        const tsCandidates:Candidate[]=item.kind==="live"
-          ?[{url:assetUrl(original.replace(/\.ts(?=$|\?)/i,".m3u8")),type:"hls",label:"HLS"},{url:assetUrl(original),type:"mpegts",label:"MPEG-TS"},{url:original,type:"mpegts",label:"MPEG-TS doğrudan"}]
-          :[{url:assetUrl(original),type:"mpegts",label:"MPEG-TS"},{url:original,type:"mpegts",label:"MPEG-TS doğrudan"},{url:assetUrl(original.replace(/\.ts(?=$|\?)/i,".m3u8")),type:"hls",label:"HLS"}];
-        const candidates:Candidate[]=(isTs?tsCandidates:/\.m3u8($|\?)/i.test(original)?[{url:assetUrl(original),type:"hls",label:"HLS"},{url:original,type:"hls",label:"HLS doğrudan"}]:[{url:assetUrl(original),type:"native",label:"Tarayıcı"},{url:original,type:"native",label:"Tarayıcı doğrudan"}]);const clear=()=>{if(timer)clearTimeout(timer);cleanup?.();cleanup=undefined;hlsRef.current=null;el.onloadedmetadata=null;el.oncanplay=null;el.onerror=null;el.pause();el.removeAttribute("src");el.load()};const ready=async(label:string)=>{
+  useEffect(()=>{const el=video.current;if(!el)return;let disposed=false;let cleanup:(()=>void)|undefined;let timer:ReturnType<typeof setTimeout>|undefined;setStatus("loading");setEngine("");setAudioTracks([]);setAudioNote("");hlsRef.current=null;const candidates=playbackCandidates(item.url.trim(),item.kind);const clear=()=>{if(timer)clearTimeout(timer);cleanup?.();cleanup=undefined;hlsRef.current=null;el.onloadedmetadata=null;el.oncanplay=null;el.onerror=null;el.pause();el.removeAttribute("src");el.load()};const ready=async(label:string)=>{
   if(disposed)return;if(timer)clearTimeout(timer);
   // canplay/loadedmetadata bir kez değil, her sarma sonrası arabellek toparlandığında da yeniden
   // tetiklenir. Bağlı kalırlarsa her sarmadan sonra ready() tekrar çalışıp restoreProgress() ile
