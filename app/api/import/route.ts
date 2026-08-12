@@ -1,16 +1,29 @@
 const blocked = /^(localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1\]?)/i;
 
+class ImportError extends Error {
+  constructor(message: string, readonly status = 400) { super(message); }
+}
+
 function safeUrl(value: unknown) {
-  if (typeof value !== "string") throw new Error("Geçersiz adres");
-  const url = new URL(value);
-  if (!/^https?:$/.test(url.protocol) || blocked.test(url.hostname)) throw new Error("Bu sunucu adresine izin verilmiyor");
+  if (typeof value !== "string" || !value.trim()) throw new ImportError("Sunucu adresi eksik");
+  const input = value.trim();
+  let url: URL;
+  try { url = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(input) ? input : `http://${input}`); }
+  catch { throw new ImportError("Sunucu adresi geçerli değil"); }
+  if (!/^https?:$/.test(url.protocol)) throw new ImportError("Yalnızca HTTP veya HTTPS adresleri kullanılabilir");
+  if (blocked.test(url.hostname)) throw new ImportError("Yerel ve özel ağ adreslerine güvenlik nedeniyle izin verilmiyor");
   return url;
 }
 
 async function get(url: URL) {
-  const response = await fetch(url, { headers: { "user-agent": "StreamLiveX/1.0", accept: "*/*" }, redirect: "follow" });
-  if (!response.ok) throw new Error(`Yayın sunucusu ${response.status} hatası verdi`);
-  return response;
+  try {
+    const response = await fetch(url, { headers: { "user-agent": "VLC/3.0.21 LibVLC/3.0.21", accept: "*/*" }, redirect: "follow", signal: AbortSignal.timeout(30000) });
+    if (!response.ok) throw new ImportError(`Yayın sunucusu ${response.status} hatası verdi`, 502);
+    return response;
+  } catch (error) {
+    if (error instanceof ImportError) throw error;
+    throw new ImportError(error instanceof Error && error.name === "TimeoutError" ? "Yayın sunucusu 30 saniye içinde yanıt vermedi" : "Yayın sunucusuna bağlanılamadı", 502);
+  }
 }
 
 export async function POST(request: Request) {
@@ -23,10 +36,11 @@ export async function POST(request: Request) {
       return Response.json({ text });
     }
     if (body.method === "xtream") {
+      if (!body.username?.trim() || !body.password) throw new ImportError("Kullanıcı adı ve şifre gerekli");
       const base = safeUrl(body.server);
       const endpoint = new URL("player_api.php", base.href.endsWith("/") ? base : new URL(base.href + "/"));
       endpoint.searchParams.set("username", body.username || ""); endpoint.searchParams.set("password", body.password || "");
-      const call = async (action?: string) => { const url = new URL(endpoint); if (action) url.searchParams.set("action", action); return (await get(url)).json(); };
+      const call = async (action?: string) => { const url = new URL(endpoint); if (action) url.searchParams.set("action", action); const response=await get(url);try{return await response.json()}catch{throw new ImportError("Yayın sunucusu geçerli Xtream verisi döndürmedi",502)} };
       const account = await call();
       if (account?.user_info?.auth !== 1 && account?.user_info?.auth !== "1") throw new Error(account?.user_info?.message || "Xtream kullanıcı bilgileri kabul edilmedi");
       const [live, vod, series, liveCategories, vodCategories, seriesCategories] = await Promise.all([call("get_live_streams"), call("get_vod_streams"), call("get_series"), call("get_live_categories"), call("get_vod_categories"), call("get_series_categories")]);
@@ -50,8 +64,8 @@ export async function POST(request: Request) {
       for(const match of xml.matchAll(/<programme\s+([^>]+)>([\s\S]*?)<\/programme>/gi)){if(!new RegExp(`channel=["']${escaped}["']`,"i").test(match[1]))continue;programmes.push({start:match[1].match(/start=["']([^"']+)/i)?.[1]||"",stop:match[1].match(/stop=["']([^"']+)/i)?.[1]||"",title:clean(match[2].match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]||"Program bilgisi"),description:clean(match[2].match(/<desc[^>]*>([\s\S]*?)<\/desc>/i)?.[1]||"")});if(programmes.length>=12)break}
       return Response.json({ programmes });
     }
-    throw new Error("Desteklenmeyen içe aktarma yöntemi");
+    throw new ImportError("Desteklenmeyen içe aktarma yöntemi");
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Liste alınamadı" }, { status: 400 });
+    return Response.json({ error: error instanceof Error ? error.message : "Liste alınamadı" }, { status: error instanceof ImportError ? error.status : 400 });
   }
 }
