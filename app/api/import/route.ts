@@ -51,6 +51,11 @@ export async function POST(request: Request) {
       endpoint.searchParams.set("username", body.username || ""); endpoint.searchParams.set("password", body.password || ""); endpoint.searchParams.set("action", "get_series_info"); endpoint.searchParams.set("series_id", body.seriesId || "");
       return Response.json(await (await get(endpoint)).json());
     }
+    if (body.method === "vod_info") {
+      const base = safeUrl(body.server); const endpoint = new URL("player_api.php", base.href.endsWith("/") ? base : new URL(base.href + "/"));
+      endpoint.searchParams.set("username", body.username || ""); endpoint.searchParams.set("password", body.password || ""); endpoint.searchParams.set("action", "get_vod_info"); endpoint.searchParams.set("vod_id", body.streamId || "");
+      return Response.json(await (await get(endpoint)).json());
+    }
     if (body.method === "short_epg") {
       const base = safeUrl(body.server); const endpoint = new URL("player_api.php", base.href.endsWith("/") ? base : new URL(base.href + "/"));
       endpoint.searchParams.set("username", body.username || ""); endpoint.searchParams.set("password", body.password || ""); endpoint.searchParams.set("action", "get_short_epg"); endpoint.searchParams.set("stream_id", body.streamId || ""); endpoint.searchParams.set("limit", "8");

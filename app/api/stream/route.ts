@@ -1,6 +1,17 @@
 const blocked = /^(localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1\]?)/i;
 function target(value: string | null) { if (!value) throw new Error("Adres eksik"); const url = new URL(value); if (!/^https?:$/.test(url.protocol) || blocked.test(url.hostname)) throw new Error("Adres engellendi"); return url; }
 function proxied(value: string, base: URL) { return `/api/stream?url=${encodeURIComponent(new URL(value, base).href)}`; }
+function resilientBody(body: ReadableStream<Uint8Array> | null) {
+  if (!body) return null;
+  const reader = body.getReader();
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try { const { done, value } = await reader.read(); if (done) controller.close(); else controller.enqueue(value); }
+      catch { controller.close(); }
+    },
+    async cancel(reason) { try { await reader.cancel(reason); } catch {} },
+  });
+}
 
 export async function GET(request: Request) {
   try {
@@ -24,6 +35,6 @@ export async function GET(request: Request) {
     const out = new Headers();
     ["content-type","content-length","content-range","accept-ranges","cache-control"].forEach(k => { const v=upstream.headers.get(k); if(v)out.set(k,v) });
     out.set("access-control-allow-origin","*");
-    return new Response(upstream.body, { status: upstream.status, headers: out });
-  } catch (error) { return new Response(error instanceof Error ? error.message : "Yayın açılamadı", { status: 400 }); }
+    return new Response(resilientBody(upstream.body), { status: upstream.status, headers: out });
+  } catch (error) { const aborted=error instanceof Error&&(error.name==="AbortError"||error.message==="terminated");return new Response(aborted?null:error instanceof Error?error.message:"Yayın açılamadı", { status: aborted?499:400 }); }
 }
