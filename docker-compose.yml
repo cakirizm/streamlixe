@@ -7,9 +7,21 @@ services:
       - "3000:3000"
     env_file:
       - .env
+    environment:
+      TMDB_API_BASE_URL: http://tmdb-proxy:8788
+    depends_on:
+      - tmdb-proxy
     volumes:
       - .:/app
       - streamlivex_node_modules:/app/node_modules
+    restart: unless-stopped
+
+  tmdb-proxy:
+    image: node:22-bookworm-slim
+    working_dir: /app
+    command: ["node", "scripts/tmdb-proxy.mjs"]
+    volumes:
+      - .:/app:ro
     restart: unless-stopped
 
 volumes:
