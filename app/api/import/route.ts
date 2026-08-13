@@ -15,14 +15,28 @@ function safeUrl(value: unknown) {
   return url;
 }
 
+// 45 saniye: büyük kanal/VOD/dizi listelerinde gövdenin tamamının inmesi 30 saniyeden uzun
+// sürebiliyordu ve bu durumda ham bir "aborted due to timeout" hatası kullanıcıya sızıyordu.
+const REQUEST_TIMEOUT_MS = 45000;
 async function get(url: URL) {
   try {
-    const response = await fetch(url, { headers: { "user-agent": "VLC/3.0.21 LibVLC/3.0.21", accept: "*/*" }, redirect: "follow", signal: AbortSignal.timeout(30000) });
+    const response = await fetch(url, { headers: { "user-agent": "VLC/3.0.21 LibVLC/3.0.21", accept: "*/*" }, redirect: "follow", signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
     if (!response.ok) throw new ImportError(`Yayın sunucusu ${response.status} hatası verdi`, 502);
     return response;
   } catch (error) {
     if (error instanceof ImportError) throw error;
-    throw new ImportError(error instanceof Error && error.name === "TimeoutError" ? "Yayın sunucusu 30 saniye içinde yanıt vermedi" : "Yayın sunucusuna bağlanılamadı", 502);
+    throw new ImportError(error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError") ? `Yayın sunucusu ${REQUEST_TIMEOUT_MS / 1000} saniye içinde yanıt vermedi` : "Yayın sunucusuna bağlanılamadı", 502);
+  }
+}
+// Gövdeyi okurken de aynı zaman aşımı/bağlantı kopması olabilir (büyük listelerde veri inerken
+// bağlantı kesilebilir) — bu, get()'in kendi try/catch'inin DIŞINDaydı ve ham bir tarayıcı/JS
+// hatasını ("The operation was aborted due to timeout") doğrudan kullanıcıya sızdırıyordu. Tüm
+// çağıranlar artık gövdeyi bu fonksiyon üzerinden okuyor, böylece her hata Türkçe ve anlaşılır.
+async function getText(url: URL) {
+  const response = await get(url);
+  try { return await response.text(); }
+  catch (error) {
+    throw new ImportError(error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError") ? "Yayın sunucusundan veri indirilirken bağlantı zaman aşımına uğradı — liste çok büyük olabilir, tekrar deneyin" : "Yayın sunucusundan veri okunamadı", 502);
   }
 }
 
@@ -30,8 +44,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json() as { method?: string; url?: string; server?: string; username?: string; password?: string; seriesId?: string; streamId?: string; channelId?: string; channelName?: string };
     if (body.method === "m3u") {
-      const response = await get(safeUrl(body.url));
-      const text = await response.text();
+      const text = await getText(safeUrl(body.url));
       if (!text.includes("#EXTINF") && !text.includes("#EXTM3U")) throw new Error("Adres geçerli bir M3U listesi döndürmedi");
       return Response.json({ text });
     }
@@ -40,7 +53,25 @@ export async function POST(request: Request) {
       const base = safeUrl(body.server);
       const endpoint = new URL("player_api.php", base.href.endsWith("/") ? base : new URL(base.href + "/"));
       endpoint.searchParams.set("username", body.username || ""); endpoint.searchParams.set("password", body.password || "");
-      const call = async (action?: string) => { const url = new URL(endpoint); if (action) url.searchParams.set("action", action); const response=await get(url);try{return await response.json()}catch{throw new ImportError("Yayın sunucusu geçerli Xtream verisi döndürmedi",502)} };
+      const call = async (action?: string) => {
+        const url = new URL(endpoint); if (action) url.searchParams.set("action", action);
+        // Gövdeyi tek seferde metin olarak okuyup öyle ayrıştırıyoruz (response.clone() DEĞİL) —
+        // klonlamak gövdeyi iki kez bellekte tutar; büyük kanal/VOD listelerinde (birkaç MB'lık
+        // JSON) bu, Workers'ın bellek sınırına takılıp isteğin tamamen başarısız olmasına yol
+        // açabiliyordu. Tek okuma hem tanı bilgisini korur hem de fazladan bellek harcamaz.
+        const text = await getText(url);
+        try { return JSON.parse(text); }
+        catch {
+          // Sunucu 200 döndü ama gövde geçerli JSON değil — genelde panel bu adreste Xtream API
+          // sunmuyor (giriş sayfası/HTML döndürüyor), yanlış protokol (http/https) kullanılıyor
+          // veya panel bir güvenlik duvarı/CDN sayfasıyla karşılık veriyor. Kullanıcı bilgilerini
+          // asla loglamadan, sunucunun gerçekte ne döndürdüğünü kısa bir örnekle gösteriyoruz.
+          const snippet = text.replace(/\s+/g, " ").trim().slice(0, 160);
+          const looksHtml = /^<(!doctype|html)/i.test(snippet);
+          const hint = snippet ? ` Sunucu şunu döndürdü: "${snippet}"${looksHtml ? " — bu bir HTML sayfası, panel bu adreste Xtream API sunmuyor olabilir (adres/protokol http-https hatalı olabilir veya bu bir Xtream paneli değil)." : "."}` : "";
+          throw new ImportError(`Yayın sunucusu geçerli Xtream verisi döndürmedi.${hint}`, 502);
+        }
+      };
       const account = await call();
       if (account?.user_info?.auth !== 1 && account?.user_info?.auth !== "1") throw new Error(account?.user_info?.message || "Xtream kullanıcı bilgileri kabul edilmedi");
       const [live, vod, series, liveCategories, vodCategories, seriesCategories] = await Promise.all([call("get_live_streams"), call("get_vod_streams"), call("get_series"), call("get_live_categories"), call("get_vod_categories"), call("get_series_categories")]);
@@ -49,20 +80,20 @@ export async function POST(request: Request) {
     if (body.method === "series_info") {
       const base = safeUrl(body.server); const endpoint = new URL("player_api.php", base.href.endsWith("/") ? base : new URL(base.href + "/"));
       endpoint.searchParams.set("username", body.username || ""); endpoint.searchParams.set("password", body.password || ""); endpoint.searchParams.set("action", "get_series_info"); endpoint.searchParams.set("series_id", body.seriesId || "");
-      return Response.json(await (await get(endpoint)).json());
+      return Response.json(JSON.parse(await getText(endpoint)));
     }
     if (body.method === "vod_info") {
       const base = safeUrl(body.server); const endpoint = new URL("player_api.php", base.href.endsWith("/") ? base : new URL(base.href + "/"));
       endpoint.searchParams.set("username", body.username || ""); endpoint.searchParams.set("password", body.password || ""); endpoint.searchParams.set("action", "get_vod_info"); endpoint.searchParams.set("vod_id", body.streamId || "");
-      return Response.json(await (await get(endpoint)).json());
+      return Response.json(JSON.parse(await getText(endpoint)));
     }
     if (body.method === "short_epg") {
       const base = safeUrl(body.server); const endpoint = new URL("player_api.php", base.href.endsWith("/") ? base : new URL(base.href + "/"));
       endpoint.searchParams.set("username", body.username || ""); endpoint.searchParams.set("password", body.password || ""); endpoint.searchParams.set("action", "get_short_epg"); endpoint.searchParams.set("stream_id", body.streamId || ""); endpoint.searchParams.set("limit", "8");
-      return Response.json(await (await get(endpoint)).json());
+      return Response.json(JSON.parse(await getText(endpoint)));
     }
     if (body.method === "xmltv_epg") {
-      const xml = await (await get(safeUrl(body.url))).text(); const normalize=(v:string)=>v.toLocaleLowerCase("tr").replace(/[^a-z0-9çğıöşü]+/gi," ").trim();
+      const xml = await getText(safeUrl(body.url)); const normalize=(v:string)=>v.toLocaleLowerCase("tr").replace(/[^a-z0-9çğıöşü]+/gi," ").trim();
       const clean=(v:string)=>v.replace(/<!\[CDATA\[|\]\]>/g,"").replace(/<[^>]+>/g,"").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").trim(); const channels=new Map<string,string>();
       for(const match of xml.matchAll(/<channel\s+id=["']([^"']+)["'][^>]*>([\s\S]*?)<\/channel>/gi)){channels.set(match[1],clean(match[2].match(/<display-name[^>]*>([\s\S]*?)<\/display-name>/i)?.[1]||""))}
       const target=[...channels.entries()].find(([key,label])=>key.toLowerCase()===(body.channelId||"").toLowerCase()||normalize(label)===normalize(body.channelName||""))?.[0]||body.channelId||""; const escaped=target.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"); const programmes=[];
