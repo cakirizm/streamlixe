@@ -43,6 +43,7 @@ public partial class MainWindow : Window
     private bool _nativePlayerOpen;
     private bool _updatingPlayerOptions;
     private long _pendingResumeTime;
+    private long _lastProgressNotification;
     private bool _pauseAfterResume;
     private int _appliedSubtitleSize = 100;
     private string _appliedSubtitleColor = "#ffffff";
@@ -173,6 +174,19 @@ public partial class MainWindow : Window
             if (ReferenceEquals(player, _mediaPlayer))
             {
                 UpdateTime(args.Time);
+                var length = player.Length;
+                if (_activeRequest?.Item is not null &&
+                    !string.Equals(_activeRequest.Item.Kind, "live", StringComparison.OrdinalIgnoreCase) &&
+                    length > 0 && args.Time >= 5_000 &&
+                    (args.Time - _lastProgressNotification >= 5_000 || args.Time < _lastProgressNotification))
+                {
+                    _lastProgressNotification = args.Time;
+                    SendWebEvent("streamlivex:native-player-progress", new
+                    {
+                        current = args.Time / 1000d,
+                        duration = length / 1000d
+                    });
+                }
             }
         });
         player.LengthChanged += (_, args) => Dispatcher.InvokeAsync(() =>
@@ -202,6 +216,11 @@ public partial class MainWindow : Window
         {
             BrowserError.Visibility = Visibility.Collapsed;
             await Browser.EnsureCoreWebView2Async();
+
+            if (_appUri.IsLoopback)
+            {
+                await Browser.CoreWebView2.Profile.ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds.DiskCache);
+            }
 
             Browser.CoreWebView2.Settings.AreDevToolsEnabled = _appUri.IsLoopback;
             Browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
@@ -278,7 +297,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            StartNativePlayer(message, mediaUri);
+            StartNativePlayer(message, mediaUri, message.ResumeTime ?? 0);
         }
         catch (JsonException)
         {
@@ -294,6 +313,7 @@ public partial class MainWindow : Window
         EnsureSubtitleEngine(request.Preferences);
         _activeRequest = request;
         _pendingResumeTime = Math.Max(0, resumeTime);
+        _lastProgressNotification = 0;
         _pauseAfterResume = pauseAfterResume;
         _activeMedia = new Media(_libVlc, mediaUri);
         _activeMedia.AddOption(":network-caching=1500");
@@ -610,6 +630,8 @@ public partial class MainWindow : Window
     {
         var wasOpen = _nativePlayerOpen;
         var closedSessionId = _activeRequest?.SessionId;
+        var currentSeconds = _mediaPlayer.Time / 1000d;
+        var durationSeconds = _mediaPlayer.Length / 1000d;
         if (!string.IsNullOrWhiteSpace(closedSessionId))
         {
             _closedPlaybackSessions.Add(closedSessionId);
@@ -638,7 +660,11 @@ public partial class MainWindow : Window
         Browser.Focus();
         if (notifyWeb && wasOpen)
         {
-            SendWebEvent("streamlivex:native-player-closed");
+            SendWebEvent("streamlivex:native-player-closed", new
+            {
+                current = currentSeconds,
+                duration = durationSeconds
+            });
         }
     }
 
@@ -1301,6 +1327,7 @@ internal sealed class NativePlayMessage
 {
     public string? Type { get; set; }
     public string? SessionId { get; set; }
+    public long? ResumeTime { get; set; }
     public NativeMediaItem? Item { get; set; }
     public NativePlayerPreferences? Preferences { get; set; }
 }

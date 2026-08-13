@@ -29,7 +29,7 @@ async function tmdbGet(path: string, locale: string, token: string, params: Tmdb
       for (const [key, value] of Object.entries(params)) {
         if (value !== undefined && value !== "") url.searchParams.set(key, String(value));
       }
-      const response = await fetch(url, { headers });
+      const response = await fetch(url, { headers, signal: AbortSignal.timeout(12000) });
       if (!response.ok) {
         lastError = new Error(`TMDB ${response.status}`);
         continue;
@@ -132,6 +132,15 @@ export async function GET(request: Request) {
       }
       if (!found?.id) return Response.json({ configured: true, result: null });
       const data = await tmdbGet(`${kind}/${found.id}`, locale, token, { append_to_response: "credits,recommendations,similar" });
+      if (locale !== "en-US" && !String(data.overview || "").trim()) {
+        try {
+          const fallback = await tmdbGet(`${kind}/${found.id}`, "en-US", token);
+          data.overview = fallback.overview || data.overview;
+          data.tagline = fallback.tagline || data.tagline;
+        } catch {
+          // Ana dildeki bilgiler kullanılabilir durumda; İngilizce açıklama yedeği zorunlu değil.
+        }
+      }
       const creatorRows = kind === "tv" ? data.created_by || [] : [];
       const directors = [
         ...creatorRows,
@@ -149,7 +158,18 @@ export async function GET(request: Request) {
       const recommendations = [...(data.recommendations?.results || []), ...(data.similar?.results || [])]
         .filter((item: any, index: number, all: any[]) => all.findIndex((candidate) => candidate.id === item.id) === index)
         .slice(0, 12);
-      return Response.json({ configured: true, result: { ...data, media_type: kind, directors, cast, recommendations } });
+      const overview = String(data.overview || "").trim();
+      return Response.json({
+        configured: true,
+        result: {
+          ...data,
+          overview: overview || "Bu içerik için TMDB üzerinde açıklama bulunamadı.",
+          media_type: kind,
+          directors,
+          cast,
+          recommendations,
+        },
+      }, { headers: { "cache-control": "no-store" } });
     }
 
     const data = await tmdbGet("trending/all/week", locale, token);
