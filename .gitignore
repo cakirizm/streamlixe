@@ -7,3 +7,6 @@ dist/
 .DS_Store
 
 .vinext/
+desktop/**/bin/
+desktop/**/obj/
+desktop/artifacts/

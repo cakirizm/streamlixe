@@ -1,0 +1,390 @@
+<Window x:Class="StreamLiveX.Desktop.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:webview="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        xmlns:vlc="clr-namespace:LibVLCSharp.WPF;assembly=LibVLCSharp.WPF"
+        xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
+        Title="StreamLiveX"
+        Width="1280"
+        Height="800"
+        MinWidth="960"
+        MinHeight="600"
+        Background="#03050A"
+        FontFamily="Segoe UI Variable, Segoe UI"
+        UseLayoutRounding="True"
+        WindowStartupLocation="CenterScreen"
+        KeyDown="Window_KeyDown">
+    <Window.Resources>
+        <SolidColorBrush x:Key="AccentBrush" Color="#8C2CFF" />
+        <SolidColorBrush x:Key="PanelBrush" Color="#E60A0D14" />
+        <SolidColorBrush x:Key="MutedBrush" Color="#AAB1C2" />
+
+        <Style x:Key="PlayerButton" TargetType="Button">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="#22000000" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#44FFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.78" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.42" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PrimaryPlayerButton" TargetType="Button" BasedOn="{StaticResource PlayerButton}">
+            <Setter Property="Background" Value="#33FFFFFF" />
+        </Style>
+
+        <Style x:Key="IconPlayerButton" TargetType="Button" BasedOn="{StaticResource PlayerButton}">
+            <Setter Property="Width" Value="42" />
+            <Setter Property="Height" Value="38" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="FontFamily" Value="Segoe UI Emoji, Segoe UI Symbol, Segoe UI" />
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="Background" Value="#2C313D" />
+        </Style>
+
+        <Style x:Key="IconPlayerToggle" TargetType="ToggleButton">
+            <Setter Property="Width" Value="42" />
+            <Setter Property="Height" Value="38" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="#2C313D" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FontFamily" Value="Segoe UI Emoji, Segoe UI Symbol, Segoe UI" />
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="ToggleBorder" Background="{TemplateBinding Background}" CornerRadius="8">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ToggleBorder" Property="Background" Value="#414858" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="ToggleBorder" Property="Background" Value="#7130BD" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ToggleBorder" Property="Opacity" Value="0.42" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PlayerSettingsPanel" TargetType="Border">
+            <Setter Property="Padding" Value="14" />
+            <Setter Property="Background" Value="#FA11141C" />
+            <Setter Property="BorderBrush" Value="#555F75" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+        </Style>
+
+        <Style x:Key="TrackFillButton" TargetType="RepeatButton">
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RepeatButton">
+                        <Border Background="#9A4DFF" CornerRadius="3" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="TrackEmptyButton" TargetType="RepeatButton">
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RepeatButton">
+                        <Border Background="#4A5060" CornerRadius="3" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PlayerSlider" TargetType="Slider">
+            <Setter Property="Height" Value="22" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Grid Background="Transparent">
+                            <primitives:Track x:Name="PART_Track" VerticalAlignment="Center">
+                                <primitives:Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="{x:Static Slider.DecreaseLarge}" Style="{StaticResource TrackFillButton}" />
+                                </primitives:Track.DecreaseRepeatButton>
+                                <primitives:Track.Thumb>
+                                    <Thumb Width="14" Height="14">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Ellipse Fill="White" Stroke="#8C2CFF" StrokeThickness="3" />
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </primitives:Track.Thumb>
+                                <primitives:Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="{x:Static Slider.IncreaseLarge}" Style="{StaticResource TrackEmptyButton}" />
+                                </primitives:Track.IncreaseRepeatButton>
+                            </primitives:Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="DarkComboBoxItem" TargetType="ComboBoxItem">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Padding" Value="12,9" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="ItemBorder" Background="{TemplateBinding Background}" CornerRadius="7" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="ItemBorder" Property="Background" Value="#343B4D" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="ItemBorder" Property="Background" Value="#51208A" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="DarkComboBox" TargetType="ComboBox">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="#202532" />
+            <Setter Property="BorderBrush" Value="#41495C" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="MinWidth" Value="150" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="ItemContainerStyle" Value="{StaticResource DarkComboBoxItem}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton x:Name="DropDownToggle"
+                                          Focusable="False"
+                                          Background="Transparent"
+                                          BorderThickness="0"
+                                          IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="ComboBorder"
+                                                Background="{Binding Background, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                BorderBrush="{Binding BorderBrush, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                BorderThickness="1"
+                                                CornerRadius="9">
+                                            <Grid Margin="12,0,10,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <ContentPresenter Grid.Column="0"
+                                                                  VerticalAlignment="Center"
+                                                                  Content="{Binding SelectionBoxItem, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                                  ContentTemplate="{Binding SelectionBoxItemTemplate, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                                  TextElement.Foreground="White" />
+                                                <TextBlock Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="#AAB1C2" FontSize="10" Text="▼" />
+                                            </Grid>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="ComboBorder" Property="BorderBrush" Value="#7C55A8" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <Popup x:Name="PART_Popup"
+                                   Placement="Bottom"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   AllowsTransparency="True"
+                                   PopupAnimation="Fade">
+                                <Border Margin="0,5,0,0" MinWidth="{TemplateBinding ActualWidth}" Padding="5" Background="#F2161922" BorderBrush="#4C556A" BorderThickness="1" CornerRadius="10">
+                                    <ScrollViewer MaxHeight="260" VerticalScrollBarVisibility="Auto">
+                                        <ItemsPresenter />
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <webview:WebView2 x:Name="Browser" />
+
+        <Grid x:Name="BrowserError" Background="#080A12" Visibility="Collapsed">
+            <Border Width="460" Padding="36" HorizontalAlignment="Center" VerticalAlignment="Center" Background="#111522" BorderBrush="#30384A" BorderThickness="1" CornerRadius="20">
+                <StackPanel>
+                    <Border Width="54" Height="54" Margin="0,0,0,18" HorizontalAlignment="Center" Background="#2A1645" CornerRadius="27">
+                        <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#B875FF" FontSize="26" Text="!" />
+                    </Border>
+                    <TextBlock Text="StreamLiveX açılamadı" Foreground="White" FontSize="26" FontWeight="SemiBold" TextAlignment="Center" />
+                    <TextBlock x:Name="BrowserErrorText" Margin="0,12,0,24" Foreground="#AAB0C0" FontSize="14" LineHeight="21" TextWrapping="Wrap" TextAlignment="Center" />
+                    <Button Style="{StaticResource PrimaryPlayerButton}" Content="Yeniden dene" Click="RetryBrowser_Click" HorizontalAlignment="Center" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Grid x:Name="NativePlayer"
+              Background="Black"
+              Visibility="Collapsed"
+              MouseMove="NativePlayer_MouseMove"
+              MouseLeave="NativePlayer_MouseLeave">
+            <vlc:VideoView x:Name="VideoSurface">
+                <Grid x:Name="VideoOverlay" Background="Transparent">
+                    <Border x:Name="VideoClickSurface"
+                            Background="#01000000"
+                            MouseLeftButtonUp="VideoClickSurface_MouseLeftButtonUp" />
+                    <Border x:Name="CustomSubtitleContainer"
+                            Panel.ZIndex="1"
+                            MaxWidth="1120"
+                            Margin="70,0,70,112"
+                            Padding="12,5"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Bottom"
+                            Background="Transparent"
+                            CornerRadius="7"
+                            IsHitTestVisible="False"
+                            Visibility="Collapsed">
+                        <TextBlock x:Name="CustomSubtitleText"
+                                   Foreground="White"
+                                   FontFamily="Segoe UI Semibold, Segoe UI"
+                                   FontSize="32"
+                                   FontWeight="SemiBold"
+                                   LineHeight="38"
+                                   TextAlignment="Center"
+                                   TextWrapping="Wrap" />
+                    </Border>
+                    <Grid x:Name="PlayerChrome">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Row="0" Padding="22,14" Background="#B0000000">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Column="0" Width="38" Height="38" Padding="0" Style="{StaticResource PlayerButton}" Content="←" FontSize="20" Click="ClosePlayer_Click" ToolTip="Geri dön" />
+                                <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock x:Name="MediaTitle" Foreground="White" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock x:Name="PlaybackStatus" Margin="0,2,0,0" Foreground="#B8FFFFFF" FontSize="11" Text="Yayın hazırlanıyor" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Row="2" Padding="22,10,22,14" Background="#D0000000">
+                            <StackPanel>
+                                <Grid>
+                                    <Border x:Name="SpeedSettingsPanel" Width="220" Margin="0,0,0,10" HorizontalAlignment="Right" Style="{StaticResource PlayerSettingsPanel}" Visibility="Collapsed">
+                                        <StackPanel>
+                                            <TextBlock Margin="2,0,0,9" Foreground="White" FontSize="13" FontWeight="SemiBold" Text="⏱  Oynatma hızı" />
+                                            <ComboBox x:Name="PlaybackRates" Width="190" Style="{StaticResource DarkComboBox}" ToolTip="Oynatma hızı" SelectionChanged="PlaybackRates_SelectionChanged" />
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border x:Name="MediaSettingsPanel" Width="310" Margin="0,0,0,10" HorizontalAlignment="Right" Style="{StaticResource PlayerSettingsPanel}" Visibility="Collapsed">
+                                        <StackPanel>
+                                            <TextBlock Margin="2,0,0,9" Foreground="White" FontSize="13" FontWeight="SemiBold" Text="🔊  Ses" />
+                                            <ComboBox x:Name="AudioTracks" Width="280" Style="{StaticResource DarkComboBox}" ToolTip="Ses parçası" SelectionChanged="AudioTracks_SelectionChanged" />
+
+                                            <Border Height="1" Margin="0,14,0,12" Background="#394052" />
+                                            <TextBlock Margin="2,0,0,9" Foreground="White" FontSize="13" FontWeight="SemiBold" Text="💬  Altyazı" />
+                                            <ComboBox x:Name="SubtitleTracks" Width="280" Style="{StaticResource DarkComboBox}" ToolTip="Altyazı" SelectionChanged="SubtitleTracks_SelectionChanged" />
+
+                                            <Grid Margin="0,10,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="10" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Grid.Column="0">
+                                                    <TextBlock Margin="2,0,0,5" Foreground="#AAB1C2" FontSize="11" Text="Boyut" />
+                                                    <ComboBox x:Name="SubtitleSizes" Width="135" Style="{StaticResource DarkComboBox}" ToolTip="Altyazı büyüklüğü" SelectionChanged="SubtitleSizes_SelectionChanged" />
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="2">
+                                                    <TextBlock Margin="2,0,0,5" Foreground="#AAB1C2" FontSize="11" Text="Renk" />
+                                                    <ComboBox x:Name="SubtitleColors" Width="135" Style="{StaticResource DarkComboBox}" ToolTip="Altyazı rengi" SelectionChanged="SubtitleColors_SelectionChanged" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+
+                                <Slider x:Name="PositionSlider"
+                                        Style="{StaticResource PlayerSlider}"
+                                        Minimum="0"
+                                        Maximum="1"
+                                        Value="0"
+                                        IsMoveToPointEnabled="True"
+                                        PreviewMouseLeftButtonDown="PositionSlider_PreviewMouseLeftButtonDown"
+                                        PreviewMouseMove="PositionSlider_PreviewMouseMove"
+                                        PreviewMouseLeftButtonUp="PositionSlider_PreviewMouseLeftButtonUp" />
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Button x:Name="PlayPauseButton" Style="{StaticResource IconPlayerButton}" Content="⏸" Click="PlayPause_Click" ToolTip="Oynat / duraklat" />
+                                        <TextBlock x:Name="TimeText" MinWidth="108" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="White" FontFamily="Cascadia Mono, Consolas" FontSize="11" Text="00:00 / 00:00" />
+                                        <TextBlock Margin="10,0,6,0" VerticalAlignment="Center" Foreground="White" FontFamily="Segoe UI Emoji" FontSize="15" Text="🔊" />
+                                        <Slider x:Name="VolumeSlider" Width="72" Style="{StaticResource PlayerSlider}" IsMoveToPointEnabled="True" Minimum="0" Maximum="100" Value="100" ValueChanged="VolumeSlider_ValueChanged" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Margin="12,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal">
+                                        <ToggleButton x:Name="SpeedSettingsButton" Margin="4,0" Style="{StaticResource IconPlayerToggle}" Content="⏱" ToolTip="Oynatma hızı" Checked="SpeedSettingsButton_Checked" Unchecked="SpeedSettingsButton_Unchecked" />
+                                        <ToggleButton x:Name="MediaSettingsButton" Margin="4,0" Style="{StaticResource IconPlayerToggle}" Content="💬" ToolTip="Ses ve altyazı" Checked="MediaSettingsButton_Checked" Unchecked="MediaSettingsButton_Unchecked" />
+
+                                        <Button x:Name="DownloadButton" Margin="4,0" Style="{StaticResource IconPlayerButton}" Content="⇩" Click="DownloadButton_Click" ToolTip="Videoyu indir" />
+                                        <Button Margin="4,0" Style="{StaticResource IconPlayerButton}" Content="⛶" Click="Fullscreen_Click" ToolTip="Tam ekran" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </vlc:VideoView>
+        </Grid>
+    </Grid>
+</Window>
