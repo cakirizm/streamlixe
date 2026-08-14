@@ -117,6 +117,41 @@ function playbackCandidates(original:string,kind:Kind):PlaybackCandidate[]{
   return rows.filter((row,index,list)=>list.findIndex(candidate=>candidate.url===row.url&&candidate.type===row.type)===index);
 }
 
+function useDpadNavigation(enabled:boolean,resetKey:string){
+  useEffect(()=>{
+    if(!enabled)return;
+    const selector='button:not(:disabled),a[href],input:not([type="hidden"]):not(:disabled),select:not(:disabled),[tabindex]:not([tabindex="-1"])';
+    const visible=(el:HTMLElement)=>{const rect=el.getBoundingClientRect();return rect.width>0&&rect.height>0&&el.offsetParent!==null};
+    const candidates=()=>Array.from(document.querySelectorAll<HTMLElement>(selector)).filter(visible);
+    const ensureFocus=()=>{const current=document.activeElement as HTMLElement|null;const list=candidates();if(current&&current!==document.body&&list.includes(current))return;list[0]?.focus({preventScroll:true})};
+    const focusTimer=requestAnimationFrame(()=>requestAnimationFrame(ensureFocus));
+    const onKey=(e:KeyboardEvent)=>{
+      if(!["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key))return;
+      const tag=(e.target as HTMLElement)?.tagName;
+      if(["INPUT","TEXTAREA","SELECT"].includes(tag||""))return;
+      const list=candidates();if(!list.length)return;
+      const current=document.activeElement as HTMLElement|null;
+      const from=current&&list.includes(current)?current.getBoundingClientRect():null;
+      if(!from){e.preventDefault();list[0].focus({preventScroll:true});list[0].scrollIntoView({block:"nearest",inline:"nearest"});return}
+      const fx=from.left+from.width/2,fy=from.top+from.height/2;
+      let best:HTMLElement|null=null,bestScore=Infinity;
+      for(const el of list){
+        if(el===current)continue;
+        const rect=el.getBoundingClientRect();
+        const dx=rect.left+rect.width/2-fx,dy=rect.top+rect.height/2-fy;
+        const primary=e.key==="ArrowUp"?-dy:e.key==="ArrowDown"?dy:e.key==="ArrowLeft"?-dx:dx;
+        const cross=e.key==="ArrowUp"||e.key==="ArrowDown"?dx:dy;
+        if(primary<=2)continue;
+        const score=primary+Math.abs(cross)*2;
+        if(score<bestScore){bestScore=score;best=el}
+      }
+      if(best){e.preventDefault();best.focus({preventScroll:true});best.scrollIntoView({block:"nearest",inline:"nearest"})}
+    };
+    window.addEventListener("keydown",onKey);
+    return()=>{cancelAnimationFrame(focusTimer);window.removeEventListener("keydown",onKey)};
+  },[enabled,resetKey]);
+}
+
 export default function Home(){
   const [locale,setLocale]=useState<AppLocale>(getLocale);useDocumentLanguage(locale);
   const changeLocale=(next:AppLocale)=>{localStorage.setItem("slx-language",next);document.cookie=`slx-language=${next};path=/;max-age=31536000;SameSite=Lax`;setLocale(next)};
@@ -125,6 +160,7 @@ export default function Home(){
   const [method,setMethod]=useState<Method>("m3u"); const [busy,setBusy]=useState(false); const [error,setError]=useState(""); const [progress,setProgress]=useState(0); const [stage,setStage]=useState("");
   const [items,setItems]=useState<Media[]>([]); const [provider,setProvider]=useState<Provider|null>(null); const [navigation,setNavigation]=useState<{active:Section;category:string}>({active:"home",category:"Tümü"}); const [favorites,setFavorites]=useState<string[]>([]); const [favoriteMedia,setFavoriteMedia]=useState<Media[]>([]);
   const {active,category}=navigation;
+  useDpadNavigation(screen!=="player"&&!(screen==="dashboard"&&active==="live"),`${screen}:${active}`);
   const [selected,setSelected]=useState<Media|null>(null); const [query,setQuery]=useState("");
   const rememberCategoryPosition=(section:Section=active,currentCategory:string=category)=>{if(typeof window==="undefined")return;if(section==="live"){const list=document.querySelector(".live-channels") as HTMLElement|null;const aside=document.querySelector(".live-workspace>aside") as HTMLElement|null;if(list)sessionStorage.setItem(`slx-content-scroll:live:${currentCategory}`,String(list.scrollTop));if(aside)sessionStorage.setItem("slx-category-scroll:live",String(aside.scrollTop))}else if(section==="movie"||section==="series"){sessionStorage.setItem(`slx-content-scroll:${section}:${currentCategory}`,String(window.scrollY));const aside=document.querySelector(".catalog>aside") as HTMLElement|null;if(aside)sessionStorage.setItem(`slx-category-scroll:${section}`,String(aside.scrollTop))}};
   const updateCategory=(value:string)=>{rememberCategoryPosition();setNavigation(current=>({...current,category:value}));if(typeof window!=="undefined"&&(active==="live"||active==="movie"||active==="series"))sessionStorage.setItem(`slx-category:${active}`,value)};
