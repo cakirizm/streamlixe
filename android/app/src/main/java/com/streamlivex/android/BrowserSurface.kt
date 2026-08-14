@@ -79,6 +79,8 @@ fun BrowserSurface(
             factory = { viewContext ->
                 WebView(viewContext).apply {
                     setBackgroundColor(Color.rgb(8, 9, 16))
+                    isFocusable = true
+                    isFocusableInTouchMode = true
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
                     settings.databaseEnabled = true
@@ -100,6 +102,7 @@ fun BrowserSurface(
                         override fun onPageFinished(view: WebView, pageUrl: String?) {
                             view.evaluateJavascript(BRIDGE_SCRIPT, null)
                             loading = false
+                            view.requestFocus()
                         }
 
                         override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
@@ -123,6 +126,7 @@ fun BrowserSurface(
                     loadUrl(url)
                     webView = this
                     onWebViewReady(this)
+                    requestFocus()
                 }
             },
         )

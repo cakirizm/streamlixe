@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
@@ -117,6 +118,23 @@ class MainActivity : ComponentActivity() {
             }
         }
         window.decorView.post { enterImmersiveMode() }
+    }
+
+    private val dpadKeys = setOf(
+        KeyEvent.KEYCODE_DPAD_UP,
+        KeyEvent.KEYCODE_DPAD_DOWN,
+        KeyEvent.KEYCODE_DPAD_LEFT,
+        KeyEvent.KEYCODE_DPAD_RIGHT,
+        KeyEvent.KEYCODE_DPAD_CENTER,
+        KeyEvent.KEYCODE_ENTER,
+    )
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (playbackRequest == null && event.keyCode in dpadKeys) {
+            val view = webView
+            if (view != null && view.dispatchKeyEvent(event)) return true
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

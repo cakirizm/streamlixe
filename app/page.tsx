@@ -121,7 +121,7 @@ function useDpadNavigation(enabled:boolean,resetKey:string){
   useEffect(()=>{
     if(!enabled)return;
     const selector='button:not(:disabled),a[href],input:not([type="hidden"]):not(:disabled),select:not(:disabled),[tabindex]:not([tabindex="-1"])';
-    const visible=(el:HTMLElement)=>{const rect=el.getBoundingClientRect();return rect.width>0&&rect.height>0&&el.offsetParent!==null};
+    const visible=(el:HTMLElement)=>{const style=getComputedStyle(el);if(style.display==="none"||style.visibility==="hidden"||Number(style.opacity)===0)return false;const rect=el.getBoundingClientRect();return rect.width>0&&rect.height>0};
     const candidates=()=>Array.from(document.querySelectorAll<HTMLElement>(selector)).filter(visible);
     const ensureFocus=()=>{const current=document.activeElement as HTMLElement|null;const list=candidates();if(current&&current!==document.body&&list.includes(current))return;list[0]?.focus({preventScroll:true})};
     const focusTimer=requestAnimationFrame(()=>requestAnimationFrame(ensureFocus));
