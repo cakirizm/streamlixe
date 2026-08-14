@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">StreamLiveX</string>
+    <string name="loading_web">StreamLiveX hazırlanıyor…</string>
+    <string name="web_error">Uygulama arayüzüne bağlanılamadı.</string>
+    <string name="retry">Yeniden dene</string>
+    <string name="preparing_stream">Yayın hazırlanıyor…</string>
+    <string name="stream_failed">Yayın oynatılamadı</string>
+    <string name="stream_failed_detail">Kaynak çevrimdışı, süresi dolmuş veya cihazın desteklemediği bir codec kullanıyor olabilir.</string>
+    <string name="back">Geri</string>
+    <string name="fit_screen">Sığdır</string>
+    <string name="fill_screen">Doldur</string>
+    <string name="full_screen">Tam ekran</string>
+</resources>

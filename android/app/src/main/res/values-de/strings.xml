@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="loading_web">StreamLiveX wird vorbereitet…</string>
+    <string name="web_error">Die App-Oberfläche konnte nicht geladen werden.</string>
+    <string name="retry">Erneut versuchen</string>
+    <string name="preparing_stream">Stream wird vorbereitet…</string>
+    <string name="stream_failed">Stream konnte nicht abgespielt werden</string>
+    <string name="stream_failed_detail">Die Quelle ist möglicherweise offline, abgelaufen oder verwendet einen auf diesem Gerät nicht unterstützten Codec.</string>
+    <string name="back">Zurück</string>
+    <string name="fit_screen">Einpassen</string>
+    <string name="fill_screen">Ausfüllen</string>
+    <string name="full_screen">Vollbild</string>
+</resources>

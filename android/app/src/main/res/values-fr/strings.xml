@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="loading_web">Préparation de StreamLiveX…</string>
+    <string name="web_error">Impossible de charger l’interface de l’application.</string>
+    <string name="retry">Réessayer</string>
+    <string name="preparing_stream">Préparation du flux…</string>
+    <string name="stream_failed">Impossible de lire le flux</string>
+    <string name="stream_failed_detail">La source est peut-être hors ligne, expirée ou utilise un codec non pris en charge par cet appareil.</string>
+    <string name="back">Retour</string>
+    <string name="fit_screen">Ajuster</string>
+    <string name="fill_screen">Remplir</string>
+    <string name="full_screen">Plein écran</string>
+</resources>

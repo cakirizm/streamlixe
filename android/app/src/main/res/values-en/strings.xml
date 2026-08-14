@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="loading_web">Preparing StreamLiveX…</string>
+    <string name="web_error">Could not connect to the application interface.</string>
+    <string name="retry">Try again</string>
+    <string name="preparing_stream">Preparing stream…</string>
+    <string name="stream_failed">Stream could not be played</string>
+    <string name="stream_failed_detail">The source may be offline, expired, or using a codec unsupported by this device.</string>
+    <string name="back">Back</string>
+    <string name="fit_screen">Fit</string>
+    <string name="fill_screen">Fill</string>
+    <string name="full_screen">Full screen</string>
+</resources>

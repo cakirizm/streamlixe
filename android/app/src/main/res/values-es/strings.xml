@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="loading_web">Preparando StreamLiveX…</string>
+    <string name="web_error">No se pudo cargar la interfaz de la aplicación.</string>
+    <string name="retry">Reintentar</string>
+    <string name="preparing_stream">Preparando emisión…</string>
+    <string name="stream_failed">No se pudo reproducir la emisión</string>
+    <string name="stream_failed_detail">La fuente puede estar desconectada, caducada o usar un códec no compatible con este dispositivo.</string>
+    <string name="back">Volver</string>
+    <string name="fit_screen">Ajustar</string>
+    <string name="fill_screen">Llenar</string>
+    <string name="full_screen">Pantalla completa</string>
+</resources>

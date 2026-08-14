@@ -81,6 +81,91 @@
 
 /* Canlı TV gömülü oynatıcı: bilgi üstte, doğal kontroller altta serbest */
 .live-preview>header{z-index:4;top:0;bottom:auto;grid-template-columns:auto minmax(0,1fr) auto auto;padding:12px 14px 30px;pointer-events:none;background:linear-gradient(#05070bea,transparent)}.live-preview>header small{font-size:7px;color:#aab0bf;white-space:nowrap}.live-preview>header button{pointer-events:auto}.live-preview video{position:relative;z-index:1;pointer-events:auto}.mini-error,.mini-loading{position:absolute;z-index:3;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:56px 20px 64px;text-align:center;background:#080b12d9;font-size:10px;pointer-events:none}.mini-error b{font-size:13px}.mini-error span{color:#9299aa}.mini-loading{color:#cbd0dd}.mini-loading>i{width:30px;height:30px;border:2px solid #ffffff22;border-top-color:#b43cff;border-radius:50%;animation:spin .8s linear infinite}@media(max-width:650px){.live-preview>header{grid-template-columns:auto minmax(0,1fr) auto;padding:9px 10px 28px}.live-preview>header small{display:none}}
+.live-preview.native-inline video{visibility:hidden}
 
 /* Web oynatıcı için tarayıcıdan bağımsız özel altyazı katmanı */
 .web-subtitle-overlay{position:absolute;z-index:5;left:8%;right:8%;bottom:76px;display:flex;justify-content:center;align-items:flex-end;pointer-events:none;text-align:center}.web-subtitle-overlay span{max-width:min(1100px,92vw);padding:2px 8px;border-radius:5px;white-space:pre-line;font-weight:700;line-height:1.22;letter-spacing:.01em;overflow-wrap:anywhere}.web-subtitle-overlay.shadow span{text-shadow:0 2px 3px #000,0 0 7px #000,1px 1px 1px #000}.web-subtitle-overlay.box span{padding:7px 12px;background:rgba(0,0,0,.78);box-decoration-break:clone;-webkit-box-decoration-break:clone}.web-subtitle-overlay.none span{text-shadow:none;background:transparent}@media(max-width:650px){.web-subtitle-overlay{left:4%;right:4%;bottom:68px}}
+
+/* Telefon uygulaması: gerçek cihaz genişliği, alt navigasyon ve akışkan canlı TV */
+html,body{width:100%;overflow-x:hidden}
+@supports(height:100dvh){.setup-page,.dash{min-height:100dvh}}
+@media(max-width:650px){
+  :root{--mobile-nav-height:72px}
+  body{min-width:0;background:#080910}
+  button,input,select{touch-action:manipulation}
+
+  .setup-page{display:block;min-height:100dvh;padding:0;background:radial-gradient(circle at 50% -10%,#241044 0,transparent 37%),linear-gradient(180deg,#0d0e18,#080910)}
+  .setup-page>.glow{position:fixed;inset:0;pointer-events:none}
+  .setup-card{width:100%;min-height:100dvh;margin:0;padding:max(22px,env(safe-area-inset-top)) 18px max(24px,env(safe-area-inset-bottom));border:0;border-radius:0;box-shadow:none;background:linear-gradient(180deg,rgba(13,15,28,.96),rgba(9,10,18,.98))}
+  .setup-card>.logo{margin-bottom:26px}
+  .setup-card h1{font-size:clamp(27px,8vw,36px);line-height:1.08;letter-spacing:-1.2px}
+  .setup-card>p{max-width:34rem;font-size:12px;line-height:1.65}
+  .method-grid{gap:8px;margin-top:20px}
+  .method-grid button{min-height:68px;padding:10px 5px}
+  .setup-form{gap:14px}
+  .setup-form input{min-height:48px;font-size:13px}
+  .setup-submit{min-height:50px}
+  .standalone-language{top:max(16px,env(safe-area-inset-top));right:14px}
+
+  .profile-page.clean-profiles{display:flex;flex-direction:column;align-items:center;min-height:100dvh;padding:max(20px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom));overflow-y:auto}
+  .clean-profiles .logo{position:static!important;align-self:flex-start;flex:0 0 auto}
+  .clean-profiles>div:last-child{width:100%!important;margin-top:clamp(46px,9dvh,82px)!important;text-align:center}
+  .clean-profiles>div>h1{margin:0 0 28px!important;font-size:30px!important}
+  .clean-profiles section{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));justify-items:center;gap:10px!important;width:100%}
+  .clean-profiles section button{width:100%!important;min-width:0}
+  .clean-profiles section i{width:min(24vw,92px)!important;height:min(24vw,92px)!important;border-radius:20px!important}
+  .clean-profiles section b{font-size:11px!important;white-space:nowrap}
+
+  .dash{min-height:100dvh;padding-bottom:calc(var(--mobile-nav-height) + env(safe-area-inset-bottom));background:#080910}
+  .dash>header{position:sticky!important;z-index:90;top:0;width:100%;height:56px!important;padding:0 14px!important;gap:10px!important;border-bottom:1px solid #202332;background:rgba(8,9,16,.96)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+  .dash>header:after{display:none!important}
+  .dash>header .logo{display:flex!important;min-width:0;margin-right:auto}
+  .dash>header .logo img{width:28px!important;height:28px!important}
+  .dash>header .logo span{display:block!important;max-width:112px;overflow:hidden;text-overflow:ellipsis;font-size:12px;white-space:nowrap}
+  .dash-search{display:none!important}
+  .header-favorites{display:grid!important;place-items:center;width:40px!important;height:40px!important;padding:0!important;border-radius:12px!important}
+  .header-favorites span{display:none!important}
+  .profile-control,.avatar{flex:0 0 auto}
+  .profile-menu{position:fixed!important;top:62px!important;right:12px!important;left:12px!important;width:auto!important;max-height:calc(100dvh - 150px);overflow:auto}
+
+  .dash>header>nav{position:fixed!important;z-index:120;left:0!important;right:0!important;bottom:0!important;top:auto!important;display:grid!important;grid-template-columns:repeat(6,minmax(0,1fr));width:100%!important;height:calc(var(--mobile-nav-height) + env(safe-area-inset-bottom))!important;margin:0!important;padding:6px 4px max(6px,env(safe-area-inset-bottom))!important;gap:0!important;border-top:1px solid #2a2639!important;border-bottom:0!important;border-radius:0!important;background:rgba(9,10,18,.97)!important;box-shadow:0 -12px 36px rgba(0,0,0,.36)!important;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+  .dash>header>nav button{position:relative;display:flex!important;flex-direction:column;align-items:center;justify-content:center;min-width:0!important;width:100%!important;height:58px!important;padding:5px 2px!important;gap:4px!important;border:0!important;border-radius:12px!important;background:transparent!important;color:#888da0!important;font-size:9px!important;line-height:1!important}
+  .dash>header>nav button svg{width:19px!important;height:19px!important;stroke-width:1.8}
+  .dash>header>nav button span{display:block!important;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dash>header>nav button.active{color:#fff!important;background:linear-gradient(180deg,rgba(118,91,255,.26),rgba(163,42,207,.12))!important}
+  .dash>header>nav button.active:after{content:"";position:absolute;left:28%;right:28%;bottom:0;height:2px;border-radius:2px;background:linear-gradient(90deg,#745cff,#d43fd5);box-shadow:0 0 10px #8c4cff}
+
+  .live-workspace{display:flex!important;flex-direction:column;gap:10px!important;min-height:0!important;padding:10px 10px calc(18px + var(--mobile-nav-height) + env(safe-area-inset-bottom))!important}
+  .live-workspace>aside{order:1;display:flex!important;flex-direction:row!important;gap:8px;max-height:none!important;margin:0!important;padding:2px 0 4px!important;border:0!important;border-radius:0!important;background:transparent!important;overflow-x:auto!important;overflow-y:hidden!important;scroll-snap-type:x proximity;scrollbar-width:none}
+  .live-workspace>aside::-webkit-scrollbar{display:none}
+  .live-workspace>aside>span{display:none!important}
+  .live-workspace>aside button{flex:0 0 auto;min-width:142px!important;min-height:48px!important;padding:8px 10px!important;scroll-snap-align:start;border-radius:12px!important}
+  .live-workspace>aside button b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px!important}
+  .live-workspace>aside button small{font-size:8px!important}
+  .live-stage{display:contents!important}
+  .live-preview,.live-preview-empty{order:2;width:100%;min-height:0!important;aspect-ratio:16/9;margin:0!important;border-radius:14px!important;background:#000}
+  .live-preview video{position:absolute!important;inset:0;width:100%!important;height:100%!important;object-fit:contain!important;background:#000}
+  .live-preview>header{padding:10px 10px 30px!important;gap:6px!important}
+  .live-preview>header>b{font-size:9px!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .live-preview>header>button{min-height:34px;padding:0 10px!important;font-size:8px!important;white-space:nowrap}
+  .mini-error,.mini-loading{padding:48px 16px 52px}
+  .live-channels{order:3;width:100%;height:52vh!important;min-height:360px!important;max-height:520px!important;margin:0!important;padding:10px!important;border-radius:14px!important;overflow-y:auto!important;overscroll-behavior:contain}
+  .live-channels>header{position:sticky;z-index:2;top:-10px;margin:-10px -10px 8px;padding:12px 12px 9px;background:linear-gradient(180deg,#10131d 80%,rgba(16,19,29,0))}
+  .live-channels>header h2{font-size:20px!important}
+  .live-channels article{min-height:58px!important;margin-bottom:6px!important;border-radius:11px!important}
+  .live-channels article>button:first-child{min-height:58px!important;padding:7px 8px!important;gap:9px!important}
+  .live-channels article img,.live-channels article>button:first-child>i{width:40px!important;height:40px!important;border-radius:8px!important}
+  .live-channels article span b{font-size:10px!important}
+  .live-channels article span small{font-size:7px!important}
+  .epg-panel{order:4;margin:0!important;border-radius:14px!important}
+  .tv-hint{order:5;display:none!important}
+
+  .catalog,.simple-page,.advanced-settings,.favorites-page,.settings-page{padding-bottom:calc(22px + var(--mobile-nav-height) + env(safe-area-inset-bottom))!important}
+}
+
+@media(max-width:370px){
+  .dash>header .logo span{display:none!important}
+  .dash>header>nav button{font-size:8px!important}
+  .live-workspace{padding-inline:8px!important}
+  .live-workspace>aside button{min-width:132px!important}
+}

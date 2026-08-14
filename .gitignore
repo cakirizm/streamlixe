@@ -10,3 +10,11 @@ dist/
 desktop/**/bin/
 desktop/**/obj/
 desktop/artifacts/
+
+# Android / Gradle
+android/.gradle/
+android/local.properties
+android/**/build/
+android/.idea/
+*.jks
+*.keystore
