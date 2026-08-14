@@ -16,6 +16,8 @@
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate"
   },
   "dependencies": {
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
     "drizzle-orm": "0.45.2",
     "hls.js": "^1.6.13",
     "lucide-react": "^0.468.0",
