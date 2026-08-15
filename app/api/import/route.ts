@@ -1,5 +1,13 @@
 const blocked = /^(localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1\]?)/i;
 
+// Optional relay: large Xtream accounts (tens of thousands of channels) can
+// exceed the Cloudflare Workers per-request CPU time limit (free plan). When
+// set, forward the raw import request to another origin (e.g. a shared-
+// hosting deployment of this same app, which has no such per-request CPU
+// cap) and pass its response straight through.
+const IMPORT_RELAY_ORIGIN = process.env.IMPORT_RELAY_ORIGIN?.trim().replace(/\/$/, "");
+const IMPORT_RELAY_HOST = process.env.IMPORT_RELAY_HOST?.trim();
+
 class ImportError extends Error {
   constructor(message: string, readonly status = 400) { super(message); }
 }
@@ -41,6 +49,18 @@ async function getText(url: URL) {
 }
 
 export async function POST(request: Request) {
+  if (IMPORT_RELAY_ORIGIN) {
+    try {
+      const bodyText = await request.text();
+      const relayHeaders = new Headers({ "content-type": "application/json" });
+      if (IMPORT_RELAY_HOST) relayHeaders.set("host", IMPORT_RELAY_HOST);
+      const relayed = await fetch(`${IMPORT_RELAY_ORIGIN}/api/import`, { method: "POST", headers: relayHeaders, body: bodyText, signal: AbortSignal.timeout(90000) });
+      const text = await relayed.text();
+      return new Response(text, { status: relayed.status, headers: { "content-type": "application/json" } });
+    } catch {
+      return Response.json({ error: "İçe aktarma sunucusuna ulaşılamadı, tekrar deneyin" }, { status: 502 });
+    }
+  }
   try {
     const body = await request.json() as { method?: string; url?: string; server?: string; username?: string; password?: string; seriesId?: string; streamId?: string; channelId?: string; channelName?: string };
     if (body.method === "m3u") {
