@@ -1,8 +1,11 @@
 // cPanel/Passenger Node.js App entry point. Delegates to the actual
 // production server (`vinext start`), which reads PORT from the
 // environment that Passenger provides.
-const { spawn } = require("node:child_process");
-const path = require("node:path");
+import { spawn } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const child = spawn(
   process.execPath,
