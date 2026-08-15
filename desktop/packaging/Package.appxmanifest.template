@@ -11,7 +11,7 @@
     ProcessorArchitecture="{{ARCHITECTURE}}" />
   <Properties>
     <DisplayName>StreamLiveX</DisplayName>
-    <PublisherDisplayName>StreamLiveX</PublisherDisplayName>
+    <PublisherDisplayName>STREAMLİVEX</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
   <Dependencies>
