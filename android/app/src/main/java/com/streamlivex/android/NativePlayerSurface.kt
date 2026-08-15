@@ -186,7 +186,13 @@ fun NativePlayerSurface(
                 PlayerView(playerContext).apply {
                     this.player = player
                     useController = true
-                    controllerAutoShow = true
+                    // controllerAutoShow=true, ExoPlayer'in her oynatma durumu degisiminde
+                    // (arabellek doldurma, hazir olma vb.) kontrolcuyu zorla tekrar gostermesine
+                    // sebep oluyordu -- canli/surekli tamponlanan yayinlarda bu, ust bilgi
+                    // cubugunun hicbir zaman kaybolamamasina yol aciyordu. false yapip girince
+                    // bir kere manuel gosteriyoruz, sonrasında sadece dokunma/zaman aşımı
+                    // kontrolu (controllerShowTimeoutMs) devrede kalıyor.
+                    controllerAutoShow = false
                     controllerHideOnTouch = true
                     controllerShowTimeoutMs = 1_800
                     this.resizeMode = resizeMode
@@ -199,6 +205,7 @@ fun NativePlayerSurface(
                             controlsVisible = visibility == android.view.View.VISIBLE
                         },
                     )
+                    showController()
                     post { requestFocus() }
                 }
             },
