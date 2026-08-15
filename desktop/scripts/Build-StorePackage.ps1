@@ -51,7 +51,7 @@ if (Test-Path -LiteralPath $libVlcRoot) {
         Remove-Item -Recurse -Force
 }
 
-$manifestTemplate = Get-Content "$desktopRoot\packaging\Package.appxmanifest.template" -Raw
+$manifestTemplate = Get-Content "$desktopRoot\packaging\Package.appxmanifest.template" -Raw -Encoding UTF8
 $manifest = $manifestTemplate.Replace("{{IDENTITY_NAME}}", $IdentityName)
 $manifest = $manifest.Replace("{{PUBLISHER}}", $Publisher)
 $manifest = $manifest.Replace("{{VERSION}}", $Version)
