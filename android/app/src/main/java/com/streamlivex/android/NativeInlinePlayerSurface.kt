@@ -25,21 +25,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
-import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 
@@ -47,41 +42,23 @@ import androidx.media3.ui.PlayerView
 @Composable
 fun NativeInlinePlayerSurface(
     request: PlaybackRequest,
+    player: ExoPlayer,
     modifier: Modifier,
     onFullScreen: () -> Unit,
     onFailure: (String) -> Unit,
 ) {
-    val context = LocalContext.current
     val candidates = remember(request.item.url) { playbackCandidates(request.item) }
     var candidateIndex by remember(request.sessionId) { mutableIntStateOf(0) }
     var candidateRetry by remember(request.sessionId) { mutableIntStateOf(0) }
-    var ready by remember(request.sessionId) { mutableStateOf(false) }
+    var ready by remember(request.sessionId) { mutableStateOf(player.playbackState == Player.STATE_READY) }
     var failed by remember(request.sessionId) { mutableStateOf(false) }
     var qualityLabel by remember(request.sessionId) { mutableStateOf("AUTO") }
     val failureMessage = stringResource(R.string.stream_failed)
 
-    val player = remember(request.sessionId) {
-        val httpFactory = DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
-            .setUserAgent("VLC/3.0 StreamLiveX-Android/${BuildConfig.VERSION_NAME}")
-            .setConnectTimeoutMs(15_000)
-            .setReadTimeoutMs(30_000)
-        ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(httpFactory))
-            .build()
-            .apply {
-                playWhenReady = true
-                playbackParameters = PlaybackParameters(request.preferences.playbackRate)
-                trackSelectionParameters = trackSelectionParameters.buildUpon().apply {
-                    when (request.preferences.quality) {
-                        "Yüksek" -> setForceHighestSupportedBitrate(true)
-                        "Veri tasarrufu" -> setMaxVideoSizeSd()
-                    }
-                    setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                }.build()
-            }
-    }
-
+    // Player, MainActivity tarafından olusturulup on izleme ile tam ekran arasinda paylasilir --
+    // burada sadece dinleyici ekleyip cikartiyoruz, release() cagirmiyoruz; yasam dongusunu
+    // MainActivity, oturum hem on izleme hem tam ekran tarafindan referans verilmedigi (orphan
+    // oldugu) anda yonetiyor.
     DisposableEffect(player, candidates) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
@@ -107,13 +84,11 @@ fun NativeInlinePlayerSurface(
             }
         }
         player.addListener(listener)
-        onDispose {
-            player.removeListener(listener)
-            player.release()
-        }
+        onDispose { player.removeListener(listener) }
     }
 
     LaunchedEffect(candidateIndex, candidateRetry, request.sessionId) {
+        if (player.playbackState == Player.STATE_READY && player.isPlaying) return@LaunchedEffect
         ready = false
         failed = false
         if (candidateRetry > 0) kotlinx.coroutines.delay(750)

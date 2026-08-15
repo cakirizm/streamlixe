@@ -27,7 +27,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.media3.common.C
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import org.json.JSONObject
 import java.util.UUID
 
@@ -38,6 +43,47 @@ class MainActivity : ComponentActivity() {
     private var inlinePlayback by mutableStateOf<InlinePlaybackSession?>(null)
     private var lastProgress = PlaybackProgress()
     private var fileCallback: ValueCallback<Array<Uri>>? = null
+
+    // On izlemeden (inline) tam ekrana geçerken aynı ExoPlayer'ı yeniden kullanmak için --
+    // böylece yayın sıfırdan başlamak yerine zaten çalan haliyle tam ekrana taşınır.
+    // Player, sessionId'ye hem inlinePlayback hem playbackRequest tarafından referans
+    // verilmediği anda ("orphan" olduğunda) serbest bırakılır.
+    private val sharedPlayers = mutableMapOf<String, ExoPlayer>()
+
+    private fun playerFor(request: PlaybackRequest): ExoPlayer {
+        sharedPlayers[request.sessionId]?.let { return it }
+        val httpFactory = DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setUserAgent("VLC/3.0 StreamLiveX-Android/${BuildConfig.VERSION_NAME}")
+            .setConnectTimeoutMs(15_000)
+            .setReadTimeoutMs(30_000)
+        val player = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(this).setDataSourceFactory(httpFactory))
+            .build()
+            .apply {
+                playWhenReady = true
+                playbackParameters = PlaybackParameters(request.preferences.playbackRate)
+                trackSelectionParameters = trackSelectionParameters.buildUpon().apply {
+                    val audio = request.preferences.audioLanguage
+                    if (audio !in setOf("auto", "original")) setPreferredAudioLanguage(audio)
+                    val subtitle = request.preferences.subtitleLanguage
+                    if (subtitle != "auto") setPreferredTextLanguage(subtitle)
+                    setSelectUndeterminedTextLanguage(request.preferences.subtitleMode != "off")
+                    setTrackTypeDisabled(C.TRACK_TYPE_TEXT, request.preferences.subtitleMode == "off")
+                }.build()
+            }
+        sharedPlayers[request.sessionId] = player
+        return player
+    }
+
+    private fun releaseOrphanedPlayer(sessionId: String?) {
+        if (sessionId == null) return
+        val stillNeeded = inlinePlayback?.request?.sessionId == sessionId || playbackRequest?.sessionId == sessionId
+        if (!stillNeeded) {
+            sharedPlayers.remove(sessionId)?.release()
+            PlaybackCandidateMemory.forget(sessionId)
+        }
+    }
 
     private val filePicker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         fileCallback?.onReceiveValue(uri?.let { arrayOf(it) })
@@ -82,17 +128,23 @@ class MainActivity : ComponentActivity() {
                         bridge = bridge,
                         fileChooser = fileChooser,
                         onWebViewReady = { webView = it },
-                        onNavigationStart = { inlinePlayback = null },
+                        onNavigationStart = {
+                            releaseOrphanedPlayer(inlinePlayback?.request?.sessionId)
+                            inlinePlayback = null
+                        },
                     )
                     inlinePlayback?.takeIf { it.bounds.visible && playbackRequest == null }?.let { session ->
                         NativeInlinePlayerSurface(
                             request = session.request,
+                            player = playerFor(session.request),
                             modifier = Modifier
                                 .offset(session.bounds.left.dp, session.bounds.top.dp)
                                 .size(session.bounds.width.dp, session.bounds.height.dp),
                             onFullScreen = {
                                 lastProgress = PlaybackProgress()
-                                inlinePlayback = null
+                                // inlinePlayback bilerek temizlenmiyor: tam ekrandan geri
+                                // dönüldüğünde ayni oturum otomatik olarak on izlemeye geri
+                                // döner (bkz. yukarıdaki takeIf { playbackRequest == null }).
                                 playbackRequest = session.request
                             },
                             onFailure = { message ->
@@ -104,6 +156,7 @@ class MainActivity : ComponentActivity() {
                         BackHandler { closePlayer(notifyWeb = true) }
                         NativePlayerSurface(
                             request = request,
+                            player = playerFor(request),
                             onClose = { progress ->
                                 lastProgress = progress
                                 closePlayer(notifyWeb = true)
@@ -177,9 +230,13 @@ class MainActivity : ComponentActivity() {
     private fun handleBridgeCommand(command: BridgeCommand?) {
         when (command) {
             is BridgeCommand.Play -> {
+                val orphanedPlayback = playbackRequest?.sessionId
+                val orphanedPreview = inlinePlayback?.request?.sessionId
                 lastProgress = PlaybackProgress()
                 inlinePlayback = null
                 playbackRequest = command.request
+                releaseOrphanedPlayer(orphanedPlayback)
+                releaseOrphanedPlayer(orphanedPreview)
             }
             is BridgeCommand.Close -> {
                 val active = playbackRequest
@@ -187,10 +244,13 @@ class MainActivity : ComponentActivity() {
                 val genericWebClose = command.sessionId.isNullOrBlank() && active?.fromWebBridge == true
                 if (matchingSession || genericWebClose) {
                     playbackRequest = null
+                    releaseOrphanedPlayer(active?.sessionId)
                 }
             }
             is BridgeCommand.Preview -> {
+                val orphaned = inlinePlayback?.request?.sessionId
                 inlinePlayback = command.session
+                releaseOrphanedPlayer(orphaned)
             }
             is BridgeCommand.PreviewLayout -> {
                 val active = inlinePlayback
@@ -202,13 +262,14 @@ class MainActivity : ComponentActivity() {
                 val active = inlinePlayback
                 if (command.sessionId.isNullOrBlank() || command.sessionId == active?.request?.sessionId) {
                     inlinePlayback = null
+                    releaseOrphanedPlayer(active?.request?.sessionId)
                 }
             }
             is BridgeCommand.PromotePreview -> {
                 val active = inlinePlayback
                 if (active?.request?.sessionId == command.sessionId) {
                     lastProgress = PlaybackProgress()
-                    inlinePlayback = null
+                    // inlinePlayback bilerek temizlenmiyor, bkz. onFullScreen yorumu.
                     playbackRequest = active.request
                 }
             }
@@ -219,6 +280,7 @@ class MainActivity : ComponentActivity() {
     private fun closePlayer(notifyWeb: Boolean) {
         val active = playbackRequest ?: return
         playbackRequest = null
+        releaseOrphanedPlayer(active.sessionId)
         if (notifyWeb) {
             val detail = JSONObject()
                 .put("current", lastProgress.currentSeconds)
@@ -261,6 +323,9 @@ class MainActivity : ComponentActivity() {
         fileCallback?.onReceiveValue(null)
         fileCallback = null
         inlinePlayback = null
+        playbackRequest = null
+        sharedPlayers.values.forEach { it.release() }
+        sharedPlayers.clear()
         webView = null
         super.onDestroy()
     }

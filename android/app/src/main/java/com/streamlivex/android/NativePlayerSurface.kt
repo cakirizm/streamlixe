@@ -44,14 +44,11 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
-import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
@@ -61,6 +58,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun NativePlayerSurface(
     request: PlaybackRequest,
+    player: ExoPlayer,
     onClose: (PlaybackProgress) -> Unit,
     onProgress: (PlaybackProgress) -> Unit,
     onFailure: (String) -> Unit,
@@ -72,7 +70,7 @@ fun NativePlayerSurface(
     }
     var candidateRetry by remember(request.sessionId) { mutableIntStateOf(0) }
     var failed by remember(request.sessionId) { mutableStateOf(false) }
-    var ready by remember(request.sessionId) { mutableStateOf(false) }
+    var ready by remember(request.sessionId) { mutableStateOf(player.playbackState == Player.STATE_READY) }
     var resizeMode by remember(request.sessionId) { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
     var qualityLabel by remember(request.sessionId) { mutableStateOf("AUTO") }
     val streamFailedMessage = stringResource(R.string.stream_failed)
@@ -81,33 +79,6 @@ fun NativePlayerSurface(
     var controlsVisible by remember(request.sessionId) { mutableStateOf(true) }
     val isTelevision = remember(context) {
         context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
-    }
-
-    val player = remember(request.sessionId) {
-        val httpFactory = DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
-            .setUserAgent("VLC/3.0 StreamLiveX-Android/${BuildConfig.VERSION_NAME}")
-            .setConnectTimeoutMs(15_000)
-            .setReadTimeoutMs(30_000)
-        ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(httpFactory))
-            .build()
-            .apply {
-                playWhenReady = true
-                playbackParameters = PlaybackParameters(request.preferences.playbackRate)
-                trackSelectionParameters = trackSelectionParameters.buildUpon().apply {
-                    val audio = request.preferences.audioLanguage
-                    if (audio !in setOf("auto", "original")) setPreferredAudioLanguage(audio)
-                    val subtitle = request.preferences.subtitleLanguage
-                    if (subtitle != "auto") setPreferredTextLanguage(subtitle)
-                    setSelectUndeterminedTextLanguage(request.preferences.subtitleMode != "off")
-                    setTrackTypeDisabled(C.TRACK_TYPE_TEXT, request.preferences.subtitleMode == "off")
-                    when (request.preferences.quality) {
-                        "Yüksek" -> setForceHighestSupportedBitrate(true)
-                        "Veri tasarrufu" -> setMaxVideoSizeSd()
-                    }
-                }.build()
-            }
     }
 
     DisposableEffect(request.sessionId, isTelevision) {
@@ -156,12 +127,14 @@ fun NativePlayerSurface(
         onDispose {
             onProgress(progress())
             player.removeListener(listener)
-            player.release()
-            PlaybackCandidateMemory.forget(request.sessionId)
         }
     }
 
     LaunchedEffect(candidateIndex, candidateRetry, request.sessionId) {
+        // On izlemeden tam ekrana gecerken ayni paylasilan player zaten bu adayla oynatiyor
+        // olabilir -- boyle bir durumda sifirdan setMediaItem/prepare cagirip yayini yeniden
+        // baslatmiyoruz, sadece mevcut oynatmayi devam ettiriyoruz.
+        if (player.playbackState == Player.STATE_READY && player.isPlaying) return@LaunchedEffect
         failed = false
         ready = false
         if (candidateRetry > 0) delay(750)
