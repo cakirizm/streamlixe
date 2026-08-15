@@ -67,7 +67,9 @@ fun NativePlayerSurface(
 ) {
     val context = LocalContext.current
     val candidates = remember(request.item.url) { playbackCandidates(request.item) }
-    var candidateIndex by remember(request.sessionId) { mutableIntStateOf(0) }
+    var candidateIndex by remember(request.sessionId) {
+        mutableIntStateOf(PlaybackCandidateMemory.recall(request.sessionId).coerceIn(0, (candidates.size - 1).coerceAtLeast(0)))
+    }
     var candidateRetry by remember(request.sessionId) { mutableIntStateOf(0) }
     var failed by remember(request.sessionId) { mutableStateOf(false) }
     var ready by remember(request.sessionId) { mutableStateOf(false) }
@@ -76,6 +78,7 @@ fun NativePlayerSurface(
     val streamFailedMessage = stringResource(R.string.stream_failed)
     val fitLabel = stringResource(R.string.fit_screen)
     val fillLabel = stringResource(R.string.fill_screen)
+    var controlsVisible by remember(request.sessionId) { mutableStateOf(true) }
     val isTelevision = remember(context) {
         context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
     }
@@ -154,6 +157,7 @@ fun NativePlayerSurface(
             onProgress(progress())
             player.removeListener(listener)
             player.release()
+            PlaybackCandidateMemory.forget(request.sessionId)
         }
     }
 
@@ -184,12 +188,17 @@ fun NativePlayerSurface(
                     useController = true
                     controllerAutoShow = true
                     controllerHideOnTouch = true
-                    controllerShowTimeoutMs = 3_500
+                    controllerShowTimeoutMs = 1_800
                     this.resizeMode = resizeMode
                     keepScreenOn = true
                     isFocusable = true
                     isFocusableInTouchMode = true
                     applySubtitleStyle(this, request.preferences)
+                    setControllerVisibilityListener(
+                        PlayerView.ControllerVisibilityListener { visibility ->
+                            controlsVisible = visibility == android.view.View.VISIBLE
+                        },
+                    )
                     post { requestFocus() }
                 }
             },
@@ -201,7 +210,7 @@ fun NativePlayerSurface(
             },
         )
 
-        Row(
+        if (controlsVisible) Row(
             modifier = Modifier.fillMaxWidth()
                 .background(ComposeColor(0x99000000))
                 .padding(horizontal = 12.dp, vertical = 8.dp),

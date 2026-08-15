@@ -86,6 +86,7 @@ fun NativeInlinePlayerSurface(
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 ready = state == Player.STATE_READY
+                if (ready) PlaybackCandidateMemory.remember(request.sessionId, candidateIndex)
             }
 
             override fun onVideoSizeChanged(videoSize: VideoSize) {

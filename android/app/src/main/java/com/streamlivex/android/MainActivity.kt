@@ -91,8 +91,9 @@ class MainActivity : ComponentActivity() {
                                 .offset(session.bounds.left.dp, session.bounds.top.dp)
                                 .size(session.bounds.width.dp, session.bounds.height.dp),
                             onFullScreen = {
-                                val detail = JSONObject().put("sessionId", session.request.sessionId)
-                                sendWebEvent("streamlivex:native-preview-fullscreen", detail.toString())
+                                lastProgress = PlaybackProgress()
+                                inlinePlayback = null
+                                playbackRequest = session.request
                             },
                             onFailure = { message ->
                                 sendWebEvent("streamlivex:native-preview-error", JSONObject.quote(message))
@@ -201,6 +202,14 @@ class MainActivity : ComponentActivity() {
                 val active = inlinePlayback
                 if (command.sessionId.isNullOrBlank() || command.sessionId == active?.request?.sessionId) {
                     inlinePlayback = null
+                }
+            }
+            is BridgeCommand.PromotePreview -> {
+                val active = inlinePlayback
+                if (active?.request?.sessionId == command.sessionId) {
+                    lastProgress = PlaybackProgress()
+                    inlinePlayback = null
+                    playbackRequest = active.request
                 }
             }
             null -> Unit

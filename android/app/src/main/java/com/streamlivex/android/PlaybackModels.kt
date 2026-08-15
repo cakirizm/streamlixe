@@ -54,12 +54,28 @@ data class InlinePlaybackSession(
     val bounds: PlaybackBounds,
 )
 
+// Önizlemeden tam ekrana geçerken (aynı sessionId reuse edildiğinde) hangi format/kaynak
+// denemesinin zaten çalıştığını hatırlar; tam ekran oynatıcı sıfırdan HLS/MPEG-TS/native
+// sırasıyla denemek yerine direkt bilinen çalışan adayı kullanır, boylece "tekrar yükleniyor"
+// hissi buyuk olcude azalir.
+object PlaybackCandidateMemory {
+    private val map = mutableMapOf<String, Int>()
+    fun remember(sessionId: String, candidateIndex: Int) {
+        map[sessionId] = candidateIndex
+    }
+    fun recall(sessionId: String): Int = map[sessionId] ?: 0
+    fun forget(sessionId: String) {
+        map.remove(sessionId)
+    }
+}
+
 sealed interface BridgeCommand {
     data class Play(val request: PlaybackRequest) : BridgeCommand
     data class Close(val sessionId: String?) : BridgeCommand
     data class Preview(val session: InlinePlaybackSession) : BridgeCommand
     data class PreviewLayout(val sessionId: String, val bounds: PlaybackBounds) : BridgeCommand
     data class ClosePreview(val sessionId: String?) : BridgeCommand
+    data class PromotePreview(val sessionId: String) : BridgeCommand
 }
 
 object BridgeMessageParser {
@@ -87,6 +103,7 @@ object BridgeMessageParser {
                 }
             }
             "close-preview" -> BridgeCommand.ClosePreview(root.optString("sessionId").ifBlank { null })
+            "promote-preview" -> root.optString("sessionId").ifBlank { null }?.let(BridgeCommand::PromotePreview)
             else -> null
         }
     }
