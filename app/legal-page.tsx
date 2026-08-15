@@ -30,6 +30,7 @@ export function LegalPage({ eyebrow, title, summary, children }: LegalPageProps)
           <a href="/privacy">Gizlilik Politikası</a>
           <a href="/terms">Kullanım Koşulları</a>
           <a href="/support">Destek</a>
+          <a href="/rehber">Rehberler</a>
         </nav>
       </section>
     </main>
