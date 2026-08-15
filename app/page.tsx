@@ -156,7 +156,22 @@ function useDpadNavigation(enabled:boolean,resetKey:string){
   },[enabled,resetKey]);
 }
 
+function useRealViewportHeight(){
+  // Bazı Android WebView sürümlerinde CSS `vh` birimi yanlış/sıfır hesaplanıyor
+  // (bir tablette kategori/kanal panellerinin yüksekliğinin 0'a düşmesine sebep oldu).
+  // Gerçek yüksekliği JS ile ölçüp bir CSS değişkenine yazıyoruz, `vh`'ye hiç
+  // güvenmeden panel yüksekliklerini bundan hesaplıyoruz.
+  useLayoutEffect(()=>{
+    const set=()=>document.documentElement.style.setProperty("--vh100",`${window.innerHeight}px`);
+    set();
+    window.addEventListener("resize",set);
+    window.addEventListener("orientationchange",set);
+    return()=>{window.removeEventListener("resize",set);window.removeEventListener("orientationchange",set)};
+  },[]);
+}
+
 export default function Home(){
+  useRealViewportHeight();
   const [locale,setLocale]=useState<AppLocale>(getLocale);useDocumentLanguage(locale);
   const changeLocale=(next:AppLocale)=>{localStorage.setItem("slx-language",next);document.cookie=`slx-language=${next};path=/;max-age=31536000;SameSite=Lax`;setLocale(next)};
   const [screen,setScreen]=useState<"boot"|"setup"|"profiles"|"dashboard"|"detail"|"player">("boot");
