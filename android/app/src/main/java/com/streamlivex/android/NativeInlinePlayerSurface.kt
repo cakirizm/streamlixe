@@ -88,7 +88,12 @@ fun NativeInlinePlayerSurface(
     }
 
     LaunchedEffect(candidateIndex, candidateRetry, request.sessionId) {
-        if (player.playbackState == Player.STATE_READY && player.isPlaying) return@LaunchedEffect
+        val startKey = "${request.sessionId}:$candidateIndex:$candidateRetry"
+        if (PlaybackStartTracker.hasStarted(startKey)) {
+            ready = player.playbackState == Player.STATE_READY
+            return@LaunchedEffect
+        }
+        PlaybackStartTracker.markStarted(startKey)
         ready = false
         failed = false
         if (candidateRetry > 0) kotlinx.coroutines.delay(750)

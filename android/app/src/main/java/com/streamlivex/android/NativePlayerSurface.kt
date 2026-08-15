@@ -133,8 +133,14 @@ fun NativePlayerSurface(
     LaunchedEffect(candidateIndex, candidateRetry, request.sessionId) {
         // On izlemeden tam ekrana gecerken ayni paylasilan player zaten bu adayla oynatiyor
         // olabilir -- boyle bir durumda sifirdan setMediaItem/prepare cagirip yayini yeniden
-        // baslatmiyoruz, sadece mevcut oynatmayi devam ettiriyoruz.
-        if (player.playbackState == Player.STATE_READY && player.isPlaying) return@LaunchedEffect
+        // baslatmiyoruz, sadece mevcut oynatmayi devam ettiriyoruz. player.isPlaying gibi
+        // zamanlamaya bagli bir kontrol yerine kesin bir kayit (PlaybackStartTracker) kullaniyoruz.
+        val startKey = "${request.sessionId}:$candidateIndex:$candidateRetry"
+        if (PlaybackStartTracker.hasStarted(startKey)) {
+            ready = player.playbackState == Player.STATE_READY
+            return@LaunchedEffect
+        }
+        PlaybackStartTracker.markStarted(startKey)
         failed = false
         ready = false
         if (candidateRetry > 0) delay(750)

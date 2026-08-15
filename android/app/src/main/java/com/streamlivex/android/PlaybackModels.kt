@@ -69,6 +69,22 @@ object PlaybackCandidateMemory {
     }
 }
 
+// Ayni (sessionId, candidateIndex, retry) kombinasyonu icin player.setMediaItem/prepare/play'in
+// birden fazla kez cagrilmasini onler. On izleme ile tam ekran ayni paylasilan ExoPlayer'i
+// kullandigi icin, on izleme zaten bu adayla basariyla baslatmissa, tam ekrana gecerken (ya da
+// tam ekrandan geri donerken) BIR DAHA baslatilmiyor -- player.isPlaying/playbackState gibi
+// zamanlamaya bagli (race'e acik) kontrollere guvenmek yerine kesin bir kayit tutuyoruz.
+object PlaybackStartTracker {
+    private val started = mutableSetOf<String>()
+    fun hasStarted(key: String): Boolean = started.contains(key)
+    fun markStarted(key: String) {
+        started.add(key)
+    }
+    fun clearSession(sessionId: String) {
+        started.removeAll { it.startsWith("$sessionId:") }
+    }
+}
+
 sealed interface BridgeCommand {
     data class Play(val request: PlaybackRequest) : BridgeCommand
     data class Close(val sessionId: String?) : BridgeCommand

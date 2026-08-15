@@ -82,6 +82,7 @@ class MainActivity : ComponentActivity() {
         if (!stillNeeded) {
             sharedPlayers.remove(sessionId)?.release()
             PlaybackCandidateMemory.forget(sessionId)
+            PlaybackStartTracker.clearSession(sessionId)
         }
     }
 
