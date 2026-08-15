@@ -69,7 +69,20 @@ async function enrichAll(source:Media[],onPage:(rows:any[],done:number,total:num
 }
 async function fetchJSONTimeout(url:string,init:RequestInit={},timeoutMs=TMDB_TIMEOUT_MS){const controller=new AbortController();const outer=init.signal as AbortSignal|undefined;const onAbort=()=>controller.abort();outer?.addEventListener("abort",onAbort);const timer=setTimeout(()=>controller.abort(),timeoutMs);try{const response=await fetch(url,{...init,signal:controller.signal});return await response.json().catch(()=>({}))}finally{clearTimeout(timer);outer?.removeEventListener("abort",onAbort)}}
 
-function libraryDB(){return new Promise<IDBDatabase>((resolve,reject)=>{const req=indexedDB.open("streamlivex-v2",1);req.onupgradeneeded=()=>req.result.createObjectStore("library");req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error)})}
+function libraryDB(){
+  // Ayni origin'de birden fazla sekme/baglanti IndexedDB'yi acmaya calisirken tarayici
+  // istegi "blocked" durumuna alabiliyor; bu olay icin bir dinleyici olmayinca Promise ne
+  // basarili ne hatali sonuclanmadan sonsuza kadar askida kaliyordu ("hazirlaniyor" ekraninda
+  // takilma). onblocked'i reddederek ve genel bir zaman asimiyla bu asilma durumunu onluyoruz.
+  return new Promise<IDBDatabase>((resolve,reject)=>{
+    const req=indexedDB.open("streamlivex-v2",1);
+    const timer=setTimeout(()=>reject(new Error("IndexedDB zaman aşımına uğradı")),5000);
+    req.onupgradeneeded=()=>req.result.createObjectStore("library");
+    req.onsuccess=()=>{clearTimeout(timer);resolve(req.result)};
+    req.onerror=()=>{clearTimeout(timer);reject(req.error)};
+    req.onblocked=()=>{clearTimeout(timer);reject(new Error("IndexedDB başka bir sekme tarafından bloklandı"))};
+  });
+}
 async function dbSet(key:string,value:unknown){const db=await libraryDB();await new Promise<void>((resolve,reject)=>{const tx=db.transaction("library","readwrite");tx.objectStore("library").put(value,key);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error)});db.close()}
 async function dbGet<T>(key:string){const db=await libraryDB();const value=await new Promise<T|undefined>((resolve,reject)=>{const req=db.transaction("library").objectStore("library").get(key);req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error)});db.close();return value}
 async function dbClear(){const db=await libraryDB();await new Promise<void>((resolve,reject)=>{const tx=db.transaction("library","readwrite");tx.objectStore("library").clear();tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error)});db.close()}
@@ -195,7 +208,13 @@ export default function Home(){
   const displayItems=useMemo(()=>collapseMediaSources(items),[items]);
   useEffect(()=>{(window as any).__slxLibrary=displayItems;(window as any).__slxOpenLibrary=(media:Media)=>{browseScroll.current=window.scrollY;setError("");setSelected(media);setScreen("detail")};return()=>{delete (window as any).__slxLibrary;delete (window as any).__slxOpenLibrary}},[displayItems]);
 
-  useEffect(()=>{let active=true;(async()=>{try{
+  useEffect(()=>{let active=true;
+    // dbGet/dbSet kendi ici zaman asimina sahip olsa da, "hazirlaniyor" ekraninin HICBIR
+    // sebepten sonsuza kadar takili kalmamasi icin ayrica bir genel guvenlik agi: 8 saniye
+    // icinde ekran degismezse, doğrudan kurulum ekranina dusuyoruz (veriler kaybolmuyor,
+    // sadece kullanici tekrar deneyebiliyor).
+    const safetyTimer=setTimeout(()=>{if(active){setScreen(current=>current==="boot"?"setup":current)}},8000);
+    (async()=>{try{
     let list=await dbGet<PlaylistEntry[]>("playlists");
     if(!list){
       // Eski (tek listeli) format: mevcut kaydı kaybetmeden yeni çoklu-liste yapısına taşı.
@@ -208,10 +227,11 @@ export default function Home(){
       }else list=[];
     }
     if(!active)return;
+    clearTimeout(safetyTimer);
     setPlaylists(list);
     if(!list.length){setScreen("setup");return}
     setScreen("playlists");
-  }catch{await dbClear().catch(()=>{});if(active)setScreen("setup")}})();return()=>{active=false}},[]);
+  }catch{clearTimeout(safetyTimer);await dbClear().catch(()=>{});if(active)setScreen("setup")}})();return()=>{active=false;clearTimeout(safetyTimer)}},[]);
   const selectPlaylist=async(id:string)=>{
     const entry=playlists.find(x=>x.id===id);if(!entry)return;
     const media=await dbGet<Media[]>(`items:${id}`);
