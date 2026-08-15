@@ -54,12 +54,44 @@ data class InlinePlaybackSession(
     val bounds: PlaybackBounds,
 )
 
+// Önizlemeden tam ekrana geçerken (aynı sessionId reuse edildiğinde) hangi format/kaynak
+// denemesinin zaten çalıştığını hatırlar; tam ekran oynatıcı sıfırdan HLS/MPEG-TS/native
+// sırasıyla denemek yerine direkt bilinen çalışan adayı kullanır, boylece "tekrar yükleniyor"
+// hissi buyuk olcude azalir.
+object PlaybackCandidateMemory {
+    private val map = mutableMapOf<String, Int>()
+    fun remember(sessionId: String, candidateIndex: Int) {
+        map[sessionId] = candidateIndex
+    }
+    fun recall(sessionId: String): Int = map[sessionId] ?: 0
+    fun forget(sessionId: String) {
+        map.remove(sessionId)
+    }
+}
+
+// Ayni (sessionId, candidateIndex, retry) kombinasyonu icin player.setMediaItem/prepare/play'in
+// birden fazla kez cagrilmasini onler. On izleme ile tam ekran ayni paylasilan ExoPlayer'i
+// kullandigi icin, on izleme zaten bu adayla basariyla baslatmissa, tam ekrana gecerken (ya da
+// tam ekrandan geri donerken) BIR DAHA baslatilmiyor -- player.isPlaying/playbackState gibi
+// zamanlamaya bagli (race'e acik) kontrollere guvenmek yerine kesin bir kayit tutuyoruz.
+object PlaybackStartTracker {
+    private val started = mutableSetOf<String>()
+    fun hasStarted(key: String): Boolean = started.contains(key)
+    fun markStarted(key: String) {
+        started.add(key)
+    }
+    fun clearSession(sessionId: String) {
+        started.removeAll { it.startsWith("$sessionId:") }
+    }
+}
+
 sealed interface BridgeCommand {
     data class Play(val request: PlaybackRequest) : BridgeCommand
     data class Close(val sessionId: String?) : BridgeCommand
     data class Preview(val session: InlinePlaybackSession) : BridgeCommand
     data class PreviewLayout(val sessionId: String, val bounds: PlaybackBounds) : BridgeCommand
     data class ClosePreview(val sessionId: String?) : BridgeCommand
+    data class PromotePreview(val sessionId: String) : BridgeCommand
 }
 
 object BridgeMessageParser {
@@ -87,6 +119,7 @@ object BridgeMessageParser {
                 }
             }
             "close-preview" -> BridgeCommand.ClosePreview(root.optString("sessionId").ifBlank { null })
+            "promote-preview" -> root.optString("sessionId").ifBlank { null }?.let(BridgeCommand::PromotePreview)
             else -> null
         }
     }

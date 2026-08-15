@@ -1,6 +1,7 @@
 package com.streamlivex.android
 
 import android.annotation.SuppressLint
+import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
@@ -49,6 +50,81 @@ private const val BRIDGE_SCRIPT = """
     })();
 """
 
+// Geçici teşhis: WebView'de sessizce yutulan JS hatalarını (kategori listesi vb. bomboş
+// kalmasına sebep olabilecek render hatalarını) doğrudan ekranda kırmızı bir banner olarak
+// gösterir, uzaktan devtools bağlantısı gerektirmez. onPageStarted'da enjekte edilir ki
+// sayfanın kendi script'leri çalışmaya başlamadan önce hata yakalayıcılar hazır olsun.
+private const val EARLY_DIAGNOSTIC_SCRIPT = """
+    (function() {
+      if (window.__slxDiag) return;
+      window.__slxDiag = true;
+      var box = null;
+      function show(text) {
+        try {
+          if (!box) {
+            box = document.createElement('div');
+            box.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483647;background:#c0142f;color:#fff;font:11px monospace;padding:8px;white-space:pre-wrap;max-height:40vh;overflow:auto;';
+            (document.body || document.documentElement).appendChild(box);
+          }
+          box.textContent += text + '\n\n';
+        } catch (e) {}
+      }
+      window.addEventListener('error', function(e) {
+        show('JS HATA: ' + (e.message || e.error) + ' @ ' + (e.filename || '') + ':' + (e.lineno || '') + '\n' + (e.error && e.error.stack || ''));
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        show('PROMISE HATA: ' + (e.reason && (e.reason.stack || e.reason.message || e.reason)));
+      });
+      var origError = console.error, origWarn = console.warn;
+      console.error = function() { try { show('CONSOLE.ERROR: ' + Array.prototype.slice.call(arguments).join(' ')); } catch(e){}; origError.apply(console, arguments); };
+      console.warn = function() { try { show('CONSOLE.WARN: ' + Array.prototype.slice.call(arguments).join(' ')); } catch(e){}; origWarn.apply(console, arguments); };
+      function addDiagButton() {
+        if (!document.body || document.getElementById('__slxDiagBtn')) return;
+        var btn = document.createElement('button');
+        btn.id = '__slxDiagBtn';
+        btn.textContent = 'TEŞHİS';
+        btn.style.cssText = 'position:fixed;bottom:8px;right:8px;z-index:2147483647;background:#111;color:#0f0;border:1px solid #0f0;padding:8px 10px;font:11px monospace;';
+        btn.onclick = function() {
+          var asideCat = document.querySelector('.catalog aside');
+          var catalog = document.querySelector('.catalog');
+          var csAside = asideCat ? getComputedStyle(asideCat) : null;
+          var csCatalog = catalog ? getComputedStyle(catalog) : null;
+          var rectAside = asideCat ? asideCat.getBoundingClientRect() : null;
+          var rectCatalog = catalog ? catalog.getBoundingClientRect() : null;
+          var report = [
+            'UA: ' + navigator.userAgent,
+            'gridSupport: ' + (window.CSS && CSS.supports ? CSS.supports('display','grid') : 'CSS.supports yok'),
+            'window: ' + innerWidth + 'x' + innerHeight,
+            'catalog display: ' + (csCatalog ? csCatalog.display : '-') + ' gridTemplateColumns: ' + (csCatalog ? csCatalog.gridTemplateColumns : '-'),
+            'catalog rect: ' + JSON.stringify(rectCatalog),
+            'aside display: ' + (csAside ? csAside.display : '-') + ' width: ' + (csAside ? csAside.width : '-') + ' visibility: ' + (csAside ? csAside.visibility : '-') + ' opacity: ' + (csAside ? csAside.opacity : '-') + ' position: ' + (csAside ? csAside.position : '-') + ' zIndex: ' + (csAside ? csAside.zIndex : '-'),
+            'aside rect: ' + JSON.stringify(rectAside),
+            'aside children: ' + (asideCat ? asideCat.children.length : '-'),
+          ].join('\n\n');
+          if (window.StreamLiveXDiag && window.StreamLiveXDiag.report) window.StreamLiveXDiag.report(report);
+          else show('TEŞHİS RAPORU:\n' + report);
+        };
+        document.body.appendChild(btn);
+      }
+      var t = setInterval(addDiagButton, 500);
+      setTimeout(function(){ clearInterval(t); }, 30000);
+    })();
+"""
+
+class DiagBridge(private val context: android.content.Context) {
+    @JavascriptInterface
+    fun report(text: String) {
+        val activity = context.findActivity() ?: return
+        activity.runOnUiThread {
+            AlertDialog.Builder(activity)
+                .setTitle("Teşhis Raporu")
+                .setMessage(text)
+                .setPositiveButton("Kapat", null)
+                .show()
+        }
+    }
+}
+
 class AndroidPlaybackBridge(private val onMessage: (String) -> Unit) {
     @JavascriptInterface
     fun postMessage(payload: String) = onMessage(payload)
@@ -84,8 +160,6 @@ fun BrowserSurface(
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
                     settings.databaseEnabled = true
-                    settings.useWideViewPort = true
-                    settings.loadWithOverviewMode = true
                     settings.textZoom = 100
                     settings.mediaPlaybackRequiresUserGesture = false
                     settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
@@ -94,12 +168,14 @@ fun BrowserSurface(
                     settings.allowContentAccess = true
                     settings.userAgentString = "${settings.userAgentString} StreamLiveXAndroid/${BuildConfig.VERSION_NAME}"
                     addJavascriptInterface(bridge, "StreamLiveXAndroid")
+                    addJavascriptInterface(DiagBridge(context), "StreamLiveXDiag")
                     webChromeClient = fileChooser
                     webViewClient = object : WebViewClient() {
                         override fun onPageStarted(view: WebView, pageUrl: String?, favicon: android.graphics.Bitmap?) {
                             onNavigationStart()
                             loading = true
                             failed = false
+                            view.evaluateJavascript(EARLY_DIAGNOSTIC_SCRIPT, null)
                         }
 
                         override fun onPageFinished(view: WebView, pageUrl: String?) {
