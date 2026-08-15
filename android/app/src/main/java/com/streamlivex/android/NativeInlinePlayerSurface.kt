@@ -54,6 +54,7 @@ fun NativeInlinePlayerSurface(
     val context = LocalContext.current
     val candidates = remember(request.item.url) { playbackCandidates(request.item) }
     var candidateIndex by remember(request.sessionId) { mutableIntStateOf(0) }
+    var candidateRetry by remember(request.sessionId) { mutableIntStateOf(0) }
     var ready by remember(request.sessionId) { mutableStateOf(false) }
     var failed by remember(request.sessionId) { mutableStateOf(false) }
     var qualityLabel by remember(request.sessionId) { mutableStateOf("AUTO") }
@@ -92,7 +93,10 @@ fun NativeInlinePlayerSurface(
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                if (candidateIndex + 1 < candidates.size) {
+                if (error.isRetryableStreamError() && candidateRetry < 1) {
+                    candidateRetry += 1
+                } else if (candidateIndex + 1 < candidates.size) {
+                    candidateRetry = 0
                     candidateIndex += 1
                 } else {
                     ready = false
@@ -108,9 +112,11 @@ fun NativeInlinePlayerSurface(
         }
     }
 
-    LaunchedEffect(candidateIndex, request.sessionId) {
+    LaunchedEffect(candidateIndex, candidateRetry, request.sessionId) {
         ready = false
         failed = false
+        if (candidateRetry > 0) kotlinx.coroutines.delay(750)
+        player.stop()
         player.setMediaItem(createMediaItem(request, candidates[candidateIndex]))
         player.prepare()
         player.play()

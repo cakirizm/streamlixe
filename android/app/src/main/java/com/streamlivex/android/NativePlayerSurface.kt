@@ -49,6 +49,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -67,6 +68,7 @@ fun NativePlayerSurface(
     val context = LocalContext.current
     val candidates = remember(request.item.url) { playbackCandidates(request.item) }
     var candidateIndex by remember(request.sessionId) { mutableIntStateOf(0) }
+    var candidateRetry by remember(request.sessionId) { mutableIntStateOf(0) }
     var failed by remember(request.sessionId) { mutableStateOf(false) }
     var ready by remember(request.sessionId) { mutableStateOf(false) }
     var resizeMode by remember(request.sessionId) { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
@@ -131,7 +133,10 @@ fun NativePlayerSurface(
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                if (candidateIndex + 1 < candidates.size) {
+                if (error.isRetryableStreamError() && candidateRetry < 1) {
+                    candidateRetry += 1
+                } else if (candidateIndex + 1 < candidates.size) {
+                    candidateRetry = 0
                     candidateIndex += 1
                 } else {
                     failed = true
@@ -152,9 +157,11 @@ fun NativePlayerSurface(
         }
     }
 
-    LaunchedEffect(candidateIndex, request.sessionId) {
+    LaunchedEffect(candidateIndex, candidateRetry, request.sessionId) {
         failed = false
         ready = false
+        if (candidateRetry > 0) delay(750)
+        player.stop()
         val mediaItem = createMediaItem(request, candidates[candidateIndex])
         player.setMediaItem(mediaItem, request.resumeTimeMs)
         player.prepare()
@@ -284,6 +291,19 @@ internal fun playbackCandidates(item: PlaybackItem): List<String> {
         candidates += source.replace(Regex("\\.ts(?=($|\\?))", RegexOption.IGNORE_CASE), ".m3u8")
     }
     return candidates.distinct()
+}
+
+internal fun PlaybackException.isRetryableStreamError(): Boolean {
+    var current: Throwable? = cause
+    while (current != null) {
+        if (current is HttpDataSource.InvalidResponseCodeException) {
+            return current.responseCode in setOf(403, 404, 429, 500, 502, 503, 504)
+        }
+        current = current.cause
+    }
+    return errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+        errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
+        errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED
 }
 
 internal fun createMediaItem(request: PlaybackRequest, source: String): MediaItem {

@@ -30,6 +30,11 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _chromeTimer;
     private readonly HttpClient _httpClient;
     private readonly HashSet<string> _closedPlaybackSessions = new(StringComparer.Ordinal);
+    private List<Uri> _playbackCandidates = [];
+    private int _playbackCandidateIndex;
+    private int _playbackRetryCount;
+    private int _playbackGeneration;
+    private bool _playbackRecoveryInProgress;
     private Media? _activeMedia;
     private NativePlayMessage? _activeRequest;
     private CancellationTokenSource? _downloadCancellation;
@@ -159,7 +164,7 @@ public partial class MainWindow : Window
         {
             if (ReferenceEquals(player, _mediaPlayer))
             {
-                PlaybackStatus.Text = "Yayın oynatılamadı";
+                _ = RecoverLivePlaybackAsync(player);
             }
         });
         player.EndReached += (_, _) => Dispatcher.InvokeAsync(() =>
@@ -307,24 +312,17 @@ public partial class MainWindow : Window
 
     private void StartNativePlayer(NativePlayMessage request, Uri mediaUri, long resumeTime = 0, bool pauseAfterResume = false, bool keepSettingsPanelOpen = false)
     {
-        _mediaPlayer.Stop();
-        _activeMedia?.Dispose();
-        _activeMedia = null;
         EnsureSubtitleEngine(request.Preferences);
         _activeRequest = request;
+        _playbackCandidates = BuildPlaybackCandidates(request.Item, mediaUri);
+        _playbackCandidateIndex = 0;
+        _playbackRetryCount = 0;
+        _playbackGeneration++;
+        _playbackRecoveryInProgress = false;
         _pendingResumeTime = Math.Max(0, resumeTime);
         _lastProgressNotification = 0;
         _pauseAfterResume = pauseAfterResume;
-        _activeMedia = new Media(_libVlc, mediaUri);
-        _activeMedia.AddOption(":network-caching=1500");
-        _activeMedia.AddOption(":http-reconnect=true");
-        _activeMedia.AddOption(":sub-margin=88");
-        _activeMedia.AddOption($":sub-text-scale={Math.Clamp(request.Preferences?.SubtitleSize ?? 100, 70, 180)}");
-
-        if (string.Equals(request.Item?.Kind, "live", StringComparison.OrdinalIgnoreCase))
-        {
-            _activeMedia.AddOption(":live-caching=1500");
-        }
+        var activeMedia = OpenActiveMedia(mediaUri, request);
 
         ClearCustomSubtitles();
 
@@ -360,8 +358,88 @@ public partial class MainWindow : Window
         _nativePlayerOpen = true;
         _videoClickArmed = false;
         ShowPlayerChrome(false);
-        _mediaPlayer.Play(_activeMedia);
-        _ = MonitorDurationAsync(_mediaPlayer, _activeMedia);
+        _mediaPlayer.Play(activeMedia);
+        _ = MonitorDurationAsync(_mediaPlayer, activeMedia);
+    }
+
+    private static List<Uri> BuildPlaybackCandidates(NativeMediaItem? item, Uri original)
+    {
+        var candidates = new List<Uri> { original };
+        if (string.Equals(item?.Kind, "live", StringComparison.OrdinalIgnoreCase) &&
+            original.AbsolutePath.EndsWith(".ts", StringComparison.OrdinalIgnoreCase))
+        {
+            var builder = new UriBuilder(original)
+            {
+                Path = Regex.Replace(original.AbsolutePath, "\\.ts$", ".m3u8", RegexOptions.IgnoreCase)
+            };
+            candidates.Add(builder.Uri);
+        }
+        return candidates.Distinct().ToList();
+    }
+
+    private Media OpenActiveMedia(Uri mediaUri, NativePlayMessage request)
+    {
+        _mediaPlayer.Stop();
+        _activeMedia?.Dispose();
+        _activeMedia = new Media(_libVlc, mediaUri);
+        _activeMedia.AddOption(":network-caching=1500");
+        _activeMedia.AddOption(":http-reconnect=true");
+        _activeMedia.AddOption(":sub-margin=88");
+        _activeMedia.AddOption($":sub-text-scale={Math.Clamp(request.Preferences?.SubtitleSize ?? 100, 70, 180)}");
+        if (string.Equals(request.Item?.Kind, "live", StringComparison.OrdinalIgnoreCase))
+        {
+            _activeMedia.AddOption(":live-caching=1500");
+        }
+        return _activeMedia;
+    }
+
+    private async Task RecoverLivePlaybackAsync(VlcMediaPlayer player)
+    {
+        if (_playbackRecoveryInProgress || !ReferenceEquals(player, _mediaPlayer) || !_nativePlayerOpen ||
+            !string.Equals(_activeRequest?.Item?.Kind, "live", StringComparison.OrdinalIgnoreCase))
+        {
+            PlaybackStatus.Text = "Yayın oynatılamadı";
+            return;
+        }
+
+        var request = _activeRequest;
+        if (request is null || _playbackCandidates.Count == 0)
+        {
+            PlaybackStatus.Text = "Yayın oynatılamadı";
+            return;
+        }
+
+        if (_playbackRetryCount < 1)
+        {
+            _playbackRetryCount++;
+        }
+        else if (_playbackCandidateIndex + 1 < _playbackCandidates.Count)
+        {
+            _playbackCandidateIndex++;
+            _playbackRetryCount = 0;
+        }
+        else
+        {
+            PlaybackStatus.Text = "Yayın oynatılamadı";
+            SendWebEvent("streamlivex:native-player-error", "Yayın kaynağı geçici olarak kullanılamıyor.");
+            return;
+        }
+
+        _playbackRecoveryInProgress = true;
+        var generation = _playbackGeneration;
+        PlaybackStatus.Text = "Yayın yeniden deneniyor";
+        try
+        {
+            _mediaPlayer.Stop();
+            await Task.Delay(750);
+            if (generation != _playbackGeneration || !ReferenceEquals(player, _mediaPlayer) || !_nativePlayerOpen) return;
+            var activeMedia = OpenActiveMedia(_playbackCandidates[_playbackCandidateIndex], request);
+            _mediaPlayer.Play(activeMedia);
+        }
+        finally
+        {
+            _playbackRecoveryInProgress = false;
+        }
     }
 
     private void ConfigurePlayerOptions(NativePlayMessage request)
@@ -446,6 +524,7 @@ public partial class MainWindow : Window
         }
         await Dispatcher.InvokeAsync(() =>
         {
+            _playbackRetryCount = 0;
             PlaybackStatus.Text = "Oynatılıyor · VLC";
             PlayPauseButton.Content = "⏸";
             var rate = _activeRequest?.Preferences?.PlaybackRate ?? 1f;
@@ -641,6 +720,8 @@ public partial class MainWindow : Window
             }
         }
         _nativePlayerOpen = false;
+        _playbackGeneration++;
+        _playbackRecoveryInProgress = false;
         _chromeTimer.Stop();
         _mediaPlayer.Stop();
         ClearCustomSubtitles();
