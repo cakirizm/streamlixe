@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import { LegalPage } from "../legal-page";
 
 export const metadata: Metadata = {
-  title: "Kullanım Koşulları | StreamLiveX",
+  title: "Kullanım Koşulları",
   description: "StreamLiveX web ve Windows uygulaması kullanım koşulları.",
+  alternates: { canonical: "/terms" },
 };
 
 export default function TermsPage() {

@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import { LegalPage } from "../legal-page";
 
 export const metadata: Metadata = {
-  title: "Gizlilik Politikası | StreamLiveX",
+  title: "Gizlilik Politikası",
   description: "StreamLiveX gizlilik politikası ve kullanıcı verilerinin işlenmesine ilişkin açıklamalar.",
+  alternates: { canonical: "/privacy" },
 };
 
 export default function PrivacyPage() {
