@@ -180,13 +180,17 @@ fun NativePlayerSurface(
                     controllerShowTimeoutMs = 3_500
                     this.resizeMode = resizeMode
                     keepScreenOn = true
+                    isFocusable = true
+                    isFocusableInTouchMode = true
                     applySubtitleStyle(this, request.preferences)
+                    post { requestFocus() }
                 }
             },
             update = { view ->
                 view.player = player
                 view.resizeMode = resizeMode
                 applySubtitleStyle(view, request.preferences)
+                if (!view.hasFocus()) view.post { view.requestFocus() }
             },
         )
 

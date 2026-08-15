@@ -5,7 +5,7 @@ plugins {
 }
 
 val configuredWebUrl = providers.gradleProperty("STREAMLIVEX_WEB_URL")
-    .orElse("https://streamlivex-player.sedatenescakirinfoli.chatgpt.site")
+    .orElse("https://streamlivex.com")
     .get()
 val escapedWebUrl = configuredWebUrl.replace("\\", "\\\\").replace("\"", "\\\"")
 
