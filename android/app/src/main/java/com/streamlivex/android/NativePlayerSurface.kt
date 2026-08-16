@@ -15,9 +15,12 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.Button
@@ -34,6 +37,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,6 +66,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @UnstableApi
 @Composable
@@ -87,6 +92,10 @@ fun NativePlayerSurface(
     var subtitleOptions by remember(request.sessionId) { mutableStateOf<List<SubtitleOption>>(emptyList()) }
     var selectedSubtitleGroup by remember(request.sessionId) { mutableStateOf<Tracks.Group?>(null) }
     var subtitlePrefs by remember(request.sessionId) { mutableStateOf(request.preferences) }
+    var onlineSubtitleResults by remember(request.sessionId) { mutableStateOf<List<OnlineSubtitleResult>>(emptyList()) }
+    var onlineSubtitleBusy by remember(request.sessionId) { mutableStateOf(false) }
+    var onlineSubtitleError by remember(request.sessionId) { mutableStateOf<String?>(null) }
+    val coroutineScope = rememberCoroutineScope()
     val streamFailedMessage = stringResource(R.string.stream_failed)
     val fitLabel = stringResource(R.string.fit_screen)
     val fillLabel = stringResource(R.string.fill_screen)
@@ -212,6 +221,71 @@ fun NativePlayerSurface(
         onPreferencesChanged(next)
     }
 
+    fun searchOnlineSubtitles() {
+        if (onlineSubtitleBusy) return
+        onlineSubtitleBusy = true
+        onlineSubtitleError = null
+        coroutineScope.launch {
+            try {
+                val results = SubtitleSearchClient.search(request.item.name)
+                onlineSubtitleResults = results
+                if (results.isEmpty()) onlineSubtitleError = "İnternette bu içerik için altyazı bulunamadı"
+            } catch (_: Exception) {
+                onlineSubtitleError = "Altyazı sitesine ulaşılamadı"
+            } finally {
+                onlineSubtitleBusy = false
+            }
+        }
+    }
+
+    // Secilen cevrimici altyaziyi indirip, oynatmayi bastan baslatmadan (ayni konumdan devam
+    // ederek) mevcut MediaItem'a yeni bir altyazi parcasi olarak ekler -- VLC'de "harici altyazi
+    // ekle" davranisina benzer sekilde.
+    fun applyOnlineSubtitle(result: OnlineSubtitleResult) {
+        if (onlineSubtitleBusy) return
+        onlineSubtitleBusy = true
+        onlineSubtitleError = null
+        coroutineScope.launch {
+            try {
+                val url = SubtitleSearchClient.resolveDownloadUrl(result.fileId)
+                if (url == null) {
+                    onlineSubtitleError = "İndirme bağlantısı alınamadı"
+                    return@launch
+                }
+                val currentItem = player.currentMediaItem
+                if (currentItem == null) {
+                    onlineSubtitleError = "Oynatıcı hazır değil"
+                    return@launch
+                }
+                val position = player.currentPosition
+                val subtitleConfig = MediaItem.SubtitleConfiguration.Builder(Uri.parse(url))
+                    .setMimeType(subtitleMimeType(url))
+                    .setLanguage(result.language)
+                    .setLabel(result.release)
+                    .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                    .build()
+                val existing = currentItem.localConfiguration?.subtitleConfigurations.orEmpty()
+                val newItem = currentItem.buildUpon()
+                    .setSubtitleConfigurations(existing + subtitleConfig)
+                    .build()
+                player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                    .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .build()
+                player.setMediaItem(newItem, position)
+                player.prepare()
+                player.play()
+                subtitlePrefs = subtitlePrefs.copy(subtitleMode = "on", subtitleLanguage = result.language)
+                onPreferencesChanged(subtitlePrefs)
+                onlineSubtitleResults = emptyList()
+            } catch (_: Exception) {
+                onlineSubtitleError = "Altyazı eklenemedi"
+            } finally {
+                onlineSubtitleBusy = false
+            }
+        }
+    }
+
     Box(Modifier.fillMaxSize().background(ComposeColor.Black)) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
@@ -313,6 +387,11 @@ fun NativePlayerSurface(
             onSelect = { selectSubtitle(it) },
             onPrefsChange = { updateSubtitleStyle(it) },
             onClose = { subtitlePanelVisible = false },
+            onlineResults = onlineSubtitleResults,
+            onlineBusy = onlineSubtitleBusy,
+            onlineError = onlineSubtitleError,
+            onSearchOnline = { searchOnlineSubtitles() },
+            onApplyOnline = { applyOnlineSubtitle(it) },
         )
 
         if (!ready && !failed) {
@@ -419,11 +498,18 @@ private fun SubtitlePanel(
     onSelect: (SubtitleOption?) -> Unit,
     onPrefsChange: (PlaybackPreferences) -> Unit,
     onClose: () -> Unit,
+    onlineResults: List<OnlineSubtitleResult> = emptyList(),
+    onlineBusy: Boolean = false,
+    onlineError: String? = null,
+    onSearchOnline: () -> Unit = {},
+    onApplyOnline: (OnlineSubtitleResult) -> Unit = {},
 ) {
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .heightIn(max = 420.dp)
             .background(ComposeColor(0xFF15121D))
+            .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
@@ -453,6 +539,59 @@ private fun SubtitlePanel(
                 style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.padding(vertical = 6.dp),
             )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("İnternetten altyazı bul", color = ComposeColor(0xFF9A94AC), style = MaterialTheme.typography.labelSmall)
+            TextButton(onClick = onSearchOnline, enabled = !onlineBusy) {
+                if (onlineBusy) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
+                        color = ComposeColor(0xFFD84CFF),
+                    )
+                } else {
+                    Text("Ara", color = ComposeColor(0xFFD84CFF), style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+        if (onlineError != null) Text(
+            onlineError,
+            color = ComposeColor(0xFFFF8A8A),
+            style = MaterialTheme.typography.labelSmall,
+        )
+        if (onlineResults.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            onlineResults.forEach { result ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                        .background(ComposeColor(0xFF241F32))
+                        .clickable { onApplyOnline(result) }
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        result.language.uppercase(),
+                        color = ComposeColor(0xFFD84CFF),
+                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                    Text(
+                        result.release,
+                        color = ComposeColor(0xFFB8B4C8),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
         }
 
         Text("Boyut  %${prefs.subtitleSize}", color = ComposeColor(0xFF9A94AC), style = MaterialTheme.typography.labelSmall)
