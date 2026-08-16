@@ -334,6 +334,19 @@ fun NativePlayerSurface(
                             controlsVisible = visibility == android.view.View.VISIBLE
                         },
                     )
+                    // TV'de dokunma yok -- controllerHideOnTouch bu yuzden hicbir ise yaramiyor.
+                    // Kumandanin OK/Enter tusuna basinca kontrolleri (oynat/duraklat, ses/altyazi
+                    // erisimi) acikca ac/kapat yapiyoruz.
+                    setOnKeyListener { _, keyCode, event ->
+                        if (event.action == android.view.KeyEvent.ACTION_DOWN &&
+                            (keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER || keyCode == android.view.KeyEvent.KEYCODE_ENTER)
+                        ) {
+                            if (isControllerFullyVisible) hideController() else showController()
+                            true
+                        } else {
+                            false
+                        }
+                    }
                     showController()
                     post { requestFocus() }
                 }

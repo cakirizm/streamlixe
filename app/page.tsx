@@ -160,14 +160,52 @@ function useDpadNavigation(enabled:boolean,resetKey:string){
   useEffect(()=>{
     if(!enabled)return;
     const selector='button:not(:disabled),a[href],input:not([type="hidden"]):not(:disabled),select:not(:disabled),[tabindex]:not([tabindex="-1"])';
-    const visible=(el:HTMLElement)=>{const style=getComputedStyle(el);if(style.display==="none"||style.visibility==="hidden"||Number(style.opacity)===0)return false;const rect=el.getBoundingClientRect();return rect.width>0&&rect.height>0};
-    const candidates=()=>Array.from(document.querySelectorAll<HTMLElement>(selector)).filter(visible);
-    const ensureFocus=()=>{const current=document.activeElement as HTMLElement|null;const list=candidates();if(current&&current!==document.body&&list.includes(current))return;list[0]?.focus({preventScroll:true})};
+    const visible=(el:HTMLElement)=>{const rect=el.getBoundingClientRect();if(rect.width<=0||rect.height<=0)return false;const style=getComputedStyle(el);return style.visibility!=="hidden"&&Number(style.opacity)!==0};
+    // TV kumandasinin her tuş basisinda (ozellikle basili tutuldugunda gelen otomatik
+    // tekrarlarda) sayfadaki TUM odaklanabilir elemanlari yeniden tarayip her biri icin
+    // layout hesaplatmak (getBoundingClientRect/getComputedStyle) zayif TV donanimlarinda
+    // gorunur bir "donma" hissi yaratiyordu. Aday listesini DOM gercekten degisene kadar
+    // onbellekte tutup yalnizca gecerli tus basisinda gereken rect'leri tazeliyoruz.
+    let cache:HTMLElement[]|null=null;
+    let cacheTimer:number|null=null;
+    const invalidate=()=>{cache=null};
+    const candidates=()=>{
+      if(cache)return cache;
+      cache=Array.from(document.querySelectorAll<HTMLElement>(selector)).filter(visible);
+      return cache;
+    };
+    const observer=new MutationObserver(()=>{
+      if(cacheTimer!=null)return;
+      cacheTimer=window.setTimeout(()=>{cacheTimer=null;invalidate()},150);
+    });
+    observer.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:["class","style","disabled","hidden"]});
+    const ensureFocus=()=>{
+      const current=document.activeElement as HTMLElement|null;
+      const list=candidates();
+      if(current&&current!==document.body&&list.includes(current))return;
+      // Ekrana yeni girildiginde DOM sirasindaki ilk elemani degil, gorunur alanin sol
+      // ustune en yakin olani odakla -- kaydirma konumu geri yuklendiginde kullanicinin
+      // gercekten baktigi yerden baslasin diye ("dogru yerden baslamiyor" sikayeti).
+      let best:HTMLElement|null=null,bestScore=Infinity;
+      for(const el of list){
+        const rect=el.getBoundingClientRect();
+        if(rect.bottom<0||rect.top>window.innerHeight)continue;
+        const score=Math.max(0,rect.top)+Math.abs(rect.left);
+        if(score<bestScore){bestScore=score;best=el}
+      }
+      (best||list[0])?.focus({preventScroll:true});
+    };
     const focusTimer=requestAnimationFrame(()=>requestAnimationFrame(ensureFocus));
+    let lastNav=0;
     const onKey=(e:KeyboardEvent)=>{
       if(!["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key))return;
       const tag=(e.target as HTMLElement)?.tagName;
       if(["INPUT","TEXTAREA","SELECT"].includes(tag||""))return;
+      // Kumanda basili tutulunca saniyede onlarca tekrar gelebiliyor; her birini tam
+      // hesaplamak yerine kisa bir aralikla siniriyoruz ki JS thread'i nefes alabilsin.
+      const now=performance.now();
+      if(now-lastNav<90){e.preventDefault();return}
+      lastNav=now;
       const list=candidates();if(!list.length)return;
       const current=document.activeElement as HTMLElement|null;
       const from=current&&list.includes(current)?current.getBoundingClientRect():null;
@@ -187,7 +225,7 @@ function useDpadNavigation(enabled:boolean,resetKey:string){
       if(best){e.preventDefault();best.focus({preventScroll:true});best.scrollIntoView({block:"nearest",inline:"nearest"})}
     };
     window.addEventListener("keydown",onKey);
-    return()=>{cancelAnimationFrame(focusTimer);window.removeEventListener("keydown",onKey)};
+    return()=>{cancelAnimationFrame(focusTimer);if(cacheTimer!=null)clearTimeout(cacheTimer);observer.disconnect();window.removeEventListener("keydown",onKey)};
   },[enabled,resetKey]);
 }
 
@@ -262,6 +300,16 @@ export default function Home(){
     clearTimeout(safetyTimer);
     setPlaylists(list);
     if(!list.length){setScreen("setup");return}
+    // Tek oynatma listesi varsa (cogunlukla TV kurulumu) secim ekranini atlayip direkt
+    // ice yukleyip devam ediyoruz -- kumandayla bir tıklama daha gerektirmesin diye.
+    if(list.length===1){
+      const media=await dbGet<Media[]>(`items:${list[0].id}`);
+      if(!active)return;
+      setItems(media||[]);setProvider(list[0].provider);setActivePlaylistId(list[0].id);await dbSet("active-playlist",list[0].id);
+      if(!active)return;
+      setScreen("profiles");
+      return;
+    }
     setScreen("playlists");
   }catch{clearTimeout(safetyTimer);await dbClear().catch(()=>{});if(active)setScreen("setup")}})();return()=>{active=false;clearTimeout(safetyTimer)}},[]);
   const selectPlaylist=async(id:string)=>{
@@ -422,7 +470,7 @@ export default function Home(){
 }
 
 function Logo(){return <div className="logo"><img src="/streamlivex-logo.jpeg" alt="StreamLiveX"/><span>StreamLive<b>X</b></span></div>}
-function Setup({method,setMethod,form,setForm,submit,fileRef,busy,error,useDemo,progress,stage,pairQrUrl,pairError,onRetryPair,onBack}:any){return <main className="setup-page setup-page-split"><div className="setup-glow"/><section className="setup-card">{onBack&&<button type="button" className="setup-back" onClick={onBack} disabled={busy}><ArrowLeft size={16}/> Oynatma listelerine dön</button>}<Logo/><div className="setup-head"><span>BAŞLAYALIM</span><h1>İçeriklerin. Tek ekranda.</h1><p>Oynatma listeni ekle; canlı TV, film ve dizilerini otomatik olarak düzenleyelim.</p></div><div className="method-tabs">{[["m3u","M3U"],["xtream","Xtream Codes"],["portal","Portal"]].map(([id,label])=><button key={id} className={method===id?"active":""} disabled={busy} onClick={()=>setMethod(id)}>{id==="m3u"?"☷":id==="xtream"?"⌘":"◉"}<b>{label}</b></button>)}</div><form onSubmit={submit}><label>Liste adı<input value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label>{method==="m3u"&&<><label>M3U bağlantısı<input placeholder="https://ornek.com/playlist.m3u" value={form.url} onChange={e=>setForm({...form,url:e.target.value})}/></label><div className="or"><span/>veya<span/></div><label className="file-drop">⇧<b>M3U dosyası seç</b><small>.m3u veya .m3u8</small><input ref={fileRef} type="file" accept=".m3u,.m3u8,text/plain"/></label></>}{method==="xtream"&&<><label>Sunucu adresi<input placeholder="http://sunucu:port" value={form.server} onChange={e=>setForm({...form,server:e.target.value})}/></label><div className="two"><label>Kullanıcı adı<input value={form.username} onChange={e=>setForm({...form,username:e.target.value})}/></label><label>Şifre<input type="password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})}/></label></div></>}{method==="portal"&&<><label>Portal adresi<input placeholder="http://portal-adresi/c" value={form.server} onChange={e=>setForm({...form,server:e.target.value})}/></label><label>MAC adresi<input placeholder="00:1A:79:XX:XX:XX" value={form.mac} onChange={e=>setForm({...form,mac:e.target.value})}/></label></>}{error&&<p className="error">{error}</p>}{busy&&<div className="import-progress"><div><b key={stage}>{stage}</b><strong key={progress}>{progress}%</strong></div><span><i style={{width:`${progress}%`}}/></span><small>Büyük listelerde bu işlem biraz sürebilir. Sayfayı kapatmayın.</small></div>}<button className="primary" disabled={busy}>{busy?<span key={progress}>{progress}% yükleniyor…</span>:"Oynatma listesini ekle →"}</button></form><button className="demo-link" disabled={busy} onClick={useDemo}>Önce demo içerikle dene</button><p className="privacy">🔒 StreamLiveX IPTV erişimi sağlamaz; kullanıcı kendi yasal bilgilerini girer.</p><nav className="setup-legal-links"><a href="/privacy">Gizlilik</a><a href="/terms">Kullanım Koşulları</a><a href="/support">Destek</a><a href="/rehber">Rehberler</a></nav></section>{!busy&&<aside className="setup-qr"><span>📱 TELEFONDAN EKLE</span><h2>Kumanda yerine telefonunu kullan</h2><p>Bu kodu telefonunla okut, oynatma listesini rahatça telefonundan yaz — TV otomatik olarak yükleyecek.</p>{pairError?<div className="setup-qr-loading setup-qr-error"><span>QR kod oluşturulamadı</span><button type="button" onClick={onRetryPair}>Tekrar dene</button></div>:pairQrUrl?<img src={pairQrUrl} alt="Telefonla eşleştirme QR kodu" width={220} height={220}/>:<div className="setup-qr-loading">Kod hazırlanıyor…</div>}<small>Kod 10 dakika geçerlidir.</small></aside>}</main>}
+function Setup({method,setMethod,form,setForm,submit,fileRef,busy,error,useDemo,progress,stage,pairQrUrl,pairError,onRetryPair,onBack}:any){return <main className="setup-page setup-page-split">{!busy&&<aside className="setup-qr" tabIndex={-1}><div className="setup-qr-art">{pairError?<div className="setup-qr-loading setup-qr-error"><span>QR kod oluşturulamadı</span><button type="button" onClick={onRetryPair}>Tekrar dene</button></div>:pairQrUrl?<img src={pairQrUrl} alt="Telefonla eşleştirme QR kodu" width={84} height={84}/>:<div className="setup-qr-loading">…</div>}</div><div><span>📱 TELEFONDAN EKLE</span><h2>Kumanda yerine telefonunu kullan</h2><p>Bu kodu telefonunla okut, oynatma listesini rahatça telefonundan yaz — TV otomatik olarak yükleyecek. Kod 10 dakika geçerlidir.</p></div></aside>}<div className="setup-glow"/><section className="setup-card">{onBack&&<button type="button" className="setup-back" onClick={onBack} disabled={busy}><ArrowLeft size={16}/> Oynatma listelerine dön</button>}<Logo/><div className="setup-head"><span>BAŞLAYALIM</span><h1>İçeriklerin. Tek ekranda.</h1><p>Oynatma listeni ekle; canlı TV, film ve dizilerini otomatik olarak düzenleyelim.</p></div><div className="method-tabs">{[["m3u","M3U"],["xtream","Xtream Codes"],["portal","Portal"]].map(([id,label])=><button key={id} className={method===id?"active":""} disabled={busy} onClick={()=>setMethod(id)}>{id==="m3u"?"☷":id==="xtream"?"⌘":"◉"}<b>{label}</b></button>)}</div><form onSubmit={submit}><label>Liste adı<input value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label>{method==="m3u"&&<><label>M3U bağlantısı<input placeholder="https://ornek.com/playlist.m3u" value={form.url} onChange={e=>setForm({...form,url:e.target.value})}/></label><div className="or"><span/>veya<span/></div><label className="file-drop">⇧<b>M3U dosyası seç</b><small>.m3u veya .m3u8</small><input ref={fileRef} type="file" accept=".m3u,.m3u8,text/plain"/></label></>}{method==="xtream"&&<><label>Sunucu adresi<input placeholder="http://sunucu:port" value={form.server} onChange={e=>setForm({...form,server:e.target.value})}/></label><div className="two"><label>Kullanıcı adı<input value={form.username} onChange={e=>setForm({...form,username:e.target.value})}/></label><label>Şifre<input type="password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})}/></label></div></>}{method==="portal"&&<><label>Portal adresi<input placeholder="http://portal-adresi/c" value={form.server} onChange={e=>setForm({...form,server:e.target.value})}/></label><label>MAC adresi<input placeholder="00:1A:79:XX:XX:XX" value={form.mac} onChange={e=>setForm({...form,mac:e.target.value})}/></label></>}{error&&<p className="error">{error}</p>}{busy&&<div className="import-progress"><div><b key={stage}>{stage}</b><strong key={progress}>{progress}%</strong></div><span><i style={{width:`${progress}%`}}/></span><small>Büyük listelerde bu işlem biraz sürebilir. Sayfayı kapatmayın.</small></div>}<button className="primary" disabled={busy}>{busy?<span key={progress}>{progress}% yükleniyor…</span>:"Oynatma listesini ekle →"}</button></form><button className="demo-link" disabled={busy} onClick={useDemo}>Önce demo içerikle dene</button><p className="privacy">🔒 StreamLiveX IPTV erişimi sağlamaz; kullanıcı kendi yasal bilgilerini girer.</p><nav className="setup-legal-links"><a href="/privacy">Gizlilik</a><a href="/terms">Kullanım Koşulları</a><a href="/support">Destek</a><a href="/rehber">Rehberler</a></nav></section></main>}
 function PlaylistsScreen({playlists,onSelect,onAdd}:{playlists:PlaylistEntry[];onSelect:(id:string)=>void;onAdd:()=>void}){
   return <main className="profile-page clean-profiles playlist-picker"><Logo/><div><h1>Hangi oynatma listesi?</h1><section>{playlists.map(p=><button key={p.id} onClick={()=>onSelect(p.id)}><i><ListVideo size={30}/></i><b>{p.provider.name||"Oynatma Listem"}</b><small>{p.provider.method?.toUpperCase()} · {p.itemCount.toLocaleString("tr-TR")} içerik</small></button>)}<button onClick={onAdd}><i className="add"><Plus size={34}/></i><b>Yeni liste ekle</b></button></section></div></main>;
 }
