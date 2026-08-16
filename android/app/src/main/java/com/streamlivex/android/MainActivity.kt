@@ -167,6 +167,15 @@ class MainActivity : ComponentActivity() {
                                 if (!request.item.isLive) sendProgress(progress)
                             },
                             onFailure = { message -> sendWebEvent("streamlivex:native-player-error", JSONObject.quote(message)) },
+                            onPreferencesChanged = { prefs ->
+                                val detail = JSONObject()
+                                    .put("subtitleMode", prefs.subtitleMode)
+                                    .put("subtitleLanguage", prefs.subtitleLanguage)
+                                    .put("subtitleSize", prefs.subtitleSize)
+                                    .put("subtitleColor", prefs.subtitleColor)
+                                    .put("subtitleBackground", prefs.subtitleBackground)
+                                sendWebEvent("streamlivex:native-settings", detail.toString())
+                            },
                         )
                     }
                 }

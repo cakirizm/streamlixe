@@ -17,10 +17,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -33,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -45,6 +50,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.HttpDataSource
@@ -62,6 +69,7 @@ fun NativePlayerSurface(
     onClose: (PlaybackProgress) -> Unit,
     onProgress: (PlaybackProgress) -> Unit,
     onFailure: (String) -> Unit,
+    onPreferencesChanged: (PlaybackPreferences) -> Unit = {},
 ) {
     val context = LocalContext.current
     val candidates = remember(request.item.url) { playbackCandidates(request.item) }
@@ -73,6 +81,10 @@ fun NativePlayerSurface(
     var ready by remember(request.sessionId) { mutableStateOf(player.playbackState == Player.STATE_READY) }
     var resizeMode by remember(request.sessionId) { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
     var qualityLabel by remember(request.sessionId) { mutableStateOf("AUTO") }
+    var subtitlePanelVisible by remember(request.sessionId) { mutableStateOf(false) }
+    var subtitleOptions by remember(request.sessionId) { mutableStateOf<List<SubtitleOption>>(emptyList()) }
+    var selectedSubtitleGroup by remember(request.sessionId) { mutableStateOf<Tracks.Group?>(null) }
+    var subtitlePrefs by remember(request.sessionId) { mutableStateOf(request.preferences) }
     val streamFailedMessage = stringResource(R.string.stream_failed)
     val fitLabel = stringResource(R.string.fit_screen)
     val fillLabel = stringResource(R.string.fill_screen)
@@ -122,6 +134,18 @@ fun NativePlayerSurface(
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 qualityLabel = videoSize.height.takeIf { it > 0 }?.let { "${it}p" } ?: "AUTO"
             }
+
+            override fun onTracksChanged(tracks: Tracks) {
+                val groups = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
+                subtitleOptions = groups.mapIndexed { index, group ->
+                    val format = group.mediaTrackGroup.getFormat(0)
+                    val label = format.label
+                        ?: format.language?.uppercase()
+                        ?: "Altyazı ${index + 1}"
+                    SubtitleOption(group, label)
+                }
+                selectedSubtitleGroup = groups.firstOrNull { it.isSelected }
+            }
         }
         player.addListener(listener)
         onDispose {
@@ -158,6 +182,29 @@ fun NativePlayerSurface(
         }
     }
 
+    fun selectSubtitle(option: SubtitleOption?) {
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().apply {
+            clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            if (option != null) {
+                setOverrideForType(TrackSelectionOverride(option.group.mediaTrackGroup, 0))
+                setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            } else {
+                setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+            }
+        }.build()
+        selectedSubtitleGroup = option?.group
+        subtitlePrefs = subtitlePrefs.copy(
+            subtitleMode = if (option != null) "on" else "off",
+            subtitleLanguage = option?.group?.mediaTrackGroup?.getFormat(0)?.language ?: subtitlePrefs.subtitleLanguage,
+        )
+        onPreferencesChanged(subtitlePrefs)
+    }
+
+    fun updateSubtitleStyle(next: PlaybackPreferences) {
+        subtitlePrefs = next
+        onPreferencesChanged(next)
+    }
+
     Box(Modifier.fillMaxSize().background(ComposeColor.Black)) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
@@ -178,7 +225,7 @@ fun NativePlayerSurface(
                     keepScreenOn = true
                     isFocusable = true
                     isFocusableInTouchMode = true
-                    applySubtitleStyle(this, request.preferences)
+                    applySubtitleStyle(this, subtitlePrefs)
                     setControllerVisibilityListener(
                         PlayerView.ControllerVisibilityListener { visibility ->
                             controlsVisible = visibility == android.view.View.VISIBLE
@@ -191,7 +238,7 @@ fun NativePlayerSurface(
             update = { view ->
                 view.player = player
                 view.resizeMode = resizeMode
-                applySubtitleStyle(view, request.preferences)
+                applySubtitleStyle(view, subtitlePrefs)
                 if (!view.hasFocus()) view.post { view.requestFocus() }
             },
         )
@@ -227,6 +274,12 @@ fun NativePlayerSurface(
                     style = MaterialTheme.typography.labelSmall,
                 )
             }
+            if (!request.item.isLive) OutlinedButton(
+                onClick = { subtitlePanelVisible = !subtitlePanelVisible },
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+            ) {
+                Text("Altyazı", maxLines = 1, style = MaterialTheme.typography.labelSmall)
+            }
             OutlinedButton(
                 onClick = {
                     resizeMode = if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_FIT) {
@@ -244,6 +297,16 @@ fun NativePlayerSurface(
                 )
             }
         }
+
+        if (subtitlePanelVisible) SubtitlePanel(
+            modifier = Modifier.align(Alignment.BottomCenter),
+            options = subtitleOptions,
+            selectedGroup = selectedSubtitleGroup,
+            prefs = subtitlePrefs,
+            onSelect = { selectSubtitle(it) },
+            onPrefsChange = { updateSubtitleStyle(it) },
+            onClose = { subtitlePanelVisible = false },
+        )
 
         if (!ready && !failed) {
             Column(
@@ -302,12 +365,19 @@ internal fun PlaybackException.isRetryableStreamError(): Boolean {
 }
 
 internal fun createMediaItem(request: PlaybackRequest, source: String): MediaItem {
-    val subtitleConfigurations = request.item.subtitles.map { subtitle ->
+    // Birden fazla altyazi varsa hepsini "varsayilan" olarak isaretlemek belirsiz davranisa
+    // yol acar; sadece tercih edilen dile (ya da hicbiri eslesmezse ilkine) varsayilan
+    // isaretini koyuyoruz, digerleri secilebilir kalmaya devam ediyor.
+    val preferredIndex = request.item.subtitles.indexOfFirst {
+        it.language.equals(request.preferences.subtitleLanguage, ignoreCase = true)
+    }.let { if (it >= 0) it else 0 }
+    val subtitleConfigurations = request.item.subtitles.mapIndexed { index, subtitle ->
+        val isDefault = request.preferences.subtitleMode != "off" && index == preferredIndex
         MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitle.src))
             .setMimeType(subtitleMimeType(subtitle.src))
             .setLabel(subtitle.label)
             .setLanguage(subtitle.language)
-            .setSelectionFlags(if (request.preferences.subtitleMode == "off") 0 else C.SELECTION_FLAG_DEFAULT)
+            .setSelectionFlags(if (isDefault) C.SELECTION_FLAG_DEFAULT else 0)
             .build()
     }
     return MediaItem.Builder()
@@ -322,6 +392,110 @@ private fun subtitleMimeType(url: String): String = when (Uri.parse(url).path?.s
     "ass", "ssa" -> MimeTypes.TEXT_SSA
     "ttml", "xml" -> MimeTypes.APPLICATION_TTML
     else -> MimeTypes.TEXT_VTT
+}
+
+internal data class SubtitleOption(val group: Tracks.Group, val label: String)
+
+private val subtitleColorPresets = listOf(
+    "#ffffff" to "Beyaz",
+    "#ffe066" to "Sarı",
+    "#7ce8ff" to "Camgöbeği",
+    "#8fffb0" to "Yeşil",
+)
+
+@Composable
+private fun SubtitlePanel(
+    modifier: Modifier = Modifier,
+    options: List<SubtitleOption>,
+    selectedGroup: Tracks.Group?,
+    prefs: PlaybackPreferences,
+    onSelect: (SubtitleOption?) -> Unit,
+    onPrefsChange: (PlaybackPreferences) -> Unit,
+    onClose: () -> Unit,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(ComposeColor(0xFF15121D))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Altyazı", color = ComposeColor.White, fontWeight = FontWeight.SemiBold)
+            TextButton(onClick = onClose) { Text("Kapat", color = ComposeColor(0xFFB8B4C8)) }
+        }
+
+        Text("Parça", color = ComposeColor(0xFF9A94AC), style = MaterialTheme.typography.labelSmall)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            SubtitleChip(label = "Kapalı", active = selectedGroup == null) { onSelect(null) }
+            options.forEach { option ->
+                SubtitleChip(label = option.label, active = option.group == selectedGroup) { onSelect(option) }
+            }
+            if (options.isEmpty()) Text(
+                "Bu içerik için altyazı bulunamadı",
+                color = ComposeColor(0xFF7C7690),
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(vertical = 6.dp),
+            )
+        }
+
+        Text("Boyut  %${prefs.subtitleSize}", color = ComposeColor(0xFF9A94AC), style = MaterialTheme.typography.labelSmall)
+        Slider(
+            value = prefs.subtitleSize.toFloat(),
+            onValueChange = { onPrefsChange(prefs.copy(subtitleSize = it.toInt())) },
+            valueRange = 70f..180f,
+            steps = 10,
+        )
+
+        Text("Renk", color = ComposeColor(0xFF9A94AC), style = MaterialTheme.typography.labelSmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            subtitleColorPresets.forEach { (hex, _) ->
+                val active = prefs.subtitleColor.equals(hex, ignoreCase = true)
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(ComposeColor(android.graphics.Color.parseColor(hex)))
+                        .border(
+                            width = if (active) 3.dp else 1.dp,
+                            color = if (active) ComposeColor(0xFFD84CFF) else ComposeColor(0x33FFFFFF),
+                            shape = CircleShape,
+                        )
+                        .clickable { onPrefsChange(prefs.copy(subtitleColor = hex)) },
+                )
+            }
+        }
+
+        Text("Arka plan", color = ComposeColor(0xFF9A94AC), style = MaterialTheme.typography.labelSmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("shadow" to "Gölge", "box" to "Koyu kutu", "none" to "Yok").forEach { (value, label) ->
+                SubtitleChip(label = label, active = prefs.subtitleBackground == value) {
+                    onPrefsChange(prefs.copy(subtitleBackground = value))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SubtitleChip(label: String, active: Boolean, onClick: () -> Unit) {
+    Text(
+        label,
+        color = if (active) ComposeColor.White else ComposeColor(0xFFB8B4C8),
+        style = MaterialTheme.typography.labelSmall,
+        modifier = Modifier
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+            .background(if (active) ComposeColor(0xFF7849DB) else ComposeColor(0xFF241F32))
+            .clickable { onClick() }
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    )
 }
 
 @UnstableApi
