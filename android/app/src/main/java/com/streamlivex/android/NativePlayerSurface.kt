@@ -39,11 +39,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color as ComposeColor
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -148,6 +150,11 @@ fun NativePlayerSurface(
             }
         }
         player.addListener(listener)
+        // Paylasilan player, bu Composable'a baglanmadan ONCE zaten hazirlanmis olabilir
+        // (on izlemeden tam ekrana gecis gibi) -- bu durumda onTracksChanged bir daha
+        // tetiklenmez, cunku parcalar zaten belliydi. Mevcut durumu hemen elle besleyerek
+        // "altyazi verisi olsa bile 'bulunamadi' gorunmesi" hatasini onluyoruz.
+        listener.onTracksChanged(player.currentTracks)
         onDispose {
             onProgress(progress())
             player.removeListener(listener)
@@ -429,6 +436,8 @@ private fun SubtitlePanel(
             TextButton(onClick = onClose) { Text("Kapat", color = ComposeColor(0xFFB8B4C8)) }
         }
 
+        SubtitlePreview(prefs = prefs)
+
         Text("Parça", color = ComposeColor(0xFF9A94AC), style = MaterialTheme.typography.labelSmall)
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -481,6 +490,37 @@ private fun SubtitlePanel(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SubtitlePreview(prefs: PlaybackPreferences) {
+    val textColor = runCatching { ComposeColor(android.graphics.Color.parseColor(prefs.subtitleColor)) }
+        .getOrDefault(ComposeColor.White)
+    val fontSize = (16f * prefs.subtitleSize.coerceIn(70, 180) / 100f).sp
+    val boxBackground = if (prefs.subtitleBackground == "box") ComposeColor(0xCC000000) else ComposeColor.Transparent
+    val shadow = if (prefs.subtitleBackground == "shadow") {
+        Shadow(color = ComposeColor.Black, offset = androidx.compose.ui.geometry.Offset(2f, 2f), blurRadius = 6f)
+    } else null
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(ComposeColor(0xFF000000))
+            .padding(vertical = 22.dp, horizontal = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            "Altyazı önizleme metni",
+            color = textColor,
+            fontSize = fontSize,
+            fontWeight = FontWeight.Medium,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            style = androidx.compose.ui.text.TextStyle(shadow = shadow),
+            modifier = Modifier
+                .background(boxBackground, androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                .padding(horizontal = if (prefs.subtitleBackground == "box") 8.dp else 0.dp, vertical = if (prefs.subtitleBackground == "box") 2.dp else 0.dp),
+        )
     }
 }
 
