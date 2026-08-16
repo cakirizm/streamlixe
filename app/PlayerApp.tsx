@@ -641,19 +641,19 @@ function LiveTVWorkspace({items,categories,category,setCategory,open,favorites,t
   useEffect(()=>{setSourceOpen(false)},[category]);
   useEffect(()=>{
     if(!selected){setProgrammes([]);setEpgSource("");return}
-    const controller=new AbortController();setEpgLoading(true);setEpgSource("");
+    const controller=new AbortController();let active=true;setProgrammes([]);setEpgLoading(true);setEpgSource("");
     const decode=(value:string)=>{try{return decodeURIComponent(escape(atob(value)))}catch{return value||""}};
     const prepare=(data:any)=>{const rows=data.epg_listings||data.programmes||[];return rows.map((row:any)=>({title:data.epg_listings?decode(row.title):row.title,description:data.epg_listings?decode(row.description):row.description,start:row.start_timestamp?new Date(Number(row.start_timestamp)*1000):parseXmltvDate(row.start),stop:row.stop_timestamp?new Date(Number(row.stop_timestamp)*1000):parseXmltvDate(row.stop)})).filter((row:any)=>row.stop>Date.now()-3600000).sort((a:any,b:any)=>a.start-b.start)};
     const providerPayload=provider?.method==="xtream"&&selected.streamId?{method:"short_epg",server:provider.server||"",username:provider.username||"",password:provider.password||"",streamId:selected.streamId}:provider?.epgUrl?{method:"xmltv_epg",url:provider.epgUrl,channelId:selected.epgId||"",channelName:selected.name}:null;
     (async()=>{try{
       let list:any[]=[];
       if(providerPayload){try{const response=await fetch("/api/import",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(providerPayload),signal:controller.signal});if(response.ok)list=prepare(await response.json())}catch(error){if(controller.signal.aborted)throw error}}
-      if(list.length){setProgrammes(list);setEpgSource("SAĞLAYICI");return}
+      if(list.length){if(active){setProgrammes(list);setEpgSource("SAĞLAYICI")}return}
       const fallback=await fetch(`/api/epg?channel=${encodeURIComponent(selected.name)}&id=${encodeURIComponent(selected.epgId||"")}`,{signal:controller.signal});
       if(!fallback.ok)throw new Error("Otomatik EPG alınamadı");
-      const fallbackData=await fallback.json();list=prepare(fallbackData);setProgrammes(list);setEpgSource(list.length?"İNTERNET":"");
-    }catch(error){if(!controller.signal.aborted){setProgrammes([]);setEpgSource("")}}finally{if(!controller.signal.aborted)setEpgLoading(false)}})();
-    return()=>controller.abort()
+      const fallbackData=await fallback.json();list=prepare(fallbackData);if(active){setProgrammes(list);setEpgSource(list.length?"İNTERNET":"")}
+    }catch(error){if(active&&!controller.signal.aborted){setProgrammes([]);setEpgSource("")}}finally{if(active&&!controller.signal.aborted)setEpgLoading(false)}})();
+    return()=>{active=false;controller.abort()}
   },[selected?.id,provider]);
   useEffect(()=>{const key=(e:KeyboardEvent)=>{if(!["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Enter","Backspace","Escape"].includes(e.key)||["INPUT","SELECT","TEXTAREA"].includes((e.target as HTMLElement)?.tagName))return;const index=Math.max(0,channels.findIndex(x=>x.sources?.some(s=>s.id===selected?.id)));if(e.key==="ArrowUp"||e.key==="ArrowDown"){e.preventDefault();const next=Math.max(0,Math.min(channels.length-1,index+(e.key==="ArrowDown"?1:-1)));setSelected(channels[next]?.sources?.[0]||null);requestAnimationFrame(()=>channelList.current?.querySelectorAll("article")[next]?.scrollIntoView({block:"nearest"}))}else if(e.key==="ArrowLeft"||e.key==="ArrowRight"){e.preventDefault();const ci=Math.max(0,categories.indexOf(category));setCategory(categories[(ci+(e.key==="ArrowRight"?1:-1)+categories.length)%categories.length])}else if(e.key==="Enter"&&selected){e.preventDefault();open(selected)}else if(e.key==="Backspace"||e.key==="Escape"){setSourceOpen(false)}};window.addEventListener("keydown",key);return()=>window.removeEventListener("keydown",key)},[channels,selected,category,categories]);
   const now=Date.now();const current=programmes.find(x=>x.start.getTime()<=now&&x.stop.getTime()>now);const upcoming=programmes.filter(x=>x.start.getTime()>now).slice(0,3);const fmt=(d:Date)=>d?.toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"})||"—";const pct=current?Math.max(0,Math.min(100,(now-current.start.getTime())/(current.stop.getTime()-current.start.getTime())*100)):0;
