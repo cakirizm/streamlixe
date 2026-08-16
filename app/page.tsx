@@ -114,7 +114,17 @@ function parseM3U(text:string):Media[] {
 }
 
 async function fetchJSON(url:string){const r=await fetch(url);if(!r.ok)throw new Error(`Sunucu ${r.status} hatası verdi`);return r.json()}
-async function importRequest(payload:Record<string,string>){const r=await fetch("/api/import",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});const data=await r.json();if(!r.ok)throw new Error(data.error||"Liste alınamadı");return data}
+async function importRequest(payload:Record<string,string>){
+  let r:Response;
+  try{r=await fetch("/api/import",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})}
+  catch{throw new Error("Sunucuya bağlanılamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.")}
+  const text=await r.text();
+  let data:any;
+  try{data=JSON.parse(text)}
+  catch{throw new Error(r.ok?"Sunucudan beklenmeyen bir yanıt alındı. Lütfen tekrar deneyin.":"Sunucu yanıt vermedi ya da zaman aşımına uğradı. Lütfen tekrar deneyin.")}
+  if(!r.ok)throw new Error(data.error||"Liste alınamadı");
+  return data
+}
 // Mutlaka mutlak adres üretir: mpegts.js enableWorker:true ile bir Web Worker içinden fetch
 // yapıyor, worker'ların kendi belge tabanı (base URL) olmadığı için göreli "/api/stream?url=..."
 // adresi orada çözümlenemeyip anında "Failed to parse URL" hatası veriyordu — bölüm/kanal
