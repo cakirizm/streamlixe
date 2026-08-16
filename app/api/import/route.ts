@@ -54,11 +54,15 @@ export async function POST(request: Request) {
       const bodyText = await request.text();
       const relayHeaders = new Headers({ "content-type": "application/json" });
       if (IMPORT_RELAY_HOST) relayHeaders.set("host", IMPORT_RELAY_HOST);
-      const relayed = await fetch(`${IMPORT_RELAY_ORIGIN}/api/import`, { method: "POST", headers: relayHeaders, body: bodyText, signal: AbortSignal.timeout(90000) });
+      // Kept comfortably under Cloudflare Workers' own request duration limit so
+      // we always get to return our own JSON error instead of Cloudflare's raw
+      // "error code: 502" page when a request runs long.
+      const relayed = await fetch(`${IMPORT_RELAY_ORIGIN}/api/import`, { method: "POST", headers: relayHeaders, body: bodyText, signal: AbortSignal.timeout(45000) });
       const text = await relayed.text();
       return new Response(text, { status: relayed.status, headers: { "content-type": "application/json" } });
-    } catch {
-      return Response.json({ error: "İçe aktarma sunucusuna ulaşılamadı, tekrar deneyin" }, { status: 502 });
+    } catch (error) {
+      const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+      return Response.json({ error: timedOut ? "İçe aktarma zaman aşımına uğradı — liste çok büyük veya sunucu yavaş yanıt veriyor olabilir, tekrar deneyin" : "İçe aktarma sunucusuna ulaşılamadı, tekrar deneyin" }, { status: 502 });
     }
   }
   try {

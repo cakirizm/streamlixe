@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import { LegalPage } from "../legal-page";
 
 export const metadata: Metadata = {
-  title: "Destek | StreamLiveX",
+  title: "Destek",
   description: "StreamLiveX kurulum, oynatma ve uygulama desteği.",
+  alternates: { canonical: "/support" },
 };
 
 export default function SupportPage() {
