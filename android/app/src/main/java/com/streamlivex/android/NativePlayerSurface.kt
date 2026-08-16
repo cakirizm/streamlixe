@@ -81,6 +81,7 @@ fun NativePlayerSurface(
     onProgress: (PlaybackProgress) -> Unit,
     onFailure: (String) -> Unit,
     onPreferencesChanged: (PlaybackPreferences) -> Unit = {},
+    externalKeyEvent: Triple<Int, Int, Long>? = null,
 ) {
     val context = LocalContext.current
     val candidates = remember(request.item.url) { playbackCandidates(request.item) }
@@ -101,6 +102,11 @@ fun NativePlayerSurface(
     var onlineSubtitleResults by remember(request.sessionId) { mutableStateOf<List<OnlineSubtitleResult>>(emptyList()) }
     var onlineSubtitleBusy by remember(request.sessionId) { mutableStateOf(false) }
     var onlineSubtitleError by remember(request.sessionId) { mutableStateOf<String?>(null) }
+    // Panel acikken kumandayla hangi satirin "isaretli" oldugunu Android/Compose'un ambient
+    // odak sistemine hic guvenmeden kendimiz takip ediyoruz (0=ses sutunu, 1=altyazi sutunu).
+    var panelColumn by remember(request.sessionId) { mutableIntStateOf(0) }
+    var panelIndex by remember(request.sessionId) { mutableIntStateOf(0) }
+    var playerViewRef by remember(request.sessionId) { mutableStateOf<PlayerView?>(null) }
     val coroutineScope = rememberCoroutineScope()
     val streamFailedMessage = stringResource(R.string.stream_failed)
     val fitLabel = stringResource(R.string.fit_screen)
@@ -247,6 +253,51 @@ fun NativePlayerSurface(
         onPreferencesChanged(next)
     }
 
+    // Panel acilinca/kapaninca secili satiri sifirla ve PlayerView'in gercek Android View
+    // odagini acikca birak/geri al -- Compose'un kendi FocusRequester/focusGroup sistemi
+    // PlayerView'dan BAGIMSIZ calisir, bu yuzden bu olmadan panel "odaklanmis" gorunse bile
+    // donanim tuslari hala PlayerView'a gidip hicbir sey olmuyordu.
+    LaunchedEffect(tracksPanelVisible) {
+        if (tracksPanelVisible) {
+            panelColumn = 0
+            panelIndex = 0
+            playerViewRef?.clearFocus()
+        } else {
+            playerViewRef?.post { playerViewRef?.requestFocus() }
+        }
+    }
+
+    // Kumanda tuslarini View/Compose odak sistemine hic guvenmeden burada isliyoruz (bkz.
+    // MainActivity.dispatchKeyEvent + externalKeyEvent). Panel acikken yukari/asagi secili
+    // satiri, sag/sol sutunu (ses/altyazi) degistirir; OK secili parcayi uygular. Panel
+    // kapaliyken OK, oynatici kontrollerini (oynat/duraklat cubugu) ac/kapat yapar.
+    LaunchedEffect(externalKeyEvent) {
+        val event = externalKeyEvent ?: return@LaunchedEffect
+        val (keyCode, action, _) = event
+        if (action != android.view.KeyEvent.ACTION_DOWN) return@LaunchedEffect
+        if (tracksPanelVisible) {
+            when (keyCode) {
+                android.view.KeyEvent.KEYCODE_DPAD_LEFT -> { panelColumn = 0; panelIndex = 0 }
+                android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> { panelColumn = 1; panelIndex = 0 }
+                android.view.KeyEvent.KEYCODE_DPAD_UP -> panelIndex = (panelIndex - 1).coerceAtLeast(0)
+                android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
+                    val maxIndex = if (panelColumn == 0) (audioOptions.size - 1).coerceAtLeast(0) else subtitleOptions.size
+                    panelIndex = (panelIndex + 1).coerceAtMost(maxIndex)
+                }
+                android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER -> {
+                    if (panelColumn == 0) {
+                        audioOptions.getOrNull(panelIndex)?.let { selectAudio(it) }
+                    } else {
+                        if (panelIndex == 0) selectSubtitle(null) else subtitleOptions.getOrNull(panelIndex - 1)?.let { selectSubtitle(it) }
+                    }
+                }
+                android.view.KeyEvent.KEYCODE_BACK -> tracksPanelVisible = false
+            }
+        } else if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER || keyCode == android.view.KeyEvent.KEYCODE_ENTER) {
+            playerViewRef?.let { view -> if (view.isControllerFullyVisible) view.hideController() else view.showController() }
+        }
+    }
+
     fun searchOnlineSubtitles() {
         if (onlineSubtitleBusy) return
         onlineSubtitleBusy = true
@@ -317,20 +368,6 @@ fun NativePlayerSurface(
     // oldugu icin panel acikken bile geri basinca filmden direkt cikiliyordu.
     BackHandler(enabled = tracksPanelVisible) { tracksPanelVisible = false }
 
-    var playerViewRef by remember(request.sessionId) { mutableStateOf<PlayerView?>(null) }
-    // Ses ve Altyazi paneli acildiginda, PlayerView (bir AndroidView) gercek Android View
-    // odagini elinde tutmaya devam ediyordu -- Compose'un kendi FocusRequester/focusGroup
-    // sistemi PlayerView'dan BAGIMSIZ calisir, bu yuzden panel "odaklanmis" gorunse bile
-    // donanim tuslari hala PlayerView'a gidiyordu (panelde hicbir sey olmuyordu). Panel
-    // acilinca PlayerView'in gercek View odagini acikca birakiyoruz.
-    LaunchedEffect(tracksPanelVisible) {
-        if (tracksPanelVisible) {
-            playerViewRef?.clearFocus()
-        } else {
-            playerViewRef?.post { playerViewRef?.requestFocus() }
-        }
-    }
-
     Box(Modifier.fillMaxSize().background(ComposeColor.Black)) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
@@ -357,19 +394,12 @@ fun NativePlayerSurface(
                             controlsVisible = visibility == android.view.View.VISIBLE
                         },
                     )
-                    // TV'de dokunma yok -- controllerHideOnTouch bu yuzden hicbir ise yaramiyor.
-                    // Kumandanin OK/Enter tusuna basinca kontrolleri (oynat/duraklat, ses/altyazi
-                    // erisimi) acikca ac/kapat yapiyoruz.
-                    setOnKeyListener { _, keyCode, event ->
-                        if (event.action == android.view.KeyEvent.ACTION_DOWN &&
-                            (keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER || keyCode == android.view.KeyEvent.KEYCODE_ENTER)
-                        ) {
-                            if (isControllerFullyVisible) hideController() else showController()
-                            true
-                        } else {
-                            false
-                        }
-                    }
+                    // NOT: setOnKeyListener burada cihazda dogrulandi ki hic tetiklenmiyor --
+                    // PlayerView (bir AndroidView) tam ekran oynaticida gercek Android View
+                    // odagini guvenilir sekilde alamiyor. Kumanda tuslarini artik View odak
+                    // sistemine hic guvenmeden, MainActivity.dispatchKeyEvent'ten dogrudan
+                    // Compose state'ine (externalKeyEvent) aktarip asagidaki LaunchedEffect'te
+                    // isliyoruz.
                     showController()
                     post { requestFocus() }
                 }
@@ -450,6 +480,8 @@ fun NativePlayerSurface(
             onSelectAudio = { selectAudio(it) },
             subtitleOptions = subtitleOptions,
             selectedSubtitleGroup = selectedSubtitleGroup,
+            highlightColumn = panelColumn,
+            highlightIndex = panelIndex,
             prefs = subtitlePrefs,
             onSelectSubtitle = { selectSubtitle(it) },
             onPrefsChange = { updateSubtitleStyle(it) },
@@ -575,6 +607,8 @@ private fun TracksPanel(
     onSelectSubtitle: (SubtitleOption?) -> Unit,
     onPrefsChange: (PlaybackPreferences) -> Unit,
     onClose: () -> Unit,
+    highlightColumn: Int = -1,
+    highlightIndex: Int = -1,
     onlineResults: List<OnlineSubtitleResult> = emptyList(),
     onlineBusy: Boolean = false,
     onlineError: String? = null,
@@ -669,8 +703,12 @@ private fun TracksPanel(
                         Text("Tek ses parçası", color = PanelFaint, style = MaterialTheme.typography.labelSmall)
                     } else {
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            audioOptions.forEach { option ->
-                                TrackRow(label = option.label, active = option.group == selectedAudioGroup) { onSelectAudio(option) }
+                            audioOptions.forEachIndexed { index, option ->
+                                TrackRow(
+                                    label = option.label,
+                                    active = option.group == selectedAudioGroup,
+                                    highlighted = highlightColumn == 0 && highlightIndex == index,
+                                ) { onSelectAudio(option) }
                             }
                         }
                     }
@@ -681,9 +719,17 @@ private fun TracksPanel(
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     PanelSectionLabel("💬", "Altyazı kaynağı", subtitleOptions.size)
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        TrackRow(label = "Kapalı", active = selectedSubtitleGroup == null) { onSelectSubtitle(null) }
-                        subtitleOptions.forEach { option ->
-                            TrackRow(label = option.label, active = option.group == selectedSubtitleGroup) { onSelectSubtitle(option) }
+                        TrackRow(
+                            label = "Kapalı",
+                            active = selectedSubtitleGroup == null,
+                            highlighted = highlightColumn == 1 && highlightIndex == 0,
+                        ) { onSelectSubtitle(null) }
+                        subtitleOptions.forEachIndexed { index, option ->
+                            TrackRow(
+                                label = option.label,
+                                active = option.group == selectedSubtitleGroup,
+                                highlighted = highlightColumn == 1 && highlightIndex == index + 1,
+                            ) { onSelectSubtitle(option) }
                         }
                         if (subtitleOptions.isEmpty()) Text("Yerleşik altyazı yok", color = PanelFaint, style = MaterialTheme.typography.labelSmall)
                     }
@@ -859,12 +905,13 @@ private fun SubtitlePreview(prefs: PlaybackPreferences) {
 }
 
 @Composable
-private fun TrackRow(label: String, active: Boolean, compact: Boolean = false, onClick: () -> Unit) {
+private fun TrackRow(label: String, active: Boolean, compact: Boolean = false, highlighted: Boolean = false, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .let { if (compact) it else it.fillMaxWidth() }
             .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
             .background(if (active) PanelAccentDim else ComposeColor(0x14FFFFFF))
+            .let { if (highlighted) it.border(2.dp, PanelAccent, androidx.compose.foundation.shape.RoundedCornerShape(10.dp)) else it }
             .clickable { onClick() }
             .padding(horizontal = 12.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,

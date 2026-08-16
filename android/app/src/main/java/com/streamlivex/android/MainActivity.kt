@@ -43,6 +43,12 @@ class MainActivity : ComponentActivity() {
     private var inlinePlayback by mutableStateOf<InlinePlaybackSession?>(null)
     private var lastProgress = PlaybackProgress()
     private var fileCallback: ValueCallback<Array<Uri>>? = null
+    // Tam ekran oynaticida PlayerView'in gercek Android View odagini guvenilir sekilde
+    // alamadigi (cihazda dogrulandi: setOnKeyListener hic tetiklenmiyordu) durumlarda
+    // kumanda tuslarini View odak sistemine hic guvenmeden dogrudan Compose state'ine
+    // aktariyoruz -- ayni sayac her bastiginda degisir ki ayni tusa arka arkaya basilinca
+    // da LaunchedEffect(key) yeniden tetiklensin.
+    private var externalPlayerKeyEvent by mutableStateOf<Triple<Int, Int, Long>?>(null)
 
     // On izlemeden (inline) tam ekrana geçerken aynı ExoPlayer'ı yeniden kullanmak için --
     // böylece yayın sıfırdan başlamak yerine zaten çalan haliyle tam ekrana taşınır.
@@ -92,6 +98,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private val fileChooser = object : WebChromeClient() {
+        override fun onConsoleMessage(message: android.webkit.ConsoleMessage): Boolean {
+            android.util.Log.d("StreamLiveXWeb", "${message.message()} (${message.sourceId()}:${message.lineNumber()})")
+            return true
+        }
+
         override fun onShowFileChooser(
             webView: WebView?,
             filePathCallback: ValueCallback<Array<Uri>>?,
@@ -159,6 +170,7 @@ class MainActivity : ComponentActivity() {
                         NativePlayerSurface(
                             request = request,
                             player = playerFor(request),
+                            externalKeyEvent = externalPlayerKeyEvent,
                             onClose = { progress ->
                                 lastProgress = progress
                                 closePlayer(notifyWeb = true)
@@ -195,6 +207,10 @@ class MainActivity : ComponentActivity() {
     )
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (playbackRequest != null && event.keyCode in dpadKeys) {
+            externalPlayerKeyEvent = Triple(event.keyCode, event.action, System.nanoTime())
+            return true
+        }
         if (playbackRequest == null && event.keyCode in dpadKeys) {
             val view = webView
             if (view != null && view.dispatchKeyEvent(event)) return true

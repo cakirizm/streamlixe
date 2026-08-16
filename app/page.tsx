@@ -198,8 +198,24 @@ function useDpadNavigation(enabled:boolean,resetKey:string){
     const focusTimer=requestAnimationFrame(()=>requestAnimationFrame(ensureFocus));
     let lastNav=0;
     const onKey=(e:KeyboardEvent)=>{
-      if(!["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key))return;
       const tag=(e.target as HTMLElement)?.tagName;
+      // KRITIK: bu WebView'de MainActivity.dispatchKeyEvent uzerinden yonlendirilen kumanda
+      // OK/Enter basislari, odaklanmis bir <button>'un tarayicinin normalde kendiliginden
+      // yaptigi "Enter -> click" davranisini TETIKLEMIYOR (native dokunma/fare olaylarindan
+      // farkli bir yoldan geldigi icin). Bu, kumandayla OK'e basinca hicbir seyin olmamasinin
+      // ("altyazi panelinde hicbir sey yapilmiyor", "oynatma listesi secilmiyor" vb.) dogrudan
+      // sebebiydi -- gercek cihazda adb ile dogrulandi. Enter'i burada acikca click()'e
+      // ceviriyoruz.
+      if(e.key==="Enter"){
+        if(["INPUT","TEXTAREA"].includes(tag||""))return;
+        const activeEl=document.activeElement as HTMLElement|null;
+        if(activeEl&&activeEl!==document.body&&typeof activeEl.click==="function"){
+          e.preventDefault();
+          activeEl.click();
+        }
+        return;
+      }
+      if(!["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key))return;
       if(["INPUT","TEXTAREA","SELECT"].includes(tag||""))return;
       // Kumanda basili tutulunca saniyede onlarca tekrar gelebiliyor; her birini tam
       // hesaplamak yerine kisa bir aralikla siniriyoruz ki JS thread'i nefes alabilsin.
