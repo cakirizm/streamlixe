@@ -100,8 +100,8 @@
    burada guvenli ve gerekli.
    ID: ODAK-STILI */
 button:focus,a:focus,[tabindex]:focus{outline:none}
-input:focus,select:focus{outline:none;border-color:#8e35ff;box-shadow:0 0 0 3px rgba(168,61,255,.28)}
-button:focus,a:focus,[tabindex]:focus{position:relative;z-index:5;transform:scale(1.08);box-shadow:0 14px 34px rgba(0,0,0,.55),0 0 0 2px #d84cff;border-radius:10px;transition:transform .15s ease,box-shadow .15s ease}
+input:focus,select:focus{outline:none;border-color:#8e35ff;box-shadow:none}
+button:focus,a:focus,[tabindex]:focus{position:relative;z-index:5;transform:scale(1.08);box-shadow:0 14px 34px rgba(0,0,0,.55);border-radius:10px;transition:transform .15s ease,box-shadow .15s ease}
 .dash nav button:focus,.settings-accordion>button:focus,.search-popover button:focus,.profile-menu button:focus,.setup-legal-links a:focus,.legal-nav a:focus,.profile-page section button:focus{transform:none;box-shadow:none;color:#fff}
 .search-kind-summary{overflow:auto}.search-kind-summary button{min-width:max-content;border:1px solid var(--line);border-radius:20px;background:#111521;padding:8px 13px;font-size:9px;color:#aeb4c3}.search-kind-summary button.active{border-color:#a845e2;background:#2a1739;color:#fff}
 .series-source-section{max-width:1180px;margin:0 auto 18px;padding:0 3%}.movie-source-picker button.active{border-color:#a845e2!important;background:#2a1739!important}
