@@ -205,14 +205,3 @@ html,body{width:100%;overflow-x:hidden}
   .live-workspace{padding-inline:8px!important}
   .live-workspace>aside button{min-width:132px!important}
 }
-
-.profile-page section i.profile-name-tile{padding:14px;text-align:center;font-size:18px;line-height:1.15;overflow-wrap:anywhere}
-.profile-add .profile-check{margin:4px 0 15px;display:flex;flex-direction:row;align-items:center;gap:11px;padding:12px;border:1px solid #303647;border-radius:10px;background:#0b0e17}
-.profile-add .profile-check input{width:18px;height:18px;margin:0;accent-color:#9c3cff}
-.profile-add .profile-check span{display:flex;flex-direction:column;gap:4px}
-.profile-add .profile-check small{color:#777f93;font-size:9px;font-weight:400}
-.profile-pin-gate{margin-top:22px}
-.profile-pin-gate h2{margin:0 0 16px;color:#fff;font-size:18px}
-.profile-pin-error{display:block;margin:-4px 0 10px;color:#ff668e;text-align:left}
-.dash>header .avatar{width:auto;min-width:42px;max-width:130px;padding:0 11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-@media(max-width:650px){.dash>header .avatar{min-width:38px;max-width:92px;padding:0 8px;font-size:8px}.profile-page section i.profile-name-tile{font-size:13px;padding:9px}}
