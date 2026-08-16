@@ -460,23 +460,40 @@ export default function Home(){
   // panele don, sonra kategori seciliyse "Tümü"ye don, sonra bolumden ana sayfaya don, en
   // sonunda (zaten ana sayfadayken) cikis onayi goster.
   const [exitConfirmVisible,setExitConfirmVisible]=useState(false);
+  // Dinleyiciyi HER state degisiminde sokup takmak yerine (ki bu, art arda hizli gelen geri
+  // olaylarinda eski/tutarsiz bir kapatmayla calisan bir dinleyicinin devrede kalmasina yol
+  // acabiliyordu -- "nereye gidecegini bilmiyor" hissi) tek, sabit bir dinleyici kullanip
+  // guncel durumu bir ref'ten okuyoruz. ONEMLI: yalnizca degerleri degil, navigateSection /
+  // updateCategory / backToDashboard gibi FONKSIYONLARI da ref'e koyuyoruz -- bunlar her
+  // render'da yeniden olusturulup kendi state'lerini kapatiyor (closure), tek seferlik
+  // efekt bunlarin ilk (mount anindaki, "home" gibi bayat degerlere sahip) suruma
+  // yapisiyordu, bu yuzden mesela navigateSection("home") sessizce hicbir sey yapmiyordu.
+  // Ayrica donanimdan art arda cok hizli gelen (cift) geri olaylarina karsi kisa bir
+  // debounce var.
+  const backStateRef=useRef({screen,active,category,exitConfirmVisible,playlistsCount:playlists.length,selected,navigateSection,updateCategory,backToDashboard,setScreen,setExitConfirmVisible});
+  backStateRef.current={screen,active,category,exitConfirmVisible,playlistsCount:playlists.length,selected,navigateSection,updateCategory,backToDashboard,setScreen,setExitConfirmVisible};
+  const lastHardwareBackRef=useRef(0);
   useEffect(()=>{
     const onHardwareBack=()=>{
-      if(exitConfirmVisible){desktopBridge()?.postMessage({type:"confirm-exit"});return}
-      if(screen==="player"){selected?.kind==="live"?backToDashboard():setScreen("detail");return}
-      if(screen==="detail"){backToDashboard();return}
-      if(screen==="profiles"){if(playlists.length>1){setScreen("playlists")}else{setExitConfirmVisible(true)}return}
-      if(screen==="playlists"){setExitConfirmVisible(true);return}
-      if(screen==="setup"){if(playlists.length){setScreen("playlists")}else{setExitConfirmVisible(true)}return}
-      if(screen==="dashboard"){
-        if((active==="movie"||active==="series"||active==="live")&&category!=="Tümü"){updateCategory("Tümü");return}
-        if(active!=="home"){navigateSection("home");return}
-        setExitConfirmVisible(true);return
+      const now=Date.now();
+      if(now-lastHardwareBackRef.current<350)return;
+      lastHardwareBackRef.current=now;
+      const s=backStateRef.current;
+      if(s.exitConfirmVisible){desktopBridge()?.postMessage({type:"confirm-exit"});return}
+      if(s.screen==="player"){s.selected?.kind==="live"?s.backToDashboard():s.setScreen("detail");return}
+      if(s.screen==="detail"){s.backToDashboard();return}
+      if(s.screen==="profiles"){if(s.playlistsCount>1){s.setScreen("playlists")}else{s.setExitConfirmVisible(true)}return}
+      if(s.screen==="playlists"){s.setExitConfirmVisible(true);return}
+      if(s.screen==="setup"){if(s.playlistsCount){s.setScreen("playlists")}else{s.setExitConfirmVisible(true)}return}
+      if(s.screen==="dashboard"){
+        if((s.active==="movie"||s.active==="series"||s.active==="live")&&s.category!=="Tümü"){s.updateCategory("Tümü");return}
+        if(s.active!=="home"){s.navigateSection("home");return}
+        s.setExitConfirmVisible(true);return
       }
     };
     window.addEventListener("streamlivex:hardware-back",onHardwareBack);
     return()=>window.removeEventListener("streamlivex:hardware-back",onHardwareBack);
-  },[screen,active,category,exitConfirmVisible,playlists.length,selected]);
+  },[]);
   const playSelected=async()=>{if(!selected)return;let target=selected;if(selected.kind==="movie"&&provider?.method==="xtream"&&selected.streamId){try{const data=await importRequest({method:"vod_info",server:provider.server||"",username:provider.username||"",password:provider.password||"",streamId:selected.streamId});target={...selected,subtitles:[...(selected.subtitles||[]),...extractSubtitles(data,provider.server)].filter((x,i,a)=>a.findIndex(y=>y.src===x.src)===i)};setSelected(target)}catch{}}if(selected.kind==="series"&&!selected.url&&provider?.method==="xtream"){setBusy(true);try{const data=await importRequest({method:"series_info",server:provider.server||"",username:provider.username||"",password:provider.password||"",seriesId:selected.seriesId||""});const seasons=Object.values(data.episodes||{}) as any[][];const ep=seasons.flat().find(Boolean);if(!ep)throw new Error("Bu dizi için bölüm bulunamadı");target={...selected,url:`${provider.server}/series/${provider.username}/${provider.password}/${ep.id}.${ep.container_extension||"mp4"}`,name:`${selected.name} · ${ep.title||"1. Bölüm"}`,subtitles:extractSubtitles(ep,provider.server)};setSelected(target)}catch(err){setError(err instanceof Error?err.message:"Bölüm açılamadı");setBusy(false);return}setBusy(false)}setScreen("player")};
   const playEpisode=(episode:any)=>{if(!selected||!provider?.server)return;const target={...selected,id:`${selected.id}-ep-${episode.id}`,url:`${provider.server}/series/${provider.username}/${provider.password}/${episode.id}.${episode.container_extension||"mp4"}`,name:`${displayTitle(selected.name)} · ${episode.title||`${episode.episode_num||""}. Bölüm`}`,subtitles:extractSubtitles(episode,provider.server)};setSelected(target);setScreen("player")};
   const filtered=useMemo(()=>active==="home"?displayItems.filter(x=>x.kind!=="live").slice(0,6):active==="search"?displayItems.filter(x=>x.name.toLocaleLowerCase("tr").includes(query.toLocaleLowerCase("tr"))):active==="favorites"?[...favoriteMedia,...displayItems.filter(x=>favorites.includes(x.id)&&!favoriteMedia.some(f=>f.id===x.id))].filter(x=>x.name.toLocaleLowerCase("tr").includes(query.toLocaleLowerCase("tr"))):active==="settings"||active==="categories"?[]:displayItems.filter(x=>x.kind===active&&(category==="Tümü"||x.group===category)&&x.name.toLocaleLowerCase("tr").includes(query.toLocaleLowerCase("tr"))),[displayItems,active,category,query,favorites,favoriteMedia]);

@@ -7,6 +7,7 @@ import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -311,6 +312,25 @@ fun NativePlayerSurface(
         }
     }
 
+    // Altyazi paneli acikken geri tusu tum oynaticiyi degil, sadece paneli kapatmali --
+    // oncesinde ust duzeyde her zaman etkin olan tek bir BackHandler (MainActivity'de)
+    // oldugu icin panel acikken bile geri basinca filmden direkt cikiliyordu.
+    BackHandler(enabled = tracksPanelVisible) { tracksPanelVisible = false }
+
+    var playerViewRef by remember(request.sessionId) { mutableStateOf<PlayerView?>(null) }
+    // Ses ve Altyazi paneli acildiginda, PlayerView (bir AndroidView) gercek Android View
+    // odagini elinde tutmaya devam ediyordu -- Compose'un kendi FocusRequester/focusGroup
+    // sistemi PlayerView'dan BAGIMSIZ calisir, bu yuzden panel "odaklanmis" gorunse bile
+    // donanim tuslari hala PlayerView'a gidiyordu (panelde hicbir sey olmuyordu). Panel
+    // acilinca PlayerView'in gercek View odagini acikca birakiyoruz.
+    LaunchedEffect(tracksPanelVisible) {
+        if (tracksPanelVisible) {
+            playerViewRef?.clearFocus()
+        } else {
+            playerViewRef?.post { playerViewRef?.requestFocus() }
+        }
+    }
+
     Box(Modifier.fillMaxSize().background(ComposeColor.Black)) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
@@ -355,6 +375,7 @@ fun NativePlayerSurface(
                 }
             },
             update = { view ->
+                playerViewRef = view
                 view.player = player
                 view.resizeMode = resizeMode
                 applySubtitleStyle(view, subtitlePrefs)
