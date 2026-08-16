@@ -159,6 +159,7 @@ const assetUrl=(url?:string)=>url?`${typeof window!=="undefined"?window.location
 // failing upstream cannot multiply requests for every asset.
 const playbackUrl=(url?:string)=>{const proxied=assetUrl(url);return proxied?`${proxied}&startup=1`:""};
 type PlaybackCandidate={url:string;type:"hls"|"mpegts"|"native";label:string};
+const preferDirectHttp=(url:string)=>typeof window!=="undefined"&&window.location.protocol==="http:"&&/^http:\/\//i.test(url);
 function playbackCandidates(original:string,kind:Kind):PlaybackCandidate[]{
   const isTs=/\.ts($|\?)/i.test(original);const proxy=kind==="live"?playbackUrl:assetUrl;let rows:PlaybackCandidate[];
   if(isTs)rows=kind==="live"
@@ -166,6 +167,7 @@ function playbackCandidates(original:string,kind:Kind):PlaybackCandidate[]{
     :[{url:assetUrl(original),type:"mpegts",label:"MPEG-TS"},{url:original,type:"mpegts",label:"MPEG-TS doğrudan"},{url:assetUrl(original.replace(/\.ts(?=$|\?)/i,".m3u8")),type:"hls",label:"HLS"}];
   else if(/\.m3u8($|\?)/i.test(original))rows=[{url:proxy(original),type:"hls",label:"HLS"},{url:original,type:"hls",label:"HLS doğrudan"}];
   else rows=[{url:proxy(original),type:"native",label:"Tarayıcı"},{url:original,type:"native",label:"Tarayıcı doğrudan"}];
+  if(preferDirectHttp(original))rows.sort(row=>row.url===original?-1:1);
   return rows.filter((row,index,list)=>list.findIndex(candidate=>candidate.url===row.url&&candidate.type===row.type)===index);
 }
 
@@ -597,7 +599,7 @@ function MiniLivePlayer({item,onFull,onSessionChange}:{item:Media|null;onFull:(i
   useEffect(()=>{const video=ref.current;if(!video||!item||/StreamLiveXAndroid/i.test(navigator.userAgent))return;let disposed=false;let generation=0;let cleanup:(()=>void)|undefined;let timer:ReturnType<typeof setTimeout>|undefined;
     const score=(source:Media)=>/h265|hevc/i.test(source.name)?0:/fhd|1080/i.test(source.name)?5:/hd|720/i.test(source.name)?4:/4k|uhd/i.test(source.name)?2:3;
     const sources:Media[]=(item.sources?.length?item.sources:[item]).slice().sort((a,b)=>score(b)-score(a));
-    const attempts=sources.reduce<LiveAttempt[]>((all,source)=>{const original=source.url.trim();const isTs=/\.ts($|\?)/i.test(original);const hls=isTs?original.replace(/\.ts(?=$|\?)/i,".m3u8"):original;const next:LiveAttempt[]=isTs?[{url:playbackUrl(original),type:"mpegts",source},{url:playbackUrl(hls),type:"hls",source},{url:original,type:"mpegts",source}]:/\.m3u8($|\?)/i.test(original)?[{url:playbackUrl(original),type:"hls",source},{url:original,type:"hls",source}]:[{url:playbackUrl(original),type:"native",source},{url:original,type:"native",source}];return[...all,...next]},[]);
+    const attempts=sources.reduce<LiveAttempt[]>((all,source)=>{const original=source.url.trim();const isTs=/\.ts($|\?)/i.test(original);const hls=isTs?original.replace(/\.ts(?=$|\?)/i,".m3u8"):original;const next:LiveAttempt[]=isTs?[{url:playbackUrl(original),type:"mpegts",source},{url:playbackUrl(hls),type:"hls",source},{url:original,type:"mpegts",source}]:/\.m3u8($|\?)/i.test(original)?[{url:playbackUrl(original),type:"hls",source},{url:original,type:"hls",source}]:[{url:playbackUrl(original),type:"native",source},{url:original,type:"native",source}];if(preferDirectHttp(original))next.sort(row=>row.url===original?-1:1);return[...all,...next]},[]);
     setState("loading");setSourceIndex(0);
     const clear=()=>{if(timer)clearTimeout(timer);cleanup?.();cleanup=undefined;video.onloadedmetadata=null;video.oncanplay=null;video.onerror=null;video.pause();video.removeAttribute("src");video.load()};
     const stop=()=>{disposed=true;generation++;clear()};stopRef.current=stop;
