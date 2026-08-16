@@ -30,7 +30,7 @@ Yayımlanmış siteyi uygulama içinde açmak için:
 dotnet run --project .\desktop\StreamLiveX.Desktop\StreamLiveX.Desktop.csproj
 ```
 
-Varsayılan adres `https://streamlivex.com` değeridir. Geliştirme adresi `STREAMLIVEX_WEB_URL` ortam değişkeniyle değiştirilir.
+Varsayılan adres `https://streamlivex.com/app` değeridir. Geliştirme adresi `STREAMLIVEX_WEB_URL` ortam değişkeniyle değiştirilir.
 
 ## Store paketi
 

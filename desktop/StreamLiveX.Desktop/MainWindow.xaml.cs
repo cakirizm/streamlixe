@@ -212,7 +212,7 @@ public partial class MainWindow : Window
             return candidate;
         }
 
-        return new Uri("https://streamlivex.com");
+        return new Uri("https://streamlivex.com/app");
     }
 
     private async Task InitializeBrowserAsync()
