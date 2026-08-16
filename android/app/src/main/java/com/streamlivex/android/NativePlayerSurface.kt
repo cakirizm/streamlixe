@@ -492,7 +492,7 @@ fun NativePlayerSurface(
         }
 
         if (tracksPanelVisible) TracksPanel(
-            modifier = Modifier.align(Alignment.BottomCenter),
+            modifier = Modifier.align(Alignment.Center),
             audioOptions = audioOptions,
             selectedAudioGroup = selectedAudioGroup,
             onSelectAudio = { selectAudio(it) },
@@ -652,7 +652,7 @@ private fun TracksPanel(
     ) {
         Column(
             modifier = Modifier
-                .heightIn(max = 360.dp)
+                .heightIn(max = 520.dp)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(13.dp),

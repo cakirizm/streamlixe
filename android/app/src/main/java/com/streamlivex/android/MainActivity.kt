@@ -86,9 +86,16 @@ class MainActivity : ComponentActivity() {
         if (sessionId == null) return
         val stillNeeded = inlinePlayback?.request?.sessionId == sessionId || playbackRequest?.sessionId == sessionId
         if (!stillNeeded) {
-            sharedPlayers.remove(sessionId)?.release()
+            val player = sharedPlayers.remove(sessionId)
             PlaybackCandidateMemory.forget(sessionId)
             PlaybackStartTracker.clearSession(sessionId)
+            // ExoPlayer.release() donanim kod cozucuyu (MediaCodec) sokup cikarirken bir kac
+            // yuz milisaniye surebiliyor; bunu ayni Compose frame'i icinde (durdurma dokunusu
+            // ile ekranin oynaticidan kataloga geri donmesi arasinda) senkron cagirmak, zayif
+            // TV donanimlarinda tam da o gecis anini donduruyordu ("filmden cikinca manyak
+            // oluyor"). Ekran gecisi hemen olsun diye release'i bir sonraki main thread
+            // dongusune erteliyoruz.
+            player?.let { window.decorView.post { it.release() } }
         }
     }
 
