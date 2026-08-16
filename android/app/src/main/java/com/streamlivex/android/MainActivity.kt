@@ -237,12 +237,20 @@ class MainActivity : ComponentActivity() {
                 // Kumandayla (dokunma degil) bir yazi alanina odaklanip ONAYLA/ENTER'a
                 // basildig,inda WebView bunu bir "tiklama" gibi islese de sanal klavyeyi
                 // kendiliginden ac,mayabiliyor -- Android TV WebView'lerinde bilinen bir
-                // sinirlama. Odakli alan gercekten bir InputConnection sag,liyorsa (yani bir
-                // metin alaniysa) klavyeyi ac,ik s,ekilde gosteriyoruz; deg,ilse cag,ri hicbir
-                // s,ey yapmaz.
+                // sinirlama. Once WebView'e odaktaki eleman GERC,EKTEN bir yazi alani mi diye
+                // JS ile soruyoruz; degilse (buton, kart, sekme vb.) klavyeyi ASLA acmiyoruz --
+                // onceki surumde bu kontrol yoktu ve her ONAYLA basisinda klavye aciliyordu.
                 if (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER) {
-                    val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-                    imm.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+                    view.post {
+                        view.evaluateJavascript(
+                            "(function(){var e=document.activeElement;if(!e)return false;var t=e.tagName;return t==='INPUT'||t==='TEXTAREA'||e.isContentEditable===true})()"
+                        ) { result ->
+                            if (result == "true") {
+                                val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                                imm.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+                            }
+                        }
+                    }
                 }
                 return true
             }
