@@ -20,7 +20,9 @@ ar:{nav:["المميزات","كيف يعمل","الأجهزة","الأسئلة"]
 const marks=["SRC","YOU","PLAY","EPG","TV","A⇄"];
 const downloadLabel:Record<Locale,string>={tr:"İndir",en:"Download",ar:"تنزيل",de:"Download",fr:"Télécharger",es:"Descargar"};
 export default function Home(){
- const [locale,setLocale]=useState<Locale>("tr");const t=copy[locale];
+ const [locale,setLocale]=useState<Locale>("tr");
+ const source=copy[locale];
+ const t={...source,open:locale==="tr"?"Web oynatıcıya git":source.open,hero:locale==="tr"?[source.hero[0],"Tek dokunuş uzağında.",source.hero[2]]:source.hero};
  useEffect(()=>{document.documentElement.lang=locale;document.documentElement.dir=locale==="ar"?"rtl":"ltr"},[locale]);
  return <main className="slx-landing">
   <nav className="slx-nav slx-wrap"><a className="slx-lockup" href="#top"><img src="/streamlivex-brand.png" alt="StreamLiveX"/><span><b>StreamLiveX Player</b><small>SMART IPTV PLAYER</small></span></a><div className="slx-navlinks"><a href="#features">{t.nav[0]}</a><a href="#how">{t.nav[1]}</a><a href="#devices">{t.nav[2]}</a><a href="#faq">{t.nav[3]}</a><a className="slx-downloadNav" href="#download">{downloadLabel[locale]} <i>↓</i></a></div><div className="slx-navActions"><label className="slx-language"><span>{locale.toUpperCase()}</span><select value={locale} onChange={e=>setLocale(e.target.value as Locale)} aria-label="Language">{langs.map(l=><option value={l.id} key={l.id}>{l.label}</option>)}</select></label><a className="slx-btn slx-primary slx-small slx-desktopOpen" href="/app">{t.open} ↗</a><a className="slx-mobileDownload" href="#download" aria-label={downloadLabel[locale]}>↓</a></div></nav>

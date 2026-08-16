@@ -30,3 +30,7 @@
 @media(max-width:1140px){.slx-hero{min-height:590px;gap:48px}.slx-hero h1{font-size:44px;max-width:460px}.slx-premiumApp .slx-appbody{height:310px}.slx-screenHero.slx-premiumHero{height:158px}.slx-premiumPosters i{height:79px}}
 @media(max-width:1000px){.slx-hero{padding-top:55px}.slx-hero h1{font-size:52px;max-width:620px}.slx-stage{max-width:700px;width:100%;margin:auto}.slx-premiumApp .slx-appbody{height:335px}.slx-screenHero.slx-premiumHero{height:173px}.slx-premiumPosters i{height:92px}}
 @media(max-width:680px){.slx-hero{padding:46px 0 65px}.slx-hero h1{font-size:38px;max-width:100%;margin:15px 0}.slx-heroCopy>p{font-size:13px}.slx-browserChrome{margin-inline:10px}.slx-premiumApp .slx-appbody{height:225px}.slx-premiumApp aside{width:34px}.slx-premiumApp aside button{width:23px;height:23px}.slx-screenHero.slx-premiumHero{height:112px;padding:12px}.slx-heroInfo h3{font-size:14px}.slx-heroInfo p,.slx-quality{display:none}.slx-cinemaArt{width:110px;height:110px}.slx-cinemaArt:before{width:95px;height:95px}.slx-cinemaArt:after{width:68px;height:68px}.slx-cinemaArt i{width:38px;height:38px}.slx-premiumPosters i{height:59px}.slx-insideBadge{display:none}}
+
+/* Keep the final CTA legible and the mobile headline inside the viewport. */
+.slx-landing a.slx-light{color:#15182a}
+@media(max-width:680px){.slx-hero h1{font-size:clamp(31px,9.5vw,38px);letter-spacing:-1.8px}.slx-hero h1 em{max-width:100%;white-space:normal;text-wrap:balance}}
