@@ -293,8 +293,26 @@ fun NativePlayerSurface(
                 }
                 android.view.KeyEvent.KEYCODE_BACK -> tracksPanelVisible = false
             }
-        } else if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER || keyCode == android.view.KeyEvent.KEYCODE_ENTER) {
-            playerViewRef?.let { view -> if (view.isControllerFullyVisible) view.hideController() else view.showController() }
+        } else {
+            // Panel kapaliyken: ExoPlayer'in kendi PlayerControlView butonlari (oynat/duraklat,
+            // ileri/geri sarma) da ayni View odak sorunundan muzdarip -- kumandayla o
+            // butonlara erisilemiyordu ("dur calismiyor"). Kontrolleri sadece gorunur/gizli
+            // yapmak yerine, gorunurken OK dogrudan oynat/duraklat yapiyor, yukari da her
+            // zaman doğrudan Ses ve Altyazı panelini aciyor (ayri bir "yukari git" gezinme
+            // zinciri gerekmeden -- "yukarida altyazıya gitmiyor" sikayeti).
+            val view = playerViewRef
+            when (keyCode) {
+                android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER -> {
+                    if (view != null && !view.isControllerFullyVisible) {
+                        view.showController()
+                    } else {
+                        if (player.isPlaying) player.pause() else player.play()
+                    }
+                }
+                android.view.KeyEvent.KEYCODE_DPAD_UP -> if (!request.item.isLive) tracksPanelVisible = true
+                android.view.KeyEvent.KEYCODE_DPAD_LEFT -> player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0))
+                android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> player.seekTo(player.currentPosition + 10_000)
+            }
         }
     }
 
