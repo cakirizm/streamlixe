@@ -515,6 +515,12 @@ private val subtitleColorPresets = listOf(
     "#8fffb0" to "Yeşil",
 )
 
+private val PanelAccent = ComposeColor(0xFFD84CFF)
+private val PanelAccentDim = ComposeColor(0xFF7849DB)
+private val PanelCardBg = ComposeColor(0x14FFFFFF)
+private val PanelMuted = ComposeColor(0xFF9A94AC)
+private val PanelFaint = ComposeColor(0xFF6F6982)
+
 @Composable
 private fun TracksPanel(
     modifier: Modifier = Modifier,
@@ -533,159 +539,239 @@ private fun TracksPanel(
     onSearchOnline: () -> Unit = {},
     onApplyOnline: (OnlineSubtitleResult) -> Unit = {},
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(max = 460.dp)
-            .background(ComposeColor(0xFF15121D))
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+    androidx.compose.material3.Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
+        color = ComposeColor(0xFF15121F),
+        shadowElevation = 18.dp,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            modifier = Modifier
+                .heightIn(max = 480.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 18.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text("🎧 Ses ve Altyazı", color = ComposeColor.White, fontWeight = FontWeight.SemiBold)
-            TextButton(onClick = onClose) { Text("Kapat", color = ComposeColor(0xFFB8B4C8)) }
-        }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .size(width = 36.dp, height = 4.dp)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
+                    .background(ComposeColor(0x33FFFFFF)),
+            )
 
-        SubtitlePreview(prefs = prefs)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(
+                            androidx.compose.ui.graphics.Brush.linearGradient(
+                                listOf(PanelAccentDim, PanelAccent),
+                            ),
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) { Text("🎧", style = MaterialTheme.typography.titleMedium) }
+                Column(Modifier.weight(1f)) {
+                    Text("Ses ve Altyazı", color = ComposeColor.White, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleSmall)
+                    Text("Parçayı seç, görünümü ayarla", color = PanelMuted, style = MaterialTheme.typography.labelSmall)
+                }
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(ComposeColor(0x1AFFFFFF))
+                        .clickable { onClose() },
+                    contentAlignment = Alignment.Center,
+                ) { Text("✕", color = ComposeColor.White, style = MaterialTheme.typography.labelMedium) }
+            }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(18.dp),
-        ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("🔊 Ses kaynağı", color = ComposeColor(0xFF9A94AC), style = MaterialTheme.typography.labelSmall)
-                if (audioOptions.isEmpty()) {
-                    Text(
-                        "Tek ses parçası",
-                        color = ComposeColor(0xFF7C7690),
-                        style = MaterialTheme.typography.labelSmall,
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
+                    .background(
+                        androidx.compose.ui.graphics.Brush.verticalGradient(
+                            listOf(ComposeColor(0xFF07070C), ComposeColor(0xFF121017)),
+                        ),
                     )
-                } else {
+                    .border(1.dp, ComposeColor(0x1AFFFFFF), androidx.compose.foundation.shape.RoundedCornerShape(14.dp)),
+            ) { SubtitlePreview(prefs = prefs) }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+                    .background(PanelCardBg)
+                    .padding(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PanelSectionLabel("🔊", "Ses kaynağı", audioOptions.size.coerceAtLeast(1))
+                    if (audioOptions.isEmpty()) {
+                        Text("Tek ses parçası", color = PanelFaint, style = MaterialTheme.typography.labelSmall)
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            audioOptions.forEach { option ->
+                                TrackRow(label = option.label, active = option.group == selectedAudioGroup) { onSelectAudio(option) }
+                            }
+                        }
+                    }
+                }
+
+                androidx.compose.material3.VerticalDivider(color = ComposeColor(0x1AFFFFFF))
+
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PanelSectionLabel("💬", "Altyazı kaynağı", subtitleOptions.size)
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        audioOptions.forEach { option ->
-                            SubtitleChip(
-                                label = option.label,
-                                active = option.group == selectedAudioGroup,
-                                fillWidth = true,
-                            ) { onSelectAudio(option) }
+                        TrackRow(label = "Kapalı", active = selectedSubtitleGroup == null) { onSelectSubtitle(null) }
+                        subtitleOptions.forEach { option ->
+                            TrackRow(label = option.label, active = option.group == selectedSubtitleGroup) { onSelectSubtitle(option) }
+                        }
+                        if (subtitleOptions.isEmpty()) Text("Yerleşik altyazı yok", color = PanelFaint, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+                    .background(PanelCardBg)
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PanelSectionLabel("🌐", "İnternetten altyazı bul", null)
+                    Box(
+                        modifier = Modifier
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(50))
+                            .background(if (onlineBusy) ComposeColor(0x1AFFFFFF) else PanelAccentDim)
+                            .clickable(enabled = !onlineBusy) { onSearchOnline() }
+                            .padding(horizontal = 14.dp, vertical = 7.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (onlineBusy) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                modifier = Modifier.size(13.dp),
+                                strokeWidth = 2.dp,
+                                color = PanelAccent,
+                            )
+                        } else {
+                            Text("Ara", color = ComposeColor.White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium)
+                        }
+                    }
+                }
+                if (onlineError != null) Text(onlineError, color = ComposeColor(0xFFFF8A8A), style = MaterialTheme.typography.labelSmall)
+                if (onlineResults.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    onlineResults.forEach { result ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                                .background(ComposeColor(0x1F000000))
+                                .clickable { onApplyOnline(result) }
+                                .padding(horizontal = 12.dp, vertical = 9.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                    .background(ComposeColor(0x33D84CFF))
+                                    .padding(horizontal = 7.dp, vertical = 3.dp),
+                            ) {
+                                Text(result.language.uppercase(), color = PanelAccent, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelSmall)
+                            }
+                            Text(
+                                result.release,
+                                color = ComposeColor(0xFFCFC9DC),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text("↓", color = PanelMuted, style = MaterialTheme.typography.labelMedium)
                         }
                     }
                 }
             }
 
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("💬 Altyazı kaynağı", color = ComposeColor(0xFF9A94AC), style = MaterialTheme.typography.labelSmall)
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    SubtitleChip(label = "Kapalı", active = selectedSubtitleGroup == null, fillWidth = true) { onSelectSubtitle(null) }
-                    subtitleOptions.forEach { option ->
-                        SubtitleChip(
-                            label = option.label,
-                            active = option.group == selectedSubtitleGroup,
-                            fillWidth = true,
-                        ) { onSelectSubtitle(option) }
-                    }
-                    if (subtitleOptions.isEmpty()) Text(
-                        "Yerleşik altyazı yok",
-                        color = ComposeColor(0xFF7C7690),
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                }
-            }
-        }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+                    .background(PanelCardBg)
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                PanelSectionLabel("🎨", "Görünüm", null)
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("İnternetten altyazı bul", color = ComposeColor(0xFF9A94AC), style = MaterialTheme.typography.labelSmall)
-            TextButton(onClick = onSearchOnline, enabled = !onlineBusy) {
-                if (onlineBusy) {
-                    androidx.compose.material3.CircularProgressIndicator(
-                        modifier = Modifier.size(14.dp),
-                        strokeWidth = 2.dp,
-                        color = ComposeColor(0xFFD84CFF),
-                    )
-                } else {
-                    Text("Ara", color = ComposeColor(0xFFD84CFF), style = MaterialTheme.typography.labelSmall)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("Boyut", color = PanelMuted, style = MaterialTheme.typography.labelSmall)
+                    Text("%${prefs.subtitleSize}", color = ComposeColor.White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium)
                 }
-            }
-        }
-        if (onlineError != null) Text(
-            onlineError,
-            color = ComposeColor(0xFFFF8A8A),
-            style = MaterialTheme.typography.labelSmall,
-        )
-        if (onlineResults.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            onlineResults.forEach { result ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                        .background(ComposeColor(0xFF241F32))
-                        .clickable { onApplyOnline(result) }
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        result.language.uppercase(),
-                        color = ComposeColor(0xFFD84CFF),
-                        fontWeight = FontWeight.SemiBold,
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                    Text(
-                        result.release,
-                        color = ComposeColor(0xFFB8B4C8),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
-        }
-
-        Text("Boyut  %${prefs.subtitleSize}", color = ComposeColor(0xFF9A94AC), style = MaterialTheme.typography.labelSmall)
-        Slider(
-            value = prefs.subtitleSize.toFloat(),
-            onValueChange = { onPrefsChange(prefs.copy(subtitleSize = it.toInt())) },
-            valueRange = 70f..180f,
-            steps = 10,
-        )
-
-        Text("Renk", color = ComposeColor(0xFF9A94AC), style = MaterialTheme.typography.labelSmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            subtitleColorPresets.forEach { (hex, _) ->
-                val active = prefs.subtitleColor.equals(hex, ignoreCase = true)
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .background(ComposeColor(android.graphics.Color.parseColor(hex)))
-                        .border(
-                            width = if (active) 3.dp else 1.dp,
-                            color = if (active) ComposeColor(0xFFD84CFF) else ComposeColor(0x33FFFFFF),
-                            shape = CircleShape,
-                        )
-                        .clickable { onPrefsChange(prefs.copy(subtitleColor = hex)) },
+                Slider(
+                    value = prefs.subtitleSize.toFloat(),
+                    onValueChange = { onPrefsChange(prefs.copy(subtitleSize = it.toInt())) },
+                    valueRange = 70f..180f,
+                    steps = 10,
+                    colors = androidx.compose.material3.SliderDefaults.colors(
+                        thumbColor = PanelAccent,
+                        activeTrackColor = PanelAccent,
+                        inactiveTrackColor = ComposeColor(0x26FFFFFF),
+                    ),
                 )
-            }
-        }
 
-        Text("Arka plan", color = ComposeColor(0xFF9A94AC), style = MaterialTheme.typography.labelSmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("shadow" to "Gölge", "box" to "Koyu kutu", "none" to "Yok").forEach { (value, label) ->
-                SubtitleChip(label = label, active = prefs.subtitleBackground == value) {
-                    onPrefsChange(prefs.copy(subtitleBackground = value))
+                Text("Renk", color = PanelMuted, style = MaterialTheme.typography.labelSmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    subtitleColorPresets.forEach { (hex, _) ->
+                        val active = prefs.subtitleColor.equals(hex, ignoreCase = true)
+                        Box(
+                            modifier = Modifier
+                                .size(30.dp)
+                                .clip(CircleShape)
+                                .background(ComposeColor(android.graphics.Color.parseColor(hex)))
+                                .border(
+                                    width = if (active) 3.dp else 1.dp,
+                                    color = if (active) PanelAccent else ComposeColor(0x33FFFFFF),
+                                    shape = CircleShape,
+                                )
+                                .clickable { onPrefsChange(prefs.copy(subtitleColor = hex)) },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (active) Text("✓", color = ComposeColor.Black, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                Text("Arka plan", color = PanelMuted, style = MaterialTheme.typography.labelSmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("shadow" to "Gölge", "box" to "Koyu kutu", "none" to "Yok").forEach { (value, label) ->
+                        TrackRow(label = label, active = prefs.subtitleBackground == value, compact = true) {
+                            onPrefsChange(prefs.copy(subtitleBackground = value))
+                        }
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun PanelSectionLabel(icon: String, text: String, count: Int?) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(icon, style = MaterialTheme.typography.labelMedium)
+        Text(text, color = PanelMuted, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium)
+        if (count != null) Text("· $count", color = PanelFaint, style = MaterialTheme.typography.labelSmall)
     }
 }
 
@@ -702,8 +788,7 @@ private fun SubtitlePreview(prefs: PlaybackPreferences) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(ComposeColor(0xFF000000))
-            .padding(vertical = 22.dp, horizontal = 10.dp),
+            .padding(vertical = 24.dp, horizontal = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -721,19 +806,27 @@ private fun SubtitlePreview(prefs: PlaybackPreferences) {
 }
 
 @Composable
-private fun SubtitleChip(label: String, active: Boolean, fillWidth: Boolean = false, onClick: () -> Unit) {
-    Text(
-        label,
-        color = if (active) ComposeColor.White else ComposeColor(0xFFB8B4C8),
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        style = MaterialTheme.typography.labelSmall,
-        modifier = (if (fillWidth) Modifier.fillMaxWidth() else Modifier)
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-            .background(if (active) ComposeColor(0xFF7849DB) else ComposeColor(0xFF241F32))
+private fun TrackRow(label: String, active: Boolean, compact: Boolean = false, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .let { if (compact) it else it.fillMaxWidth() }
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+            .background(if (active) PanelAccentDim else ComposeColor(0x14FFFFFF))
             .clickable { onClick() }
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-    )
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            label,
+            color = if (active) ComposeColor.White else ComposeColor(0xFFB8B4C8),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = if (compact) Modifier else Modifier.weight(1f),
+        )
+        if (active) Text("✓", color = ComposeColor.White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+    }
 }
 
 @UnstableApi
