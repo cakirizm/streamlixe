@@ -4,7 +4,15 @@ import "./landing.css";
 import {FaAndroid,FaApple,FaWindows,FaPlay,FaHouse,FaTv,FaFilm,FaMagnifyingGlass,FaGear,FaHeart} from "react-icons/fa6";
 import {SiGoogleplay,SiSamsung,SiLg} from "react-icons/si";
 import {TbWorldWww} from "react-icons/tb";
+import type {AppLocale} from "./i18n";
 type Locale="tr"|"en"|"ar"|"de"|"fr"|"es";
+const toAppLocale:Record<Locale,AppLocale>={tr:"tr-TR",en:"en-US",ar:"ar-SA",de:"de-DE",fr:"fr-FR",es:"es-ES"};
+const fromAppLocale:Record<AppLocale,Locale>={"tr-TR":"tr","en-US":"en","ar-SA":"ar","de-DE":"de","fr-FR":"fr","es-ES":"es"};
+// Landing sayfası (bu dosya) ve uygulamanın kendisi (/app, PlayerApp.tsx) aynı "slx-language"
+// localStorage/cookie anahtarını paylaşır -- boylece dil landing'de degistirildiginde /app'e
+// gecince sifirlanmiyor, ya da tam tersi. Onceden bu sayfa kendi izole useState("tr") state'ini
+// tutuyordu ve hicbir yere yazmiyordu, bu yuzden secim hep kayboluyordu.
+const getStoredLocale=():Locale=>{if(typeof window==="undefined")return "tr";const raw=localStorage.getItem("slx-language") as AppLocale|null;return raw&&fromAppLocale[raw]?fromAppLocale[raw]:"tr"};
 const langs:{id:Locale;label:string;short:string}[]=[
  {id:"tr",label:"Türkçe",short:"TR"},{id:"en",label:"English",short:"EN"},{id:"ar",label:"العربية",short:"AR"},
  {id:"de",label:"Deutsch",short:"DE"},{id:"fr",label:"Français",short:"FR"},{id:"es",label:"Español",short:"ES"}
@@ -20,7 +28,8 @@ ar:{nav:["المميزات","كيف يعمل","الأجهزة","الأسئلة"]
 const marks=["SRC","YOU","PLAY","EPG","TV","A⇄"];
 const downloadLabel:Record<Locale,string>={tr:"İndir",en:"Download",ar:"تنزيل",de:"Download",fr:"Télécharger",es:"Descargar"};
 export default function Home(){
- const [locale,setLocale]=useState<Locale>("tr");
+ const [locale,setLocaleState]=useState<Locale>(getStoredLocale);
+ const setLocale=(next:Locale)=>{setLocaleState(next);const mapped=toAppLocale[next];localStorage.setItem("slx-language",mapped);document.cookie=`slx-language=${mapped};path=/;max-age=31536000;SameSite=Lax`};
  const source=copy[locale];
  const t={...source,open:locale==="tr"?"Web oynatıcıya git":source.open,hero:locale==="tr"?[source.hero[0],"Tek dokunuş uzağında.",source.hero[2]]:source.hero};
  useEffect(()=>{document.documentElement.lang=locale;document.documentElement.dir=locale==="ar"?"rtl":"ltr"},[locale]);
