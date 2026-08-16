@@ -133,6 +133,7 @@ class MainActivity : ComponentActivity() {
                             releaseOrphanedPlayer(inlinePlayback?.request?.sessionId)
                             inlinePlayback = null
                         },
+                        onHardwareBack = { sendWebEvent("streamlivex:hardware-back", "{}") },
                     )
                     inlinePlayback?.takeIf { it.bounds.visible && playbackRequest == null }?.let { session ->
                         NativeInlinePlayerSurface(
@@ -283,6 +284,7 @@ class MainActivity : ComponentActivity() {
                     playbackRequest = active.request
                 }
             }
+            is BridgeCommand.ConfirmExit -> finish()
             null -> Unit
         }
     }

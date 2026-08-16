@@ -62,6 +62,7 @@ fun BrowserSurface(
     fileChooser: WebChromeClient,
     onWebViewReady: (WebView) -> Unit,
     onNavigationStart: () -> Unit = {},
+    onHardwareBack: () -> Unit = {},
 ) {
     val context = LocalContext.current
     var webView by remember { mutableStateOf<WebView?>(null) }
@@ -69,8 +70,12 @@ fun BrowserSurface(
     var failed by remember { mutableStateOf(false) }
     val configuredHost = remember(url) { Uri.parse(url).host }
 
-    BackHandler(enabled = webView?.canGoBack() == true) {
-        webView?.goBack()
+    // Bu bir SPA oldugu icin webView.canGoBack() gercek bir tarayici gecmisine sahip degil,
+    // bu yuzden fiziksel geri tusu her zaman uygulamayi kapatiyordu. Geri tusunu her zaman
+    // yakalayip web tarafina birakiyoruz -- ekranlar arasi (kategori -> bolum -> ana sayfa ->
+    // cikis onayi) hiyerarşiyi web uygulamasi kendi state'inden yonetiyor.
+    BackHandler(enabled = true) {
+        onHardwareBack()
     }
 
     Box(Modifier.fillMaxSize().background(ComposeColor(0xFF080910))) {

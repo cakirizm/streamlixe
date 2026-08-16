@@ -92,12 +92,14 @@ sealed interface BridgeCommand {
     data class PreviewLayout(val sessionId: String, val bounds: PlaybackBounds) : BridgeCommand
     data class ClosePreview(val sessionId: String?) : BridgeCommand
     data class PromotePreview(val sessionId: String) : BridgeCommand
+    object ConfirmExit : BridgeCommand
 }
 
 object BridgeMessageParser {
     fun parse(payload: String): BridgeCommand? {
         val root = JSONObject(payload)
         return when (root.optString("type").lowercase()) {
+            "confirm-exit" -> BridgeCommand.ConfirmExit
             "close" -> BridgeCommand.Close(root.optString("sessionId").ifBlank { null })
             "play" -> parsePlay(root)?.let(BridgeCommand::Play)
             "preview" -> {

@@ -455,11 +455,34 @@ export default function Home(){
   },[screen,provider]);
   const open=(item:Media)=>{rememberCategoryPosition();browseScroll.current=window.scrollY;setError("");setSelected(item);setScreen(item.kind==="live"?"player":"detail")};
   const backToDashboard=()=>{setError("");setScreen("dashboard");requestAnimationFrame(()=>requestAnimationFrame(()=>window.scrollTo(0,browseScroll.current)))};
+  // TV kumandasinin fiziksel geri tusu (SPA'da gercek tarayici gecmisi olmadigi icin native
+  // taraf artik dogrudan bunu web'e devrediyor): once detay/oynatici gibi alt ekranlardan
+  // panele don, sonra kategori seciliyse "Tümü"ye don, sonra bolumden ana sayfaya don, en
+  // sonunda (zaten ana sayfadayken) cikis onayi goster.
+  const [exitConfirmVisible,setExitConfirmVisible]=useState(false);
+  useEffect(()=>{
+    const onHardwareBack=()=>{
+      if(exitConfirmVisible){desktopBridge()?.postMessage({type:"confirm-exit"});return}
+      if(screen==="player"){selected?.kind==="live"?backToDashboard():setScreen("detail");return}
+      if(screen==="detail"){backToDashboard();return}
+      if(screen==="profiles"){if(playlists.length>1){setScreen("playlists")}else{setExitConfirmVisible(true)}return}
+      if(screen==="playlists"){setExitConfirmVisible(true);return}
+      if(screen==="setup"){if(playlists.length){setScreen("playlists")}else{setExitConfirmVisible(true)}return}
+      if(screen==="dashboard"){
+        if((active==="movie"||active==="series"||active==="live")&&category!=="Tümü"){updateCategory("Tümü");return}
+        if(active!=="home"){navigateSection("home");return}
+        setExitConfirmVisible(true);return
+      }
+    };
+    window.addEventListener("streamlivex:hardware-back",onHardwareBack);
+    return()=>window.removeEventListener("streamlivex:hardware-back",onHardwareBack);
+  },[screen,active,category,exitConfirmVisible,playlists.length,selected]);
   const playSelected=async()=>{if(!selected)return;let target=selected;if(selected.kind==="movie"&&provider?.method==="xtream"&&selected.streamId){try{const data=await importRequest({method:"vod_info",server:provider.server||"",username:provider.username||"",password:provider.password||"",streamId:selected.streamId});target={...selected,subtitles:[...(selected.subtitles||[]),...extractSubtitles(data,provider.server)].filter((x,i,a)=>a.findIndex(y=>y.src===x.src)===i)};setSelected(target)}catch{}}if(selected.kind==="series"&&!selected.url&&provider?.method==="xtream"){setBusy(true);try{const data=await importRequest({method:"series_info",server:provider.server||"",username:provider.username||"",password:provider.password||"",seriesId:selected.seriesId||""});const seasons=Object.values(data.episodes||{}) as any[][];const ep=seasons.flat().find(Boolean);if(!ep)throw new Error("Bu dizi için bölüm bulunamadı");target={...selected,url:`${provider.server}/series/${provider.username}/${provider.password}/${ep.id}.${ep.container_extension||"mp4"}`,name:`${selected.name} · ${ep.title||"1. Bölüm"}`,subtitles:extractSubtitles(ep,provider.server)};setSelected(target)}catch(err){setError(err instanceof Error?err.message:"Bölüm açılamadı");setBusy(false);return}setBusy(false)}setScreen("player")};
   const playEpisode=(episode:any)=>{if(!selected||!provider?.server)return;const target={...selected,id:`${selected.id}-ep-${episode.id}`,url:`${provider.server}/series/${provider.username}/${provider.password}/${episode.id}.${episode.container_extension||"mp4"}`,name:`${displayTitle(selected.name)} · ${episode.title||`${episode.episode_num||""}. Bölüm`}`,subtitles:extractSubtitles(episode,provider.server)};setSelected(target);setScreen("player")};
   const filtered=useMemo(()=>active==="home"?displayItems.filter(x=>x.kind!=="live").slice(0,6):active==="search"?displayItems.filter(x=>x.name.toLocaleLowerCase("tr").includes(query.toLocaleLowerCase("tr"))):active==="favorites"?[...favoriteMedia,...displayItems.filter(x=>favorites.includes(x.id)&&!favoriteMedia.some(f=>f.id===x.id))].filter(x=>x.name.toLocaleLowerCase("tr").includes(query.toLocaleLowerCase("tr"))):active==="settings"||active==="categories"?[]:displayItems.filter(x=>x.kind===active&&(category==="Tümü"||x.group===category)&&x.name.toLocaleLowerCase("tr").includes(query.toLocaleLowerCase("tr"))),[displayItems,active,category,query,favorites,favoriteMedia]);
   const categories=useMemo(()=>active==="live"||active==="movie"||active==="series"?["Tümü",...Array.from(new Set(displayItems.filter(x=>x.kind===active).map(x=>x.group).filter(Boolean))).sort(alphabetic)]:["Tümü"],[displayItems,active]);
   const language=<LanguageSwitcher locale={locale} onChange={changeLocale}/>;
+  if(exitConfirmVisible)return <main className="exit-confirm-screen"><div className="exit-confirm-card"><Logo/><h1>Uygulamadan çıkmak istiyor musunuz?</h1><div className="exit-confirm-actions"><button className="primary" data-tv-focus onClick={()=>desktopBridge()?.postMessage({type:"confirm-exit"})}>Evet, çık</button><button data-tv-focus onClick={()=>setExitConfirmVisible(false)}>Hayır, devam et</button></div></div></main>;
   if(screen==="boot")return <main className="boot-screen"><Logo/><i/><p>Kütüphane hazırlanıyor…</p></main>;
   if(screen==="setup")return <><Setup method={method} setMethod={setMethod} form={form} setForm={setForm} submit={submit} fileRef={fileRef} busy={busy} error={error} useDemo={useDemo} progress={progress} stage={stage} pairQrUrl={pairQrUrl} pairError={pairError} onRetryPair={()=>setPairRetry(x=>x+1)} onBack={playlists.length?()=>{setError("");setScreen("playlists")}:undefined}/><div className="standalone-language">{language}</div></>;
   if(screen==="playlists")return <><PlaylistsScreen playlists={playlists} onSelect={selectPlaylist} onAdd={addPlaylist}/><div className="standalone-language">{language}</div></>;

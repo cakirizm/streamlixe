@@ -42,6 +42,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.platform.LocalContext
@@ -355,7 +358,12 @@ fun NativePlayerSurface(
                 view.player = player
                 view.resizeMode = resizeMode
                 applySubtitleStyle(view, subtitlePrefs)
-                if (!view.hasFocus()) view.post { view.requestFocus() }
+                // "Ses ve Altyazı" paneli acikken burasi her recompose'da tekrar calisip
+                // PlayerView'a requestFocus() cagiriyordu -- kullanici paneldeki bir satira
+                // kumandayla odaklaninca bu odak aninda video görünümüne geri cekiliyor,
+                // panel kumandayla gezilemez hale geliyordu. Panel acikken odagi geri
+                // calmiyoruz.
+                if (!tracksPanelVisible && !view.hasFocus()) view.post { view.requestFocus() }
             },
         )
 
@@ -552,18 +560,29 @@ private fun TracksPanel(
     onSearchOnline: () -> Unit = {},
     onApplyOnline: (OnlineSubtitleResult) -> Unit = {},
 ) {
+    val panelFocusRequester = remember { FocusRequester() }
+    // Panel acilinca kumanda odagini icine tasiyoruz -- aksi halde D-pad, panel arkasindaki
+    // (gorunmeyen) video/ust cubuk elemanlari arasinda dolanmaya devam ediyor, panel hic
+    // erisilemez gibi duruyordu.
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(80)
+        runCatching { panelFocusRequester.requestFocus() }
+    }
     androidx.compose.material3.Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
-        color = ComposeColor(0xFF15121F),
+        modifier = modifier
+            .fillMaxWidth(0.62f)
+            .focusRequester(panelFocusRequester)
+            .focusGroup(),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+        color = ComposeColor(0xE0120E1C),
         shadowElevation = 18.dp,
     ) {
         Column(
             modifier = Modifier
-                .heightIn(max = 480.dp)
+                .heightIn(max = 360.dp)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 18.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(13.dp),
         ) {
             Box(
                 modifier = Modifier
