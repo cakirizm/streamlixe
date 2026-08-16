@@ -88,9 +88,11 @@ fun NativePlayerSurface(
     var ready by remember(request.sessionId) { mutableStateOf(player.playbackState == Player.STATE_READY) }
     var resizeMode by remember(request.sessionId) { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
     var qualityLabel by remember(request.sessionId) { mutableStateOf("AUTO") }
-    var subtitlePanelVisible by remember(request.sessionId) { mutableStateOf(false) }
+    var tracksPanelVisible by remember(request.sessionId) { mutableStateOf(false) }
     var subtitleOptions by remember(request.sessionId) { mutableStateOf<List<SubtitleOption>>(emptyList()) }
     var selectedSubtitleGroup by remember(request.sessionId) { mutableStateOf<Tracks.Group?>(null) }
+    var audioOptions by remember(request.sessionId) { mutableStateOf<List<AudioOption>>(emptyList()) }
+    var selectedAudioGroup by remember(request.sessionId) { mutableStateOf<Tracks.Group?>(null) }
     var subtitlePrefs by remember(request.sessionId) { mutableStateOf(request.preferences) }
     var onlineSubtitleResults by remember(request.sessionId) { mutableStateOf<List<OnlineSubtitleResult>>(emptyList()) }
     var onlineSubtitleBusy by remember(request.sessionId) { mutableStateOf(false) }
@@ -147,15 +149,25 @@ fun NativePlayerSurface(
             }
 
             override fun onTracksChanged(tracks: Tracks) {
-                val groups = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
-                subtitleOptions = groups.mapIndexed { index, group ->
+                val textGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
+                subtitleOptions = textGroups.mapIndexed { index, group ->
                     val format = group.mediaTrackGroup.getFormat(0)
                     val label = format.label
                         ?: format.language?.uppercase()
                         ?: "Altyazı ${index + 1}"
                     SubtitleOption(group, label)
                 }
-                selectedSubtitleGroup = groups.firstOrNull { it.isSelected }
+                selectedSubtitleGroup = textGroups.firstOrNull { it.isSelected }
+
+                val audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+                audioOptions = audioGroups.mapIndexed { index, group ->
+                    val format = group.mediaTrackGroup.getFormat(0)
+                    val label = format.label
+                        ?: format.language?.uppercase()
+                        ?: "Ses ${index + 1}"
+                    AudioOption(group, label)
+                }
+                selectedAudioGroup = audioGroups.firstOrNull { it.isSelected }
             }
         }
         player.addListener(listener)
@@ -213,6 +225,16 @@ fun NativePlayerSurface(
             subtitleMode = if (option != null) "on" else "off",
             subtitleLanguage = option?.group?.mediaTrackGroup?.getFormat(0)?.language ?: subtitlePrefs.subtitleLanguage,
         )
+        onPreferencesChanged(subtitlePrefs)
+    }
+
+    fun selectAudio(option: AudioOption) {
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+            .setOverrideForType(TrackSelectionOverride(option.group.mediaTrackGroup, 0))
+            .build()
+        selectedAudioGroup = option.group
+        subtitlePrefs = subtitlePrefs.copy(audioLanguage = option.group.mediaTrackGroup.getFormat(0).language ?: subtitlePrefs.audioLanguage)
         onPreferencesChanged(subtitlePrefs)
     }
 
@@ -356,10 +378,10 @@ fun NativePlayerSurface(
                 )
             }
             if (!request.item.isLive) OutlinedButton(
-                onClick = { subtitlePanelVisible = !subtitlePanelVisible },
+                onClick = { tracksPanelVisible = !tracksPanelVisible },
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
             ) {
-                Text("Altyazı", maxLines = 1, style = MaterialTheme.typography.labelSmall)
+                Text("🎧 Ses ve Altyazı", maxLines = 1, style = MaterialTheme.typography.labelSmall)
             }
             OutlinedButton(
                 onClick = {
@@ -379,14 +401,17 @@ fun NativePlayerSurface(
             }
         }
 
-        if (subtitlePanelVisible) SubtitlePanel(
+        if (tracksPanelVisible) TracksPanel(
             modifier = Modifier.align(Alignment.BottomCenter),
-            options = subtitleOptions,
-            selectedGroup = selectedSubtitleGroup,
+            audioOptions = audioOptions,
+            selectedAudioGroup = selectedAudioGroup,
+            onSelectAudio = { selectAudio(it) },
+            subtitleOptions = subtitleOptions,
+            selectedSubtitleGroup = selectedSubtitleGroup,
             prefs = subtitlePrefs,
-            onSelect = { selectSubtitle(it) },
+            onSelectSubtitle = { selectSubtitle(it) },
             onPrefsChange = { updateSubtitleStyle(it) },
-            onClose = { subtitlePanelVisible = false },
+            onClose = { tracksPanelVisible = false },
             onlineResults = onlineSubtitleResults,
             onlineBusy = onlineSubtitleBusy,
             onlineError = onlineSubtitleError,
@@ -481,6 +506,7 @@ private fun subtitleMimeType(url: String): String = when (Uri.parse(url).path?.s
 }
 
 internal data class SubtitleOption(val group: Tracks.Group, val label: String)
+internal data class AudioOption(val group: Tracks.Group, val label: String)
 
 private val subtitleColorPresets = listOf(
     "#ffffff" to "Beyaz",
@@ -490,12 +516,15 @@ private val subtitleColorPresets = listOf(
 )
 
 @Composable
-private fun SubtitlePanel(
+private fun TracksPanel(
     modifier: Modifier = Modifier,
-    options: List<SubtitleOption>,
-    selectedGroup: Tracks.Group?,
+    audioOptions: List<AudioOption>,
+    selectedAudioGroup: Tracks.Group?,
+    onSelectAudio: (AudioOption) -> Unit,
+    subtitleOptions: List<SubtitleOption>,
+    selectedSubtitleGroup: Tracks.Group?,
     prefs: PlaybackPreferences,
-    onSelect: (SubtitleOption?) -> Unit,
+    onSelectSubtitle: (SubtitleOption?) -> Unit,
     onPrefsChange: (PlaybackPreferences) -> Unit,
     onClose: () -> Unit,
     onlineResults: List<OnlineSubtitleResult> = emptyList(),
@@ -507,7 +536,7 @@ private fun SubtitlePanel(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(max = 420.dp)
+            .heightIn(max = 460.dp)
             .background(ComposeColor(0xFF15121D))
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
@@ -518,27 +547,55 @@ private fun SubtitlePanel(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Altyazı", color = ComposeColor.White, fontWeight = FontWeight.SemiBold)
+            Text("🎧 Ses ve Altyazı", color = ComposeColor.White, fontWeight = FontWeight.SemiBold)
             TextButton(onClick = onClose) { Text("Kapat", color = ComposeColor(0xFFB8B4C8)) }
         }
 
         SubtitlePreview(prefs = prefs)
 
-        Text("Parça", color = ComposeColor(0xFF9A94AC), style = MaterialTheme.typography.labelSmall)
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            SubtitleChip(label = "Kapalı", active = selectedGroup == null) { onSelect(null) }
-            options.forEach { option ->
-                SubtitleChip(label = option.label, active = option.group == selectedGroup) { onSelect(option) }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("🔊 Ses kaynağı", color = ComposeColor(0xFF9A94AC), style = MaterialTheme.typography.labelSmall)
+                if (audioOptions.isEmpty()) {
+                    Text(
+                        "Tek ses parçası",
+                        color = ComposeColor(0xFF7C7690),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        audioOptions.forEach { option ->
+                            SubtitleChip(
+                                label = option.label,
+                                active = option.group == selectedAudioGroup,
+                                fillWidth = true,
+                            ) { onSelectAudio(option) }
+                        }
+                    }
+                }
             }
-            if (options.isEmpty()) Text(
-                "Bu içerik için altyazı bulunamadı",
-                color = ComposeColor(0xFF7C7690),
-                style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.padding(vertical = 6.dp),
-            )
+
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("💬 Altyazı kaynağı", color = ComposeColor(0xFF9A94AC), style = MaterialTheme.typography.labelSmall)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SubtitleChip(label = "Kapalı", active = selectedSubtitleGroup == null, fillWidth = true) { onSelectSubtitle(null) }
+                    subtitleOptions.forEach { option ->
+                        SubtitleChip(
+                            label = option.label,
+                            active = option.group == selectedSubtitleGroup,
+                            fillWidth = true,
+                        ) { onSelectSubtitle(option) }
+                    }
+                    if (subtitleOptions.isEmpty()) Text(
+                        "Yerleşik altyazı yok",
+                        color = ComposeColor(0xFF7C7690),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+            }
         }
 
         Row(
@@ -664,12 +721,14 @@ private fun SubtitlePreview(prefs: PlaybackPreferences) {
 }
 
 @Composable
-private fun SubtitleChip(label: String, active: Boolean, onClick: () -> Unit) {
+private fun SubtitleChip(label: String, active: Boolean, fillWidth: Boolean = false, onClick: () -> Unit) {
     Text(
         label,
         color = if (active) ComposeColor.White else ComposeColor(0xFFB8B4C8),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
         style = MaterialTheme.typography.labelSmall,
-        modifier = Modifier
+        modifier = (if (fillWidth) Modifier.fillMaxWidth() else Modifier)
             .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
             .background(if (active) ComposeColor(0xFF7849DB) else ComposeColor(0xFF241F32))
             .clickable { onClick() }
