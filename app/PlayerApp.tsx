@@ -302,6 +302,7 @@ export default function Home(){
   const collapsedItems=useMemo(()=>collapseMediaSources(items),[items]);
   const activeIsKids=isKidsProfile(activeProfile);
   const displayItems=useMemo(()=>{
+    if(!activeIsKids&&!libraryPrefs.hiddenGroups.length&&!libraryPrefs.parental)return collapsedItems;
     return collapsedItems.filter(x=>(!activeIsKids||isChildGroup(x.group))&&!libraryPrefs.hiddenGroups.includes(x.group)&&!(libraryPrefs.parental&&isAdultGroup(x.group)));
   },[collapsedItems,activeIsKids,libraryPrefs.hiddenGroups,libraryPrefs.parental]);
   useEffect(()=>{(window as any).__slxLibrary=displayItems;(window as any).__slxOpenLibrary=(media:Media)=>{browseScroll.current=window.scrollY;setError("");setSelected(media);setScreen("detail")};return()=>{delete (window as any).__slxLibrary;delete (window as any).__slxOpenLibrary}},[displayItems]);
