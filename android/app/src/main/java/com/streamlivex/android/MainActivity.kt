@@ -234,23 +234,29 @@ class MainActivity : ComponentActivity() {
         if (playbackRequest == null && event.keyCode in dpadKeys) {
             val view = webView
             if (view != null && view.dispatchKeyEvent(event)) {
-                // Kumandayla (dokunma degil) bir yazi alanina odaklanip ONAYLA/ENTER'a
-                // basildig,inda WebView bunu bir "tiklama" gibi islese de sanal klavyeyi
-                // kendiliginden ac,mayabiliyor -- Android TV WebView'lerinde bilinen bir
-                // sinirlama. Once WebView'e odaktaki eleman GERC,EKTEN bir yazi alani mi diye
-                // JS ile soruyoruz; degilse (buton, kart, sekme vb.) klavyeyi ASLA acmiyoruz --
-                // onceki surumde bu kontrol yoktu ve her ONAYLA basisinda klavye aciliyordu.
+                val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
                 if (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER) {
+                    // Kumandayla (dokunma degil) bir yazi alanina odaklanip ONAYLA/ENTER'a
+                    // basildig,inda WebView bunu bir "tiklama" gibi islese de sanal klavyeyi
+                    // kendiliginden ac,mayabiliyor -- Android TV WebView'lerinde bilinen bir
+                    // sinirlama. Once WebView'e odaktaki eleman GERC,EKTEN bir yazi alani mi diye
+                    // JS ile soruyoruz; degilse (buton, kart, sekme vb.) klavyeyi ASLA acmiyoruz.
                     view.post {
                         view.evaluateJavascript(
                             "(function(){var e=document.activeElement;if(!e)return false;var t=e.tagName;return t==='INPUT'||t==='TEXTAREA'||e.isContentEditable===true})()"
                         ) { result ->
                             if (result == "true") {
-                                val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
                                 imm.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
                             }
                         }
                     }
+                } else if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP || event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                    // YUKARI/ASAGI ile odak sadece bir yazi alaninin UZERINE gelince WebView
+                    // klavyeyi kendiliginden aciyordu -- kullanici ONAYLA'ya basmadan, sadece
+                    // gelip gecerken bile. SAG/SOL'a bilerek dokunmuyoruz: odaklanilmis bir
+                    // alanin icinde imleci hareket ettirmek icin kullanilabiliyor, orada
+                    // klavyeyi kapatmak yaziyi kesintiye ugratir.
+                    imm.hideSoftInputFromWindow(view.windowToken, 0)
                 }
                 return true
             }
