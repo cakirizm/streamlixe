@@ -1,5 +1,6 @@
 package com.streamlivex.android
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -9,6 +10,7 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebView
@@ -218,9 +220,32 @@ class MainActivity : ComponentActivity() {
             externalPlayerKeyEvent = Triple(event.keyCode, event.action, System.nanoTime())
             return true
         }
+        // ESC (fiziksel/emulator klavyesinde test ederken kullanilan tus) acik bir yazi alani
+        // odaktaysa sanal klavyeyi kapatsin -- geri (BACK) tusuna bilerek dokunmuyoruz, o
+        // zaten ayri, dikkatle ayarlanmis navigasyon/cikis onayi mantigina sahip.
+        if (playbackRequest == null && event.action == KeyEvent.ACTION_DOWN && event.keyCode == KeyEvent.KEYCODE_ESCAPE) {
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            if (imm.isAcceptingText) {
+                imm.hideSoftInputFromWindow(webView?.windowToken, 0)
+                webView?.clearFocus()
+                return true
+            }
+        }
         if (playbackRequest == null && event.keyCode in dpadKeys) {
             val view = webView
-            if (view != null && view.dispatchKeyEvent(event)) return true
+            if (view != null && view.dispatchKeyEvent(event)) {
+                // Kumandayla (dokunma degil) bir yazi alanina odaklanip ONAYLA/ENTER'a
+                // basildig,inda WebView bunu bir "tiklama" gibi islese de sanal klavyeyi
+                // kendiliginden ac,mayabiliyor -- Android TV WebView'lerinde bilinen bir
+                // sinirlama. Odakli alan gercekten bir InputConnection sag,liyorsa (yani bir
+                // metin alaniysa) klavyeyi ac,ik s,ekilde gosteriyoruz; deg,ilse cag,ri hicbir
+                // s,ey yapmaz.
+                if (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER) {
+                    val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                    imm.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+                }
+                return true
+            }
         }
         return super.dispatchKeyEvent(event)
     }
