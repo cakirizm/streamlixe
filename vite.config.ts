@@ -31,6 +31,13 @@ const localBindingConfig = {
         },
       ]
     : [],
+  // QR ile telefondan oynatma listesi eslestirme icin kisa omurlu kod deposu.
+  kv_namespaces: [
+    {
+      binding: "PAIRING_KV",
+      id: "de7bcf6e334a4b8b8d95fb301fbb5441",
+    },
+  ],
 };
 
 export default defineConfig(async () => {

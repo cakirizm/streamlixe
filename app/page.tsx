@@ -3,6 +3,7 @@
 import { ChangeEvent, FormEvent, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Captions, Cast, CheckCircle2, ChevronRight, Clock3, Film, Gauge, Heart, Home as HomeIcon, Info, ListVideo, MonitorPlay, Play, Plus, RotateCcw, Search, Settings, SlidersHorizontal, Star, Subtitles, Tv, Users, Volume2 } from "lucide-react";
 import Hls from "hls.js";
+import QRCode from "qrcode";
 import { AppLocale, getLocale, LanguageSwitcher, localeNames, useDocumentLanguage } from "./i18n";
 import { parseSubtitleCues, subtitleAt, type SubtitleCue } from "./subtitles";
 
@@ -291,16 +292,57 @@ export default function Home(){
       ...(series||[]).map((x:any)=>({id:`s${x.series_id}`,name:x.name||"İsimsiz Dizi",logo:x.cover,group:seriesMap[String(x.category_id)]||x.category_name||"Diğer Diziler",kind:"series" as Kind,url:"",seriesId:String(x.series_id),rating:String(x.rating||""),year:x.releaseDate?.slice?.(0,4)}))
     ];
   };
-  const loadM3U=async()=>{let text="";const file=fileRef.current?.files?.[0];setStage("Oynatma listesi alınıyor");setProgress(8);if(file)text=await readFile(file);else if(form.url){setProgress(28);text=(await importRequest({method:"m3u",url:form.url})).text;setProgress(58)}else throw new Error("Bir M3U dosyası veya bağlantısı seçin");setStage("Kanallar ve kategoriler ayrıştırılıyor");setProgress(72);await new Promise(r=>setTimeout(r,40));const media=parseM3U(text);if(!media.length)throw new Error("Dosyada oynatılabilir yayın bulunamadı");const epgUrl=text.match(/(?:url-tvg|x-tvg-url)=["']([^"']+)/i)?.[1]||"";setProgress(88);await save(media,{method:"m3u",name:form.name,epgUrl,url:form.url||undefined})};
-  const loadXtream=async()=>{
-    const base=form.server.replace(/\/$/,"");if(!base||!form.username||!form.password)throw new Error("Sunucu, kullanıcı adı ve şifre gerekli");
-    setStage("Xtream hesabına bağlanılıyor");setProgress(12);const pending=importRequest({method:"xtream",server:base,username:form.username,password:form.password});const timer=setInterval(()=>setProgress(x=>Math.min(x+3,76)),350);let data:any;try{data=await pending}finally{clearInterval(timer)}
+  const loadM3U=async(override?:{name:string;url:string})=>{let text="";const file=override?undefined:fileRef.current?.files?.[0];const url=override?.url??form.url;const name=override?.name??form.name;setStage("Oynatma listesi alınıyor");setProgress(8);if(file)text=await readFile(file);else if(url){setProgress(28);text=(await importRequest({method:"m3u",url})).text;setProgress(58)}else throw new Error("Bir M3U dosyası veya bağlantısı seçin");setStage("Kanallar ve kategoriler ayrıştırılıyor");setProgress(72);await new Promise(r=>setTimeout(r,40));const media=parseM3U(text);if(!media.length)throw new Error("Dosyada oynatılabilir yayın bulunamadı");const epgUrl=text.match(/(?:url-tvg|x-tvg-url)=["']([^"']+)/i)?.[1]||"";setProgress(88);await save(media,{method:"m3u",name,epgUrl,url:url||undefined})};
+  const loadXtream=async(override?:{name:string;server:string;username:string;password:string})=>{
+    const base=(override?.server??form.server).replace(/\/$/,"");const username=override?.username??form.username;const password=override?.password??form.password;const name=override?.name??form.name;
+    if(!base||!username||!password)throw new Error("Sunucu, kullanıcı adı ve şifre gerekli");
+    setStage("Xtream hesabına bağlanılıyor");setProgress(12);const pending=importRequest({method:"xtream",server:base,username,password});const timer=setInterval(()=>setProgress(x=>Math.min(x+3,76)),350);let data:any;try{data=await pending}finally{clearInterval(timer)}
     setStage("Kategoriler ve içerikler hazırlanıyor");setProgress(82);
-    const media=buildXtreamMedia(data,base,form.username,form.password);
-    if(!media.length)throw new Error("Hesapta içerik bulunamadı");await save(media,{method:"xtream",name:form.name,server:base,username:form.username,password:form.password});
+    const media=buildXtreamMedia(data,base,username,password);
+    if(!media.length)throw new Error("Hesapta içerik bulunamadı");await save(media,{method:"xtream",name,server:base,username,password});
   };
   const loadPortal=async()=>{if(!form.server||!form.mac)throw new Error("Portal adresi ve MAC adresi gerekli");throw new Error("Bu portal tarayıcı erişimini engelliyor olabilir. Portalınız bir M3U bağlantısı veriyorsa M3U sekmesinden yükleyin.")};
   const submit=async(e:FormEvent)=>{e.preventDefault();setBusy(true);setProgress(2);setStage("Başlatılıyor");setError("");try{if(method==="m3u")await loadM3U();else if(method==="xtream")await loadXtream();else await loadPortal()}catch(err){setError(err instanceof Error?err.message:"Bağlantı kurulamadı");setProgress(0)}finally{setBusy(false)}};
+  // Telefondan QR ile eslestirilen oynatma listesini, kullanici TV'de hicbir seye
+  // dokunmadan otomatik olarak ice aktarir.
+  const importFromPairing=async(provider:{method:"m3u"|"xtream";name:string;url?:string;server?:string;username?:string;password?:string})=>{
+    setBusy(true);setProgress(2);setStage("Telefonla eşleştirildi");setError("");
+    try{
+      if(provider.method==="m3u")await loadM3U({name:provider.name,url:provider.url||""});
+      else await loadXtream({name:provider.name,server:provider.server||"",username:provider.username||"",password:provider.password||""});
+    }catch(err){setError(err instanceof Error?err.message:"Bağlantı kurulamadı");setProgress(0)}
+    finally{setBusy(false)}
+  };
+  const [pairQrUrl,setPairQrUrl]=useState("");
+  useEffect(()=>{
+    if(screen!=="setup")return;
+    let active=true;let poll:ReturnType<typeof setInterval>|null=null;
+    setPairQrUrl("");
+    (async()=>{
+      try{
+        const res=await fetch("/api/pair",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"create"})});
+        const data=await res.json() as {code?:string};
+        if(!active||!data.code)return;
+        const target=`${location.origin}/pair/${data.code}`;
+        const dataUrl=await QRCode.toDataURL(target,{margin:1,width:220,color:{dark:"#ffffff",light:"#00000000"}});
+        if(!active)return;
+        setPairQrUrl(dataUrl);
+        poll=setInterval(async()=>{
+          try{
+            const statusRes=await fetch(`/api/pair?code=${data.code}`);
+            const statusData=await statusRes.json() as {status?:string;provider?:any};
+            if(statusData.status==="ready"&&statusData.provider){
+              if(poll)clearInterval(poll);
+              await importFromPairing(statusData.provider);
+            }else if(statusData.status==="expired"){
+              if(poll)clearInterval(poll);
+            }
+          }catch{}
+        },2500);
+      }catch{}
+    })();
+    return()=>{active=false;if(poll)clearInterval(poll)};
+  },[screen]);
   const useDemo=async()=>{setBusy(true);setProgress(55);setStage("Demo hazırlanıyor");await save(demo,{method:"m3u",name:"Demo Kütüphanesi"});setBusy(false)};
   const editProvider=()=>{if(!provider||!activePlaylistId)return;editingPlaylistIdRef.current=activePlaylistId;setMethod(provider.method);setForm({name:provider.name||"Oynatma Listem",url:provider.url||"",server:provider.server||"",username:provider.username||"",password:provider.password||"",mac:provider.mac||""});setError("");setScreen("setup")};
   const [bgRefresh,setBgRefresh]=useState<{stage:string;progress:number;summary?:ReloadSummary}|null>(null);
@@ -365,7 +407,7 @@ export default function Home(){
   const categories=useMemo(()=>active==="live"||active==="movie"||active==="series"?["Tümü",...Array.from(new Set(displayItems.filter(x=>x.kind===active).map(x=>x.group).filter(Boolean))).sort(alphabetic)]:["Tümü"],[displayItems,active]);
   const language=<LanguageSwitcher locale={locale} onChange={changeLocale}/>;
   if(screen==="boot")return <main className="boot-screen"><Logo/><i/><p>Kütüphane hazırlanıyor…</p></main>;
-  if(screen==="setup")return <><Setup method={method} setMethod={setMethod} form={form} setForm={setForm} submit={submit} fileRef={fileRef} busy={busy} error={error} useDemo={useDemo} progress={progress} stage={stage} onBack={playlists.length?()=>{setError("");setScreen("playlists")}:undefined}/><div className="standalone-language">{language}</div></>;
+  if(screen==="setup")return <><Setup method={method} setMethod={setMethod} form={form} setForm={setForm} submit={submit} fileRef={fileRef} busy={busy} error={error} useDemo={useDemo} progress={progress} stage={stage} pairQrUrl={pairQrUrl} onBack={playlists.length?()=>{setError("");setScreen("playlists")}:undefined}/><div className="standalone-language">{language}</div></>;
   if(screen==="playlists")return <><PlaylistsScreen playlists={playlists} onSelect={selectPlaylist} onAdd={addPlaylist}/><div className="standalone-language">{language}</div></>;
   if(screen==="profiles")return <><Profiles onSelect={selectProfile}/><div className="standalone-language">{language}</div></>;
   if(screen==="detail"&&selected)return <Details item={selected} library={displayItems} suggestions={displayItems.filter(x=>x.id!==selected.id&&x.kind===selected.kind).sort((a,b)=>Number(b.group===selected.group)-Number(a.group===selected.group)).slice(0,16)} provider={provider} onEpisode={playEpisode} onSource={(source)=>{setSelected(source);setScreen("player")}} onBack={backToDashboard} onOpen={(item)=>{setSelected(item);setScreen("detail")}} onPlay={playSelected} busy={busy} error={error} favorite={favorites.includes(selected.id)} toggleFavorite={()=>toggleFavorite(selected)}/>;
@@ -374,7 +416,7 @@ export default function Home(){
 }
 
 function Logo(){return <div className="logo"><img src="/streamlivex-logo.jpeg" alt="StreamLiveX"/><span>StreamLive<b>X</b></span></div>}
-function Setup({method,setMethod,form,setForm,submit,fileRef,busy,error,useDemo,progress,stage,onBack}:any){return <main className="setup-page"><div className="setup-glow"/><section className="setup-card">{onBack&&<button type="button" className="setup-back" onClick={onBack} disabled={busy}><ArrowLeft size={16}/> Oynatma listelerine dön</button>}<Logo/><div className="setup-head"><span>BAŞLAYALIM</span><h1>İçeriklerin. Tek ekranda.</h1><p>Oynatma listeni ekle; canlı TV, film ve dizilerini otomatik olarak düzenleyelim.</p></div><div className="method-tabs">{[["m3u","M3U"],["xtream","Xtream Codes"],["portal","Portal"]].map(([id,label])=><button key={id} className={method===id?"active":""} disabled={busy} onClick={()=>setMethod(id)}>{id==="m3u"?"☷":id==="xtream"?"⌘":"◉"}<b>{label}</b></button>)}</div><form onSubmit={submit}><label>Liste adı<input value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label>{method==="m3u"&&<><label>M3U bağlantısı<input placeholder="https://ornek.com/playlist.m3u" value={form.url} onChange={e=>setForm({...form,url:e.target.value})}/></label><div className="or"><span/>veya<span/></div><label className="file-drop">⇧<b>M3U dosyası seç</b><small>.m3u veya .m3u8</small><input ref={fileRef} type="file" accept=".m3u,.m3u8,text/plain"/></label></>}{method==="xtream"&&<><label>Sunucu adresi<input placeholder="http://sunucu:port" value={form.server} onChange={e=>setForm({...form,server:e.target.value})}/></label><div className="two"><label>Kullanıcı adı<input value={form.username} onChange={e=>setForm({...form,username:e.target.value})}/></label><label>Şifre<input type="password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})}/></label></div></>}{method==="portal"&&<><label>Portal adresi<input placeholder="http://portal-adresi/c" value={form.server} onChange={e=>setForm({...form,server:e.target.value})}/></label><label>MAC adresi<input placeholder="00:1A:79:XX:XX:XX" value={form.mac} onChange={e=>setForm({...form,mac:e.target.value})}/></label></>}{error&&<p className="error">{error}</p>}{busy&&<div className="import-progress"><div><b key={stage}>{stage}</b><strong key={progress}>{progress}%</strong></div><span><i style={{width:`${progress}%`}}/></span><small>Büyük listelerde bu işlem biraz sürebilir. Sayfayı kapatmayın.</small></div>}<button className="primary" disabled={busy}>{busy?<span key={progress}>{progress}% yükleniyor…</span>:"Oynatma listesini ekle →"}</button></form><button className="demo-link" disabled={busy} onClick={useDemo}>Önce demo içerikle dene</button><p className="privacy">🔒 StreamLiveX IPTV erişimi sağlamaz; kullanıcı kendi yasal bilgilerini girer.</p><nav className="setup-legal-links"><a href="/privacy">Gizlilik</a><a href="/terms">Kullanım Koşulları</a><a href="/support">Destek</a><a href="/rehber">Rehberler</a></nav></section></main>}
+function Setup({method,setMethod,form,setForm,submit,fileRef,busy,error,useDemo,progress,stage,pairQrUrl,onBack}:any){return <main className="setup-page setup-page-split"><div className="setup-glow"/><section className="setup-card">{onBack&&<button type="button" className="setup-back" onClick={onBack} disabled={busy}><ArrowLeft size={16}/> Oynatma listelerine dön</button>}<Logo/><div className="setup-head"><span>BAŞLAYALIM</span><h1>İçeriklerin. Tek ekranda.</h1><p>Oynatma listeni ekle; canlı TV, film ve dizilerini otomatik olarak düzenleyelim.</p></div><div className="method-tabs">{[["m3u","M3U"],["xtream","Xtream Codes"],["portal","Portal"]].map(([id,label])=><button key={id} className={method===id?"active":""} disabled={busy} onClick={()=>setMethod(id)}>{id==="m3u"?"☷":id==="xtream"?"⌘":"◉"}<b>{label}</b></button>)}</div><form onSubmit={submit}><label>Liste adı<input value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label>{method==="m3u"&&<><label>M3U bağlantısı<input placeholder="https://ornek.com/playlist.m3u" value={form.url} onChange={e=>setForm({...form,url:e.target.value})}/></label><div className="or"><span/>veya<span/></div><label className="file-drop">⇧<b>M3U dosyası seç</b><small>.m3u veya .m3u8</small><input ref={fileRef} type="file" accept=".m3u,.m3u8,text/plain"/></label></>}{method==="xtream"&&<><label>Sunucu adresi<input placeholder="http://sunucu:port" value={form.server} onChange={e=>setForm({...form,server:e.target.value})}/></label><div className="two"><label>Kullanıcı adı<input value={form.username} onChange={e=>setForm({...form,username:e.target.value})}/></label><label>Şifre<input type="password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})}/></label></div></>}{method==="portal"&&<><label>Portal adresi<input placeholder="http://portal-adresi/c" value={form.server} onChange={e=>setForm({...form,server:e.target.value})}/></label><label>MAC adresi<input placeholder="00:1A:79:XX:XX:XX" value={form.mac} onChange={e=>setForm({...form,mac:e.target.value})}/></label></>}{error&&<p className="error">{error}</p>}{busy&&<div className="import-progress"><div><b key={stage}>{stage}</b><strong key={progress}>{progress}%</strong></div><span><i style={{width:`${progress}%`}}/></span><small>Büyük listelerde bu işlem biraz sürebilir. Sayfayı kapatmayın.</small></div>}<button className="primary" disabled={busy}>{busy?<span key={progress}>{progress}% yükleniyor…</span>:"Oynatma listesini ekle →"}</button></form><button className="demo-link" disabled={busy} onClick={useDemo}>Önce demo içerikle dene</button><p className="privacy">🔒 StreamLiveX IPTV erişimi sağlamaz; kullanıcı kendi yasal bilgilerini girer.</p><nav className="setup-legal-links"><a href="/privacy">Gizlilik</a><a href="/terms">Kullanım Koşulları</a><a href="/support">Destek</a><a href="/rehber">Rehberler</a></nav></section>{!busy&&<aside className="setup-qr"><span>📱 TELEFONDAN EKLE</span><h2>Kumanda yerine telefonunu kullan</h2><p>Bu kodu telefonunla okut, oynatma listesini rahatça telefonundan yaz — TV otomatik olarak yükleyecek.</p>{pairQrUrl?<img src={pairQrUrl} alt="Telefonla eşleştirme QR kodu" width={220} height={220}/>:<div className="setup-qr-loading">Kod hazırlanıyor…</div>}<small>Kod 10 dakika geçerlidir.</small></aside>}</main>}
 function PlaylistsScreen({playlists,onSelect,onAdd}:{playlists:PlaylistEntry[];onSelect:(id:string)=>void;onAdd:()=>void}){
   return <main className="profile-page clean-profiles playlist-picker"><Logo/><div><h1>Hangi oynatma listesi?</h1><section>{playlists.map(p=><button key={p.id} onClick={()=>onSelect(p.id)}><i><ListVideo size={30}/></i><b>{p.provider.name||"Oynatma Listem"}</b><small>{p.provider.method?.toUpperCase()} · {p.itemCount.toLocaleString("tr-TR")} içerik</small></button>)}<button onClick={onAdd}><i className="add"><Plus size={34}/></i><b>Yeni liste ekle</b></button></section></div></main>;
 }

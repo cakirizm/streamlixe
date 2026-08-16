@@ -1,8 +1,15 @@
 declare module "cloudflare:workers" {
   export const env: {
     DB?: D1Database;
+    PAIRING_KV?: KVNamespace;
     [key: string]: unknown;
   };
+}
+
+interface KVNamespace {
+  get(key: string, options?: { type?: "text" }): Promise<string | null>;
+  put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
+  delete(key: string): Promise<void>;
 }
 
 interface Fetcher {
