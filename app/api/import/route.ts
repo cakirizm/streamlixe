@@ -29,11 +29,14 @@ const REQUEST_TIMEOUT_MS = 45000;
 async function get(url: URL) {
   try {
     const response = await fetch(url, { headers: { "user-agent": "VLC/3.0.21 LibVLC/3.0.21", accept: "*/*" }, redirect: "follow", signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
-    if (!response.ok) throw new ImportError(`Yayın sunucusu ${response.status} hatası verdi`, 502);
+    // 502/504 kullanmıyoruz: relay mimarisinde bu istek bir Cloudflare Worker'ın fetch()
+    // alt-isteği olarak görülebiliyor ve Cloudflare, 502/504 durum kodlu alt-istek yanıtlarının
+    // gövdesini kendi jenerik hata sayfasıyla değiştiriyor -- bizim Türkçe mesajımızı yutuyor.
+    if (!response.ok) throw new ImportError(`Yayın sunucusu ${response.status} hatası verdi`, 500);
     return response;
   } catch (error) {
     if (error instanceof ImportError) throw error;
-    throw new ImportError(error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError") ? `Yayın sunucusu ${REQUEST_TIMEOUT_MS / 1000} saniye içinde yanıt vermedi` : "Yayın sunucusuna bağlanılamadı", 502);
+    throw new ImportError(error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError") ? `Yayın sunucusu ${REQUEST_TIMEOUT_MS / 1000} saniye içinde yanıt vermedi` : "Yayın sunucusuna bağlanılamadı", 500);
   }
 }
 // Gövdeyi okurken de aynı zaman aşımı/bağlantı kopması olabilir (büyük listelerde veri inerken
@@ -44,7 +47,7 @@ async function getText(url: URL) {
   const response = await get(url);
   try { return await response.text(); }
   catch (error) {
-    throw new ImportError(error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError") ? "Yayın sunucusundan veri indirilirken bağlantı zaman aşımına uğradı — liste çok büyük olabilir, tekrar deneyin" : "Yayın sunucusundan veri okunamadı", 502);
+    throw new ImportError(error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError") ? "Yayın sunucusundan veri indirilirken bağlantı zaman aşımına uğradı — liste çok büyük olabilir, tekrar deneyin" : "Yayın sunucusundan veri okunamadı", 500);
   }
 }
 
@@ -59,10 +62,15 @@ export async function POST(request: Request) {
       // "error code: 502" page when a request runs long.
       const relayed = await fetch(`${IMPORT_RELAY_ORIGIN}/api/import`, { method: "POST", headers: relayHeaders, body: bodyText, signal: AbortSignal.timeout(45000) });
       const text = await relayed.text();
-      return new Response(text, { status: relayed.status, headers: { "content-type": "application/json" } });
+      // Cloudflare'in kendisi, Worker'dan gelen 502/504 durum kodlu yanıtların gövdesini kendi
+      // jenerik hata sayfasıyla değiştiriyor (bizim Türkçe JSON hata mesajımızı yutuyor). Bu
+      // yüzden gerçek durumu 500'e eşliyoruz -- Cloudflare bu koda dokunmuyor, kullanıcı bizim
+      // gövdemizi görür.
+      const status = relayed.status === 502 || relayed.status === 504 ? 500 : relayed.status;
+      return new Response(text, { status, headers: { "content-type": "application/json" } });
     } catch (error) {
       const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
-      return Response.json({ error: timedOut ? "İçe aktarma zaman aşımına uğradı — liste çok büyük veya sunucu yavaş yanıt veriyor olabilir, tekrar deneyin" : "İçe aktarma sunucusuna ulaşılamadı, tekrar deneyin" }, { status: 502 });
+      return Response.json({ error: timedOut ? "İçe aktarma zaman aşımına uğradı — liste çok büyük veya sunucu yavaş yanıt veriyor olabilir, tekrar deneyin" : "İçe aktarma sunucusuna ulaşılamadı, tekrar deneyin" }, { status: 500 });
     }
   }
   try {
@@ -93,7 +101,7 @@ export async function POST(request: Request) {
           const snippet = text.replace(/\s+/g, " ").trim().slice(0, 160);
           const looksHtml = /^<(!doctype|html)/i.test(snippet);
           const hint = snippet ? ` Sunucu şunu döndürdü: "${snippet}"${looksHtml ? " — bu bir HTML sayfası, panel bu adreste Xtream API sunmuyor olabilir (adres/protokol http-https hatalı olabilir veya bu bir Xtream paneli değil)." : "."}` : "";
-          throw new ImportError(`Yayın sunucusu geçerli Xtream verisi döndürmedi.${hint}`, 502);
+          throw new ImportError(`Yayın sunucusu geçerli Xtream verisi döndürmedi.${hint}`, 500);
         }
       };
       const account = await call();

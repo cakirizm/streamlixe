@@ -95,12 +95,15 @@ export async function GET(request: Request) {
       const out = new Headers();
       ["content-type", "content-length", "content-range", "accept-ranges", "cache-control", "x-streamlivex-attempts"].forEach(k => { const v = relayed.headers.get(k); if (v) out.set(k, v); });
       out.set("access-control-allow-origin", "*");
-      return new Response(resilientBody(relayed.body), { status: relayed.status, headers: out });
+      // Cloudflare, Worker'dan gelen 502/504 durum kodlu yanıtların gövdesini kendi jenerik
+      // hata sayfasıyla değiştiriyor; gerçek durumu Cloudflare'in dokunmadığı 500'e eşliyoruz.
+      return new Response(resilientBody(relayed.body), { status: relayed.status === 502 || relayed.status === 504 ? 500 : relayed.status, headers: out });
     }
 
     const { response: upstream, attempts } = await fetchUpstream(source, headers, request.signal, startup);
     if (!upstream.ok && upstream.status !== 206) {
-      return new Response("Yayın alınamadı", { status: upstream.status, headers: { "cache-control": "no-store", "x-streamlivex-attempts": String(attempts) } });
+      const status = upstream.status === 502 || upstream.status === 504 ? 500 : upstream.status;
+      return new Response("Yayın alınamadı", { status, headers: { "cache-control": "no-store", "x-streamlivex-attempts": String(attempts) } });
     }
     const type = upstream.headers.get("content-type") || "";
     const finalSource = new URL(upstream.url || source.href);
@@ -119,11 +122,13 @@ export async function GET(request: Request) {
     ["content-type", "content-length", "content-range", "accept-ranges", "cache-control"].forEach(k => { const v = upstream.headers.get(k); if (v) out.set(k, v); });
     out.set("access-control-allow-origin", "*");
     out.set("x-streamlivex-attempts", String(attempts));
-    return new Response(resilientBody(upstream.body), { status: upstream.status, headers: out });
+    return new Response(resilientBody(upstream.body), { status: upstream.status === 502 || upstream.status === 504 ? 500 : upstream.status, headers: out });
   } catch (error) {
     const aborted = request.signal.aborted || error instanceof Error && error.name === "AbortError";
     const timedOut = error instanceof Error && error.name === "TimeoutError";
     const networkError = error instanceof TypeError;
-    return new Response(aborted ? null : timedOut ? "Yayın sunucusu zaman aşımına uğradı" : networkError ? "Yayın sunucusuna bağlanılamadı" : error instanceof Error ? error.message : "Yayın açılamadı", { status: aborted ? 499 : timedOut ? 504 : networkError ? 502 : 400 });
+    // Cloudflare, Worker'dan gelen 502/504 durum kodlu yanıtların gövdesini kendi jenerik hata
+    // sayfasıyla değiştiriyor (Türkçe mesajımızı yutuyor); bu yüzden 500 kullanıyoruz.
+    return new Response(aborted ? null : timedOut ? "Yayın sunucusu zaman aşımına uğradı" : networkError ? "Yayın sunucusuna bağlanılamadı" : error instanceof Error ? error.message : "Yayın açılamadı", { status: aborted ? 499 : timedOut || networkError ? 500 : 400 });
   }
 }
