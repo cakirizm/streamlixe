@@ -183,7 +183,7 @@ function playbackCandidates(original:string,kind:Kind):PlaybackCandidate[]{
   const isTs=isMpegTsUrl(original);const proxy=kind==="live"?playbackUrl:assetUrl;let rows:PlaybackCandidate[];
   if(isTs)rows=kind==="live"
     ?[{url:proxy(original),type:"mpegts",label:"MPEG-TS"},{url:proxy(hlsAlternativeUrl(original)),type:"hls",label:"HLS alternatif"},{url:original,type:"mpegts",label:"MPEG-TS doğrudan"}]
-    :[{url:assetUrl(original),type:"mpegts",label:"MPEG-TS"},{url:original,type:"mpegts",label:"MPEG-TS doğrudan"},{url:assetUrl(hlsAlternativeUrl(original)),type:"hls",label:"HLS"}];
+    :[{url:original,type:"transcode",label:"Web çoklu ses/altyazı"},{url:assetUrl(original),type:"mpegts",label:"MPEG-TS"},{url:original,type:"mpegts",label:"MPEG-TS doğrudan"},{url:assetUrl(hlsAlternativeUrl(original)),type:"hls",label:"HLS"}];
   else if(/\.m3u8($|\?)/i.test(original))rows=[{url:proxy(original),type:"hls",label:"HLS"},{url:original,type:"hls",label:"HLS doğrudan"}];
   else{
     // Xtream panelleri VOD adresini MKV/MP4 olarak verse de aynı stream kimliğinin HLS
