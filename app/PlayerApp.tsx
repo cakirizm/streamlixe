@@ -193,9 +193,7 @@ function playbackCandidates(original:string,kind:Kind):PlaybackCandidate[]{
     // ve panel gerçekten seçim yapabilir. Panel HLS üretmiyorsa hata anında mevcut düz
     // dosya yoluna düşülür; çalışan oynatma davranışı korunur.
     const hlsAlternative=vodHlsAlternativeUrl(original);
-    rows=hlsAlternative!==original
-      ?[{url:original,type:"transcode",label:"Web çoklu ses/altyazı"},{url:assetUrl(hlsAlternative),type:"hls",label:"HLS · çoklu ses/altyazı"},{url:proxy(original),type:"native",label:"Tarayıcı"},{url:original,type:"native",label:"Tarayıcı doğrudan"}]
-      :[{url:proxy(original),type:"native",label:"Tarayıcı"},{url:original,type:"native",label:"Tarayıcı doğrudan"}];
+    rows=[{url:original,type:"transcode",label:"Web çoklu ses/altyazı"},...(hlsAlternative!==original?[{url:assetUrl(hlsAlternative),type:"hls" as const,label:"HLS · çoklu ses/altyazı"}]:[]),{url:proxy(original),type:"native",label:"Tarayıcı"},{url:original,type:"native",label:"Tarayıcı doğrudan"}];
   }
   if(preferDirectHttp(original))rows.sort((a,b)=>Number(b.url===original)-Number(a.url===original));
   return rows.filter((row,index,list)=>list.findIndex(candidate=>candidate.url===row.url&&candidate.type===row.type)===index);
