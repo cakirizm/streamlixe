@@ -297,7 +297,7 @@ function useRealViewportHeight(){
 export default function Home(){
   useRealViewportHeight();
   const [locale,setLocale]=useState<AppLocale>(getLocale);useDocumentLanguage(locale);
-  useEffect(()=>{const media=matchMedia("(prefers-color-scheme: light)");const sync=()=>applyTheme(readTheme());sync();media.addEventListener("change",sync);return()=>media.removeEventListener("change",sync)},[]);
+  useEffect(()=>{localStorage.setItem("slx-theme","dark");document.documentElement.dataset.theme="dark";document.documentElement.style.colorScheme="dark"},[]);
   const changeLocale=(next:AppLocale)=>{localStorage.setItem("slx-language",next);document.cookie=`slx-language=${next};path=/;max-age=31536000;SameSite=Lax`;setLocale(next)};
   const [screen,setScreen]=useState<"boot"|"setup"|"playlists"|"profiles"|"dashboard"|"detail"|"player">("boot");
   const [playlists,setPlaylists]=useState<PlaylistEntry[]>([]);
