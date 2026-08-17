@@ -9,6 +9,8 @@ services:
       - .env
     environment:
       TMDB_API_BASE_URL: http://tmdb-proxy:8788
+      STREAM_RELAY_ORIGIN: ""
+      IMPORT_RELAY_ORIGIN: ""
     depends_on:
       - tmdb-proxy
     restart: unless-stopped
