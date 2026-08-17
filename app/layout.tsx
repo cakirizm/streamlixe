@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "./legal.css";
 
-const siteUrl = "https://streamlivex.com";
+const siteUrl = "http://streamlivex.com";
 const title = "StreamLiveX – Kendi IPTV Kütüphaneni Yönet ve İzle";
 const description =
   "StreamLiveX; kendi M3U, Xtream veya portal kaynaklarınızı tek bir modern arayüzde birleştiren ücretsiz IPTV oynatıcısıdır. Canlı TV, film ve dizileri profil bazlı tercihler, EPG ve altyazı desteğiyle izleyin.";
