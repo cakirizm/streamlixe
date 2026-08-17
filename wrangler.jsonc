@@ -18,5 +18,11 @@
     "STREAM_RELAY_ORIGIN": "http://154.38.21.68:3000",
     "IMPORT_RELAY_ORIGIN": "http://154.38.21.68:3000",
     "TRANSCODE_ORIGIN": "http://154.38.21.68:3100"
-  }
+  },
+  "kv_namespaces": [
+    {
+      "binding": "PAIRING_KV",
+      "id": "de7bcf6e334a4b8b8d95fb301fbb5441"
+    }
+  ]
 }
