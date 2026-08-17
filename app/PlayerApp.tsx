@@ -178,13 +178,25 @@ type PlaybackCandidate={url:string;type:"hls"|"mpegts"|"native";label:string};
 const preferDirectHttp=(url:string)=>typeof window!=="undefined"&&window.location.protocol==="http:"&&/^http:\/\//i.test(url);
 const isMpegTsUrl=(url:string)=>/(?:\.|\/)ts(?:$|[?#])/i.test(url);
 const hlsAlternativeUrl=(url:string)=>url.replace(/(?:\.|\/)ts(?=$|[?#])/i,match=>match.startsWith("/")?"/m3u8":".m3u8");
+const vodHlsAlternativeUrl=(url:string)=>url.replace(/(?:\.|\/)(?:mkv|mp4|avi|mov|m4v)(?=$|[?#])/i,match=>match.startsWith("/")?"/m3u8":".m3u8");
 function playbackCandidates(original:string,kind:Kind):PlaybackCandidate[]{
   const isTs=isMpegTsUrl(original);const proxy=kind==="live"?playbackUrl:assetUrl;let rows:PlaybackCandidate[];
   if(isTs)rows=kind==="live"
     ?[{url:proxy(original),type:"mpegts",label:"MPEG-TS"},{url:proxy(hlsAlternativeUrl(original)),type:"hls",label:"HLS alternatif"},{url:original,type:"mpegts",label:"MPEG-TS doğrudan"}]
     :[{url:assetUrl(original),type:"mpegts",label:"MPEG-TS"},{url:original,type:"mpegts",label:"MPEG-TS doğrudan"},{url:assetUrl(hlsAlternativeUrl(original)),type:"hls",label:"HLS"}];
   else if(/\.m3u8($|\?)/i.test(original))rows=[{url:proxy(original),type:"hls",label:"HLS"},{url:original,type:"hls",label:"HLS doğrudan"}];
-  else rows=[{url:proxy(original),type:"native",label:"Tarayıcı"},{url:original,type:"native",label:"Tarayıcı doğrudan"}];
+  else{
+    // Xtream panelleri VOD adresini MKV/MP4 olarak verse de aynı stream kimliğinin HLS
+    // karşılığını çoğunlukla .m3u8 ile sunar. Düz dosya Chromium'da oynasa bile gömülü
+    // alternatif ses ve altyazı parçaları audioTracks/textTracks API'lerine açılmaz. HLS
+    // master manifestini önce denediğimizde hls.js bu parçaları ayrı gruplar olarak görür
+    // ve panel gerçekten seçim yapabilir. Panel HLS üretmiyorsa hata anında mevcut düz
+    // dosya yoluna düşülür; çalışan oynatma davranışı korunur.
+    const hlsAlternative=vodHlsAlternativeUrl(original);
+    rows=hlsAlternative!==original
+      ?[{url:assetUrl(hlsAlternative),type:"hls",label:"HLS · çoklu ses/altyazı"},{url:proxy(original),type:"native",label:"Tarayıcı"},{url:original,type:"native",label:"Tarayıcı doğrudan"}]
+      :[{url:proxy(original),type:"native",label:"Tarayıcı"},{url:original,type:"native",label:"Tarayıcı doğrudan"}];
+  }
   if(preferDirectHttp(original))rows.sort((a,b)=>Number(b.url===original)-Number(a.url===original));
   return rows.filter((row,index,list)=>list.findIndex(candidate=>candidate.url===row.url&&candidate.type===row.type)===index);
 }
