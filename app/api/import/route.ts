@@ -5,8 +5,11 @@ const blocked = /^(localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2
 // set, forward the raw import request to another origin (e.g. a shared-
 // hosting deployment of this same app, which has no such per-request CPU
 // cap) and pass its response straight through.
-const IMPORT_RELAY_ORIGIN = process.env.IMPORT_RELAY_ORIGIN?.trim().replace(/\/$/, "");
-const IMPORT_RELAY_HOST = process.env.IMPORT_RELAY_HOST?.trim();
+function getImportRelayConfig() {
+  const origin = (process.env.IMPORT_RELAY_ORIGIN || "").trim().replace(/\/$/, "");
+  const host = (process.env.IMPORT_RELAY_HOST || "").trim();
+  return { origin: origin || null, host: host || null };
+}
 
 class ImportError extends Error {
   constructor(message: string, readonly status = 400) { super(message); }
@@ -52,6 +55,7 @@ async function getText(url: URL) {
 }
 
 export async function POST(request: Request) {
+  const { origin: IMPORT_RELAY_ORIGIN, host: IMPORT_RELAY_HOST } = getImportRelayConfig();
   if (IMPORT_RELAY_ORIGIN) {
     try {
       const bodyText = await request.text();

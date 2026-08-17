@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "streamlivex",
+  "compatibility_date": "2026-08-17",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "main": "./worker/index.ts",
+  "assets": {
+    "directory": "dist/client",
+    "not_found_handling": "none",
+    "binding": "ASSETS"
+  },
+  "images": {
+    "binding": "IMAGES"
+  },
+  "vars": {
+    "STREAM_RELAY_ORIGIN": "http://154.38.21.68:3000",
+    "IMPORT_RELAY_ORIGIN": "http://154.38.21.68:3000",
+    "TRANSCODE_ORIGIN": "http://154.38.21.68:3100"
+  }
+}

@@ -33,6 +33,7 @@ COPY --from=ca-certs /etc/ssl/certs /etc/ssl/certs
 COPY --from=ca-certs /usr/share/ca-certificates /usr/share/ca-certificates
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
+RUN chmod +x scripts/*.sh
 RUN npm run build
 
 FROM node:22-bookworm-slim AS production

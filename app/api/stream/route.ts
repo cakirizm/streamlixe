@@ -15,8 +15,11 @@ function proxied(value: string, base: URL) { return `/api/stream?url=${encodeURI
 // deployment of this same app) that hits the upstream directly instead.
 // That origin's own /api/stream does the real fetch + playlist rewriting,
 // so this leg is a transparent pass-through — no double-processing.
-const RELAY_ORIGIN = process.env.STREAM_RELAY_ORIGIN?.trim().replace(/\/$/, "");
-const RELAY_HOST = process.env.STREAM_RELAY_HOST?.trim();
+function getRelayConfig() {
+  const origin = (process.env.STREAM_RELAY_ORIGIN || "").trim().replace(/\/$/, "");
+  const host = (process.env.STREAM_RELAY_HOST || "").trim();
+  return { origin: origin || null, host: host || null };
+}
 
 function resilientBody(body: ReadableStream<Uint8Array> | null) {
   if (!body) return null;
@@ -84,6 +87,7 @@ export async function GET(request: Request) {
     const headers = new Headers({ "user-agent": "VLC/3.0.21 LibVLC/3.0.21", accept: "*/*", "accept-language": "tr-TR,tr;q=0.9,en;q=0.7" });
     const range = request.headers.get("range"); if (range) headers.set("range", range);
 
+    const { origin: RELAY_ORIGIN, host: RELAY_HOST } = getRelayConfig();
     if (RELAY_ORIGIN) {
       const relayHeaders = new Headers();
       if (range) relayHeaders.set("range", range);
