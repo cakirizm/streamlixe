@@ -1,11 +1,19 @@
-function getTranscodeConfig() {
-  const origin = (process.env.TRANSCODE_ORIGIN || "").trim().replace(/\/$/, "");
-  const token = process.env.TRANSCODE_TOKEN || "";
+async function getTranscodeConfig() {
+  let origin = (process.env.TRANSCODE_ORIGIN || "").trim().replace(/\/$/, "");
+  let token = process.env.TRANSCODE_TOKEN || "";
+  if (!origin || !token) {
+    try {
+      const { env } = await import("cloudflare:workers");
+      const e = env as Record<string, unknown> | undefined;
+      if (!origin && typeof e?.TRANSCODE_ORIGIN === "string") origin = e.TRANSCODE_ORIGIN.trim().replace(/\/$/, "");
+      if (!token && typeof e?.TRANSCODE_TOKEN === "string") token = e.TRANSCODE_TOKEN;
+    } catch {}
+  }
   return { origin, token };
 }
 
 export async function POST(request: Request) {
-  const { origin, token } = getTranscodeConfig();
+  const { origin, token } = await getTranscodeConfig();
   if (!origin || !token) return Response.json({ error: "Web dönüştürücü yapılandırılmamış" }, { status: 503 });
   try {
     const body = await request.text();
@@ -15,7 +23,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const { origin, token } = getTranscodeConfig();
+  const { origin, token } = await getTranscodeConfig();
   if (!origin || !token) return Response.json({ ok: true });
   const id = new URL(request.url).searchParams.get("session") || "";
   if (!/^[a-f0-9]{32}$/.test(id)) return Response.json({ error: "Geçersiz oturum" }, { status: 400 });

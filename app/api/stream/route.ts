@@ -15,9 +15,17 @@ function proxied(value: string, base: URL) { return `/api/stream?url=${encodeURI
 // deployment of this same app) that hits the upstream directly instead.
 // That origin's own /api/stream does the real fetch + playlist rewriting,
 // so this leg is a transparent pass-through — no double-processing.
-function getRelayConfig() {
-  const origin = (process.env.STREAM_RELAY_ORIGIN || "").trim().replace(/\/$/, "");
-  const host = (process.env.STREAM_RELAY_HOST || "").trim();
+async function getRelayConfig() {
+  let origin = (process.env.STREAM_RELAY_ORIGIN || "").trim().replace(/\/$/, "");
+  let host = (process.env.STREAM_RELAY_HOST || "").trim();
+  if (!origin) {
+    try {
+      const { env } = await import("cloudflare:workers");
+      const e = env as Record<string, unknown> | undefined;
+      if (typeof e?.STREAM_RELAY_ORIGIN === "string") origin = e.STREAM_RELAY_ORIGIN.trim().replace(/\/$/, "");
+      if (typeof e?.STREAM_RELAY_HOST === "string") host = e.STREAM_RELAY_HOST.trim();
+    } catch {}
+  }
   return { origin: origin || null, host: host || null };
 }
 
@@ -87,7 +95,7 @@ export async function GET(request: Request) {
     const headers = new Headers({ "user-agent": "VLC/3.0.21 LibVLC/3.0.21", accept: "*/*", "accept-language": "tr-TR,tr;q=0.9,en;q=0.7" });
     const range = request.headers.get("range"); if (range) headers.set("range", range);
 
-    const { origin: RELAY_ORIGIN, host: RELAY_HOST } = getRelayConfig();
+    const { origin: RELAY_ORIGIN, host: RELAY_HOST } = await getRelayConfig();
     if (RELAY_ORIGIN) {
       const relayHeaders = new Headers();
       if (range) relayHeaders.set("range", range);

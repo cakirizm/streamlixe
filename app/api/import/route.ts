@@ -5,9 +5,17 @@ const blocked = /^(localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2
 // set, forward the raw import request to another origin (e.g. a shared-
 // hosting deployment of this same app, which has no such per-request CPU
 // cap) and pass its response straight through.
-function getImportRelayConfig() {
-  const origin = (process.env.IMPORT_RELAY_ORIGIN || "").trim().replace(/\/$/, "");
-  const host = (process.env.IMPORT_RELAY_HOST || "").trim();
+async function getImportRelayConfig() {
+  let origin = (process.env.IMPORT_RELAY_ORIGIN || "").trim().replace(/\/$/, "");
+  let host = (process.env.IMPORT_RELAY_HOST || "").trim();
+  if (!origin) {
+    try {
+      const { env } = await import("cloudflare:workers");
+      const e = env as Record<string, unknown> | undefined;
+      if (typeof e?.IMPORT_RELAY_ORIGIN === "string") origin = e.IMPORT_RELAY_ORIGIN.trim().replace(/\/$/, "");
+      if (typeof e?.IMPORT_RELAY_HOST === "string") host = e.IMPORT_RELAY_HOST.trim();
+    } catch {}
+  }
   return { origin: origin || null, host: host || null };
 }
 
@@ -55,7 +63,7 @@ async function getText(url: URL) {
 }
 
 export async function POST(request: Request) {
-  const { origin: IMPORT_RELAY_ORIGIN, host: IMPORT_RELAY_HOST } = getImportRelayConfig();
+  const { origin: IMPORT_RELAY_ORIGIN, host: IMPORT_RELAY_HOST } = await getImportRelayConfig();
   if (IMPORT_RELAY_ORIGIN) {
     try {
       const bodyText = await request.text();
