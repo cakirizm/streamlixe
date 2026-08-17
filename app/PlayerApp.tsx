@@ -272,16 +272,30 @@ function useDpadNavigation(enabled:boolean,resetKey:string){
       const from=current&&list.includes(current)?current.getBoundingClientRect():null;
       if(!from){e.preventDefault();list[0].focus({preventScroll:true});list[0].scrollIntoView({block:"nearest",inline:"nearest"});return}
       const fx=from.left+from.width/2,fy=from.top+from.height/2;
-      let best:HTMLElement|null=null,bestScore=Infinity;
-      for(const el of list){
-        if(el===current)continue;
+      // Acik bir akordiyon (ör. Ayarlar) icindeyken, panelin ic kontrolleri (onay kutusu, PIN
+      // alani vb.) genelde satirin SAGINDA duruyor -- yukari/asagi skorlamasi yatay kaymayi
+      // agir cezalandirdigi icin bu kontroller atlanip doğrudan bir alttaki akordiyon basligina
+      // geciliyordu ("içeriğe hiç girmiyor" sikayeti). Ayni acik panelin icindeki adaylara
+      // belirgin bir oncelik vererek once panelin ici tarandiktan sonra disariya cikilmasini
+      // sagliyoruz.
+      const openPanel=current?.closest(".settings-accordion.active") as HTMLElement|null;
+      const score=(el:HTMLElement)=>{
         const rect=el.getBoundingClientRect();
         const dx=rect.left+rect.width/2-fx,dy=rect.top+rect.height/2-fy;
         const primary=e.key==="ArrowUp"?-dy:e.key==="ArrowDown"?dy:e.key==="ArrowLeft"?-dx:dx;
         const cross=e.key==="ArrowUp"||e.key==="ArrowDown"?dx:dy;
-        if(primary<=2)continue;
-        const score=primary+Math.abs(cross)*2;
-        if(score<bestScore){bestScore=score;best=el}
+        return primary>2?primary+Math.abs(cross)*2:null;
+      };
+      // Once acik panelin icindeki adaylari dene; biri varsa panelin disina hic bakma (disaridaki
+      // bir sonraki baslik her zaman panel icindeki bir kontrolden "daha yakin" sayilabiliyordu).
+      const inPanel=openPanel?list.filter(el=>el!==current&&openPanel.contains(el)):[];
+      const scope=inPanel.some(el=>score(el)!=null)?inPanel:list;
+      let best:HTMLElement|null=null,bestScore=Infinity;
+      for(const el of scope){
+        if(el===current)continue;
+        const s=score(el);
+        if(s==null)continue;
+        if(s<bestScore){bestScore=s;best=el}
       }
       if(best){e.preventDefault();best.focus({preventScroll:true});best.scrollIntoView({block:"nearest",inline:"nearest"})}
     };

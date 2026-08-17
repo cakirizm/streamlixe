@@ -104,7 +104,8 @@
    burada guvenli ve gerekli.
    ID: ODAK-STILI */
 button:focus,a:focus,[tabindex]:focus{outline:none}
-input:focus,select:focus{outline:none;border-color:#8e35ff;box-shadow:none}
+input:focus,select:focus{outline:none;border-color:#8e35ff;box-shadow:0 0 0 3px rgba(199,36,239,.45)}
+input[type="checkbox"]:focus{box-shadow:0 0 0 3px rgba(199,36,239,.6);border-radius:3px}
 /* Sadece scale+koyu golge (eski hali) canli poster/afis gorselleri uzerinde TV mesafesinden
    neredeyse hic secilmiyordu -- kart tabanli her yerde (film/dizi izgarasi, one cikanlar,
    devam et sirasi, oneri raflari) kullanicinin "neredeyim" sorusuna cevap veremiyordu. Belirgin
