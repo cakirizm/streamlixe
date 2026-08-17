@@ -1,0 +1,23 @@
+[Unit]
+Description=StreamLiveX selective HLS transcoder
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=streamlivex-transcoder
+Group=streamlivex-transcoder
+EnvironmentFile=/etc/streamlivex-transcoder.env
+ExecStart=/usr/bin/node /opt/streamlivex-transcoder/server.mjs
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/cache/streamlivex-transcoder
+MemoryMax=1500M
+CPUQuota=180%
+
+[Install]
+WantedBy=multi-user.target
