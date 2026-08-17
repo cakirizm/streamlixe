@@ -64,11 +64,16 @@ async function getText(url: URL) {
 
 export async function POST(request: Request) {
   const { origin: IMPORT_RELAY_ORIGIN, host: IMPORT_RELAY_HOST } = await getImportRelayConfig();
-  if (IMPORT_RELAY_ORIGIN) {
+  const requestUrl = new URL(request.url);
+  const isRelayedRequest = request.headers.has("x-streamlivex-relay");
+  const isRelayHost = IMPORT_RELAY_ORIGIN ? (requestUrl.host === new URL(IMPORT_RELAY_ORIGIN).host || request.headers.get("host") === new URL(IMPORT_RELAY_ORIGIN).host) : false;
+
+  if (IMPORT_RELAY_ORIGIN && !isRelayedRequest && !isRelayHost) {
     try {
       const bodyText = await request.text();
       const relayHeaders = new Headers({ "content-type": "application/json" });
       if (IMPORT_RELAY_HOST) relayHeaders.set("host", IMPORT_RELAY_HOST);
+      relayHeaders.set("x-streamlivex-relay", "1");
       // Kept comfortably under Cloudflare Workers' own request duration limit so
       // we always get to return our own JSON error instead of Cloudflare's raw
       // "error code: 502" page when a request runs long.

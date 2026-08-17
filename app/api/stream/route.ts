@@ -96,10 +96,14 @@ export async function GET(request: Request) {
     const range = request.headers.get("range"); if (range) headers.set("range", range);
 
     const { origin: RELAY_ORIGIN, host: RELAY_HOST } = await getRelayConfig();
-    if (RELAY_ORIGIN) {
+    const isRelayedRequest = request.headers.has("x-streamlivex-relay");
+    const isRelayHost = RELAY_ORIGIN ? (requestUrl.host === new URL(RELAY_ORIGIN).host || request.headers.get("host") === new URL(RELAY_ORIGIN).host) : false;
+
+    if (RELAY_ORIGIN && !isRelayedRequest && !isRelayHost) {
       const relayHeaders = new Headers();
       if (range) relayHeaders.set("range", range);
       if (RELAY_HOST) relayHeaders.set("host", RELAY_HOST);
+      relayHeaders.set("x-streamlivex-relay", "1");
       const relayUrl = new URL("/api/stream", `${RELAY_ORIGIN}/`);
       relayUrl.searchParams.set("url", source.href);
       if (startup) relayUrl.searchParams.set("startup", "1");
