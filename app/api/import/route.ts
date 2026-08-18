@@ -78,13 +78,13 @@ export async function POST(request: Request) {
       // we always get to return our own JSON error instead of Cloudflare's raw
       // "error code: 502" page when a request runs long.
       const relayed = await fetch(`${IMPORT_RELAY_ORIGIN}/api/import`, { method: "POST", headers: relayHeaders, body: bodyText, signal: AbortSignal.timeout(45000) });
-      const text = await relayed.text();
-      // Cloudflare'in kendisi, Worker'dan gelen 502/504 durum kodlu yanıtların gövdesini kendi
-      // jenerik hata sayfasıyla değiştiriyor (bizim Türkçe JSON hata mesajımızı yutuyor). Bu
-      // yüzden gerçek durumu 500'e eşliyoruz -- Cloudflare bu koda dokunmuyor, kullanıcı bizim
-      // gövdemizi görür.
+      // Büyük Xtream kütüphaneleri (bu hesapta ~54 MB) tek parça metne çevrilince (relayed.text())
+      // Worker'ın 128 MB bellek sınırını aşıp isteği düşürüyordu; kullanıcıya "sunucu yanıt
+      // vermedi" hatası dönüyordu. Gövdeyi tamponlamadan doğrudan akıtarak (stream) hem belleği
+      // hem CPU'yu koruyoruz. Cloudflare 502/504 durum kodlu yanıtların gövdesini kendi jenerik
+      // hata sayfasıyla değiştirdiği için gerçek durumu 500'e eşliyoruz.
       const status = relayed.status === 502 || relayed.status === 504 ? 500 : relayed.status;
-      return new Response(text, { status, headers: { "content-type": "application/json" } });
+      return new Response(relayed.body, { status, headers: { "content-type": "application/json" } });
     } catch (error) {
       const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
       return Response.json({ error: timedOut ? "İçe aktarma zaman aşımına uğradı — liste çok büyük veya sunucu yavaş yanıt veriyor olabilir, tekrar deneyin" : "İçe aktarma sunucusuna ulaşılamadı, tekrar deneyin" }, { status: 500 });

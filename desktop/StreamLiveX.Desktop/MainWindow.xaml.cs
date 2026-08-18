@@ -222,10 +222,11 @@ public partial class MainWindow : Window
             BrowserError.Visibility = Visibility.Collapsed;
             await Browser.EnsureCoreWebView2Async();
 
-            if (_appUri.IsLoopback)
-            {
-                await Browser.CoreWebView2.Profile.ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds.DiskCache);
-            }
+            // Uzak web arayüzü sık güncelleniyor; WebView2 HTML belgesini ve varlıkları önbelleğe
+            // alıp yeni CSS/JS deploy edilse bile eski arayüzü göstermeye devam edebiliyordu. Her
+            // açılışta disk önbelleğini temizleyerek kullanıcının daima en güncel arayüzü görmesini
+            // sağlıyoruz (varlıklar içerik-hash'li olduğundan bu yalnızca güncelleme olduğunda fark yaratır).
+            await Browser.CoreWebView2.Profile.ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds.DiskCache);
 
             Browser.CoreWebView2.Settings.AreDevToolsEnabled = _appUri.IsLoopback;
             Browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
@@ -360,6 +361,21 @@ public partial class MainWindow : Window
         ShowPlayerChrome(false);
         _mediaPlayer.Play(activeMedia);
         _ = MonitorDurationAsync(_mediaPlayer, activeMedia);
+        // Klavye odağını WPF penceresine ver ki ok tuşları (ileri/geri sarma) ve Escape
+        // (tam ekrandan çıkış) çalışsın. VLC video yüzeyi (airspace HWND) odağı kapabildiği için
+        // oynatma başladıktan sonra Input önceliğinde tekrar odaklıyoruz.
+        Dispatcher.BeginInvoke(new Action(FocusNativePlayer), System.Windows.Threading.DispatcherPriority.Input);
+    }
+
+    private void FocusNativePlayer()
+    {
+        if (!_nativePlayerOpen)
+        {
+            return;
+        }
+        Activate();
+        NativePlayer.Focus();
+        Keyboard.Focus(NativePlayer);
     }
 
     private static List<Uri> BuildPlaybackCandidates(NativeMediaItem? item, Uri original)
@@ -795,6 +811,8 @@ public partial class MainWindow : Window
 
     private void VideoClickSurface_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        // Video yüzeyine tıklayınca klavye odağını WPF'te tut ki ok tuşları/Escape çalışmaya devam etsin.
+        NativePlayer.Focus();
         ShowPlayerChrome();
         if (!_videoClickArmed)
         {

@@ -266,6 +266,8 @@
         <Grid x:Name="NativePlayer"
               Background="Black"
               Visibility="Collapsed"
+              Focusable="True"
+              FocusVisualStyle="{x:Null}"
               MouseMove="NativePlayer_MouseMove"
               MouseLeave="NativePlayer_MouseLeave">
             <vlc:VideoView x:Name="VideoSurface">

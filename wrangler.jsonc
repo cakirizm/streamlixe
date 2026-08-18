@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "streamlivex",
-  "compatibility_date": "2026-08-17",
+  "compatibility_date": "2026-05-22",
   "compatibility_flags": [
     "nodejs_compat"
   ],
@@ -15,14 +15,12 @@
     "binding": "IMAGES"
   },
   "vars": {
-    "STREAM_RELAY_ORIGIN": "http://154.38.21.68:3000",
-    "IMPORT_RELAY_ORIGIN": "http://154.38.21.68:3000",
-    "TRANSCODE_ORIGIN": "http://154.38.21.68:3100"
+    "STREAM_RELAY_ORIGIN": "http://relay.streamlivex.com:3000",
+    "IMPORT_RELAY_ORIGIN": "http://relay.streamlivex.com:3000",
+    "TRANSCODE_ORIGIN": "http://relay.streamlivex.com:3100"
   },
-  "kv_namespaces": [
-    {
-      "binding": "PAIRING_KV",
-      "id": "de7bcf6e334a4b8b8d95fb301fbb5441"
-    }
+  "routes": [
+    { "pattern": "streamlivex.com", "custom_domain": true },
+    { "pattern": "www.streamlivex.com", "custom_domain": true }
   ]
 }
