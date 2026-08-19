@@ -1,5 +1,5 @@
 package com.streamlivex.android
-
+import com.streamlivex.android.tv.TvRoot
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
@@ -173,6 +173,9 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
+            val isTvDevice =
+    (resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) ==
+        Configuration.UI_MODE_TYPE_TELEVISION
             MaterialTheme(
                 colorScheme = darkColorScheme(
                     primary = androidx.compose.ui.graphics.Color(0xFF765BFF),
@@ -180,6 +183,10 @@ class MainActivity : ComponentActivity() {
                     background = androidx.compose.ui.graphics.Color(0xFF080910),
                 ),
             ) {
+                if (isTvDevice) {
+    TvRoot()
+    return@MaterialTheme
+}
                 Box(Modifier.fillMaxSize()) {
                     BrowserSurface(
                         url = BuildConfig.WEB_APP_URL,
