@@ -1,6 +1,8 @@
 package com.streamlivex.android.tv.setup
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,10 +13,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -32,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.streamlivex.android.tv.data.TvProviderConfig
+import com.streamlivex.android.tv.data.XtreamClient
 
 private const val PREFS_NAME = "streamlivex_tv"
 private const val KEY_SERVER = "xtream_server"
@@ -41,7 +44,9 @@ private const val KEY_PROVIDER_NAME = "xtream_provider_name"
 
 object TvProviderStorage {
 
-    fun load(context: Context): TvProviderConfig? {
+    fun load(
+        context: Context,
+    ): TvProviderConfig? {
         val prefs = context.getSharedPreferences(
             PREFS_NAME,
             Context.MODE_PRIVATE,
@@ -62,9 +67,14 @@ object TvProviderStorage {
             .orEmpty()
 
         val name = prefs
-            .getString(KEY_PROVIDER_NAME, "Oynatma Listem")
+            .getString(
+                KEY_PROVIDER_NAME,
+                "Oynatma Listem",
+            )
             .orEmpty()
-            .ifBlank { "Oynatma Listem" }
+            .ifBlank {
+                "Oynatma Listem"
+            }
 
         if (
             server.isBlank() ||
@@ -111,7 +121,9 @@ object TvProviderStorage {
             .apply()
     }
 
-    fun clear(context: Context) {
+    fun clear(
+        context: Context,
+    ) {
         context
             .getSharedPreferences(
                 PREFS_NAME,
@@ -128,6 +140,10 @@ fun TvSetupScreen(
     onConnected: (TvProviderConfig) -> Unit,
 ) {
     val context = LocalContext.current
+
+    val xtreamClient = remember {
+        XtreamClient()
+    }
 
     var providerName by remember {
         mutableStateOf("Oynatma Listem")
@@ -149,6 +165,14 @@ fun TvSetupScreen(
         mutableStateOf("")
     }
 
+    var status by remember {
+        mutableStateOf("")
+    }
+
+    var busy by remember {
+        mutableStateOf(false)
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -161,6 +185,7 @@ fun TvSetupScreen(
                 .padding(horizontal = 72.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+
             Column(
                 modifier = Modifier
                     .weight(0.85f)
@@ -193,7 +218,7 @@ fun TvSetupScreen(
                 )
 
                 Text(
-                    text = "Xtream Codes hesabını bir kez ekle. StreamLiveX bilgilerini bu TV'de saklar ve sonraki açılışlarda otomatik yükler.",
+                    text = "Xtream Codes hesabını ekle. StreamLiveX hesabı doğrular, kanal ve kategori verilerini kontrol eder ve başarılı bağlantıyı bu TV'de saklar.",
                     color = Color(0xFF94A3B8),
                     style = MaterialTheme.typography.bodyLarge,
                 )
@@ -209,6 +234,7 @@ fun TvSetupScreen(
                     .padding(28.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
+
                 Text(
                     text = "Xtream Codes",
                     color = Color.White,
@@ -226,6 +252,7 @@ fun TvSetupScreen(
                         Text("Liste adı")
                     },
                     singleLine = true,
+                    enabled = !busy,
                 )
 
                 OutlinedTextField(
@@ -233,6 +260,7 @@ fun TvSetupScreen(
                     onValueChange = {
                         server = it
                         error = ""
+                        status = ""
                     },
                     modifier = Modifier.fillMaxWidth(),
                     label = {
@@ -242,6 +270,7 @@ fun TvSetupScreen(
                         Text("http://sunucu.com:8080")
                     },
                     singleLine = true,
+                    enabled = !busy,
                 )
 
                 OutlinedTextField(
@@ -249,12 +278,14 @@ fun TvSetupScreen(
                     onValueChange = {
                         username = it
                         error = ""
+                        status = ""
                     },
                     modifier = Modifier.fillMaxWidth(),
                     label = {
                         Text("Kullanıcı adı")
                     },
                     singleLine = true,
+                    enabled = !busy,
                 )
 
                 OutlinedTextField(
@@ -262,6 +293,7 @@ fun TvSetupScreen(
                     onValueChange = {
                         password = it
                         error = ""
+                        status = ""
                     },
                     modifier = Modifier.fillMaxWidth(),
                     label = {
@@ -270,7 +302,24 @@ fun TvSetupScreen(
                     visualTransformation =
                         PasswordVisualTransformation(),
                     singleLine = true,
+                    enabled = !busy,
                 )
+
+                if (busy) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        CircularProgressIndicator()
+
+                        Text(
+                            text = status.ifBlank {
+                                "Xtream hesabına bağlanılıyor..."
+                            },
+                            color = Color(0xFFCBD5E1),
+                        )
+                    }
+                }
 
                 if (error.isNotBlank()) {
                     Text(
@@ -323,21 +372,61 @@ fun TvSetupScreen(
                                                 "Oynatma Listem"
                                             },
                                         server = cleanServer,
-                                        username =
-                                            cleanUsername,
-                                        password =
-                                            password,
+                                        username = cleanUsername,
+                                        password = password,
                                     )
 
-                                TvProviderStorage.save(
-                                    context = context,
-                                    provider = provider,
-                                )
+                                busy = true
+                                error = ""
+                                status =
+                                    "Hesap doğrulanıyor ve canlı kanallar alınıyor..."
 
-                                onConnected(provider)
+                                Thread {
+                                    val result =
+                                        xtreamClient.loadLiveLibrary(
+                                            provider,
+                                        )
+
+                                    Handler(
+                                        Looper.getMainLooper(),
+                                    ).post {
+                                        busy = false
+
+                                        result
+                                            .onSuccess { library ->
+                                                if (
+                                                    library.channels.isEmpty()
+                                                ) {
+                                                    error =
+                                                        "Hesap doğrulandı ancak canlı kanal bulunamadı."
+                                                    return@onSuccess
+                                                }
+
+                                                TvProviderStorage.save(
+                                                    context = context,
+                                                    provider = provider,
+                                                )
+
+                                                status =
+                                                    "${library.categories.size} kategori ve ${library.channels.size} canlı kanal bulundu."
+
+                                                onConnected(
+                                                    provider,
+                                                )
+                                            }
+                                            .onFailure { throwable ->
+                                                error =
+                                                    throwable.message
+                                                        ?: "Xtream hesabına bağlanılamadı."
+
+                                                status = ""
+                                            }
+                                    }
+                                }.start()
                             }
                         }
                     },
+                    enabled = !busy,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(54.dp),
@@ -347,23 +436,35 @@ fun TvSetupScreen(
                     ),
                 ) {
                     Text(
-                        text = "Bağlan",
+                        text =
+                            if (busy) {
+                                "Bağlanıyor..."
+                            } else {
+                                "Bağlan"
+                            },
                         fontWeight = FontWeight.Bold,
                     )
                 }
 
                 TextButton(
                     onClick = {
+                        providerName =
+                            "Oynatma Listem"
+
                         server = ""
                         username = ""
                         password = ""
                         error = ""
+                        status = ""
                     },
+                    enabled = !busy,
                     modifier = Modifier.align(
                         Alignment.CenterHorizontally,
                     ),
                 ) {
-                    Text("Alanları temizle")
+                    Text(
+                        text = "Alanları temizle",
+                    )
                 }
             }
         }
