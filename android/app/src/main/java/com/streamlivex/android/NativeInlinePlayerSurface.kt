@@ -47,134 +47,406 @@ fun NativeInlinePlayerSurface(
     onFullScreen: () -> Unit,
     onFailure: (String) -> Unit,
 ) {
-    val candidates = remember(request.item.url) { playbackCandidates(request.item) }
-    var candidateIndex by remember(request.sessionId) { mutableIntStateOf(0) }
-    var candidateRetry by remember(request.sessionId) { mutableIntStateOf(0) }
-    var ready by remember(request.sessionId) { mutableStateOf(player.playbackState == Player.STATE_READY) }
-    var failed by remember(request.sessionId) { mutableStateOf(false) }
-    var qualityLabel by remember(request.sessionId) { mutableStateOf("AUTO") }
-    val failureMessage = stringResource(R.string.stream_failed)
-
-    // Player, MainActivity tarafından olusturulup on izleme ile tam ekran arasinda paylasilir --
-    // burada sadece dinleyici ekleyip cikartiyoruz, release() cagirmiyoruz; yasam dongusunu
-    // MainActivity, oturum hem on izleme hem tam ekran tarafindan referans verilmedigi (orphan
-    // oldugu) anda yonetiyor.
-    DisposableEffect(player, candidates) {
-        val listener = object : Player.Listener {
-            override fun onPlaybackStateChanged(state: Int) {
-                ready = state == Player.STATE_READY
-                if (ready) PlaybackCandidateMemory.remember(request.sessionId, candidateIndex)
-            }
-
-            override fun onVideoSizeChanged(videoSize: VideoSize) {
-                qualityLabel = videoSize.height.takeIf { it > 0 }?.let { "${it}p" } ?: "AUTO"
-            }
-
-            override fun onPlayerError(error: PlaybackException) {
-                if (error.isRetryableStreamError() && candidateRetry < 1) {
-                    candidateRetry += 1
-                } else if (candidateIndex + 1 < candidates.size) {
-                    candidateRetry = 0
-                    candidateIndex += 1
-                } else {
-                    ready = false
-                    failed = true
-                    onFailure(failureMessage)
-                }
-            }
+    /*
+     * Kanal URL'si degisince candidate listesi
+     * yeniden hesaplanir.
+     */
+    val candidates =
+        remember(request.item.url) {
+            playbackCandidates(
+                request.item,
+            )
         }
-        player.addListener(listener)
-        onDispose { player.removeListener(listener) }
+
+    /*
+     * Ayni sessionId ile kanal degistiriyoruz.
+     * Bu nedenle state sadece sessionId'ye
+     * bagli olamaz; URL de anahtarin parcasi.
+     */
+    var candidateIndex by remember(
+        request.sessionId,
+        request.item.url,
+    ) {
+        mutableIntStateOf(0)
     }
 
-    LaunchedEffect(candidateIndex, candidateRetry, request.sessionId) {
-        val startKey = "${request.sessionId}:$candidateIndex:$candidateRetry"
-        if (PlaybackStartTracker.hasStarted(startKey)) {
-            ready = player.playbackState == Player.STATE_READY
+    var candidateRetry by remember(
+        request.sessionId,
+        request.item.url,
+    ) {
+        mutableIntStateOf(0)
+    }
+
+    var ready by remember(
+        request.sessionId,
+        request.item.url,
+    ) {
+        mutableStateOf(
+            player.playbackState ==
+                Player.STATE_READY,
+        )
+    }
+
+    var failed by remember(
+        request.sessionId,
+        request.item.url,
+    ) {
+        mutableStateOf(false)
+    }
+
+    var qualityLabel by remember(
+        request.sessionId,
+        request.item.url,
+    ) {
+        mutableStateOf("AUTO")
+    }
+
+    val failureMessage =
+        stringResource(
+            R.string.stream_failed,
+        )
+
+    /*
+     * Player MainActivity tarafindan
+     * olusturuluyor.
+     *
+     * Preview ve fullscreen ayni player'i
+     * paylasabilir.
+     *
+     * Burada release() YOK.
+     */
+    DisposableEffect(
+        player,
+        candidates,
+        request.item.url,
+    ) {
+        val listener =
+            object : Player.Listener {
+
+                override fun onPlaybackStateChanged(
+                    state: Int,
+                ) {
+                    ready =
+                        state ==
+                        Player.STATE_READY
+
+                    if (ready) {
+                        PlaybackCandidateMemory
+                            .remember(
+                                request.sessionId,
+                                candidateIndex,
+                            )
+                    }
+                }
+
+                override fun onVideoSizeChanged(
+                    videoSize: VideoSize,
+                ) {
+                    qualityLabel =
+                        videoSize
+                            .height
+                            .takeIf {
+                                it > 0
+                            }
+                            ?.let {
+                                "${it}p"
+                            }
+                            ?: "AUTO"
+                }
+
+                override fun onPlayerError(
+                    error: PlaybackException,
+                ) {
+                    if (
+                        error
+                            .isRetryableStreamError() &&
+                        candidateRetry < 1
+                    ) {
+                        candidateRetry += 1
+
+                    } else if (
+                        candidateIndex + 1 <
+                        candidates.size
+                    ) {
+                        candidateRetry = 0
+                        candidateIndex += 1
+
+                    } else {
+                        ready = false
+                        failed = true
+
+                        onFailure(
+                            failureMessage,
+                        )
+                    }
+                }
+            }
+
+        player.addListener(
+            listener,
+        )
+
+        onDispose {
+            player.removeListener(
+                listener,
+            )
+        }
+    }
+
+    /*
+     * URL hash'i startKey'e dahil.
+     *
+     * Ayni sessionId ile baska kanala
+     * gecince yeni yayinin gercekten
+     * hazırlanmasını saglar.
+     */
+    LaunchedEffect(
+        candidateIndex,
+        candidateRetry,
+        request.sessionId,
+        request.item.url,
+    ) {
+        val startKey =
+            "${request.sessionId}:${request.item.url.hashCode()}:$candidateIndex:$candidateRetry"
+
+        if (
+            PlaybackStartTracker
+                .hasStarted(
+                    startKey,
+                )
+        ) {
+            ready =
+                player.playbackState ==
+                Player.STATE_READY
+
             return@LaunchedEffect
         }
-        PlaybackStartTracker.markStarted(startKey)
+
+        PlaybackStartTracker
+            .markStarted(
+                startKey,
+            )
+
         ready = false
         failed = false
-        if (candidateRetry > 0) kotlinx.coroutines.delay(750)
+
+        if (candidateRetry > 0) {
+            kotlinx.coroutines.delay(
+                750,
+            )
+        }
+
         player.stop()
-        player.setMediaItem(createMediaItem(request, candidates[candidateIndex]))
+
+        player.setMediaItem(
+            createMediaItem(
+                request,
+                candidates[
+                    candidateIndex
+                ],
+            ),
+        )
+
         player.prepare()
+
         player.play()
     }
 
-    Box(modifier.background(Color.Black)) {
+    Box(
+        modifier.background(
+            Color.Black,
+        ),
+    ) {
         AndroidView(
-            modifier = Modifier.fillMaxSize(),
-            factory = { playerContext ->
-                PlayerView(playerContext).apply {
-                    this.player = player
-                    useController = true
-                    controllerAutoShow = false
-                    controllerHideOnTouch = true
-                    controllerShowTimeoutMs = 3_500
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    keepScreenOn = true
+            modifier =
+                Modifier.fillMaxSize(),
+            factory = {
+                    playerContext ->
+
+                PlayerView(
+                    playerContext,
+                ).apply {
+
+                    this.player =
+                        player
+
+                    useController =
+                        true
+
+                    controllerAutoShow =
+                        false
+
+                    controllerHideOnTouch =
+                        true
+
+                    controllerShowTimeoutMs =
+                        3_500
+
+                    resizeMode =
+                        AspectRatioFrameLayout
+                            .RESIZE_MODE_FIT
+
+                    keepScreenOn =
+                        true
                 }
             },
-            update = { it.player = player },
+            update = {
+                it.player =
+                    player
+            },
         )
 
         Row(
-            modifier = Modifier.fillMaxWidth()
-                .background(Color(0x99000000))
-                .padding(horizontal = 10.dp, vertical = 7.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    request.item.name,
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Color(
+                        0x99000000,
+                    ),
                 )
+                .padding(
+                    horizontal =
+                        10.dp,
+                    vertical =
+                        7.dp,
+                ),
+            verticalAlignment =
+                Alignment.CenterVertically,
+            horizontalArrangement =
+                Arrangement.spacedBy(
+                    8.dp,
+                ),
+        ) {
+            Column(
+                Modifier.weight(1f),
+            ) {
                 Text(
-                    "LIVE • $qualityLabel",
-                    color = Color(0xFFB8B4C8),
-                    style = MaterialTheme.typography.labelSmall,
+                    text =
+                        request.item.name,
+                    color =
+                        Color.White,
+                    fontWeight =
+                        FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow =
+                        TextOverflow.Ellipsis,
+                    style =
+                        MaterialTheme
+                            .typography
+                            .labelMedium,
+                )
+
+                Text(
+                    text =
+                        "LIVE • $qualityLabel",
+                    color =
+                        Color(
+                            0xFFB8B4C8,
+                        ),
+                    style =
+                        MaterialTheme
+                            .typography
+                            .labelSmall,
                 )
             }
+
             Button(
-                onClick = onFullScreen,
-                colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                onClick =
+                    onFullScreen,
+                colors =
+                    ButtonDefaults
+                        .buttonColors(
+                            containerColor =
+                                Color.White,
+                            contentColor =
+                                Color.Black,
+                        ),
+                contentPadding =
+                    PaddingValues(
+                        horizontal =
+                            12.dp,
+                        vertical =
+                            0.dp,
+                    ),
             ) {
-                Text(stringResource(R.string.full_screen), style = MaterialTheme.typography.labelSmall)
+                Text(
+                    text =
+                        stringResource(
+                            R.string
+                                .full_screen,
+                        ),
+                    style =
+                        MaterialTheme
+                            .typography
+                            .labelSmall,
+                )
             }
         }
 
-        if (!ready && !failed) {
+        if (
+            !ready &&
+            !failed
+        ) {
             CircularProgressIndicator(
-                modifier = Modifier.align(Alignment.Center),
-                color = MaterialTheme.colorScheme.primary,
+                modifier =
+                    Modifier.align(
+                        Alignment.Center,
+                    ),
+                color =
+                    MaterialTheme
+                        .colorScheme
+                        .primary,
             )
         }
 
         if (failed) {
             Column(
-                modifier = Modifier.align(Alignment.Center).padding(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier =
+                    Modifier
+                        .align(
+                            Alignment.Center,
+                        )
+                        .padding(
+                            20.dp,
+                        ),
+                horizontalAlignment =
+                    Alignment.CenterHorizontally,
+                verticalArrangement =
+                    Arrangement.spacedBy(
+                        6.dp,
+                    ),
             ) {
                 Text(
-                    stringResource(R.string.stream_failed),
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.labelMedium,
+                    text =
+                        stringResource(
+                            R.string
+                                .stream_failed,
+                        ),
+                    color =
+                        Color.White,
+                    fontWeight =
+                        FontWeight.Bold,
+                    style =
+                        MaterialTheme
+                            .typography
+                            .labelMedium,
                 )
+
                 Text(
-                    stringResource(R.string.stream_failed_detail),
-                    color = Color(0xFFCAC6D8),
+                    text =
+                        stringResource(
+                            R.string
+                                .stream_failed_detail,
+                        ),
+                    color =
+                        Color(
+                            0xFFCAC6D8,
+                        ),
                     maxLines = 2,
-                    style = MaterialTheme.typography.labelSmall,
+                    style =
+                        MaterialTheme
+                            .typography
+                            .labelSmall,
                 )
             }
         }
