@@ -1,5 +1,7 @@
 package com.streamlivex.android.tv
 
+import android.os.Handler
+import android.os.Looper
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -12,11 +14,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -28,6 +32,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.media3.exoplayer.ExoPlayer
 import com.streamlivex.android.PlaybackRequest
@@ -67,6 +72,7 @@ fun TvRoot(
     onFullscreenStateChanged: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
+
     var provider by remember {
         mutableStateOf<TvProviderConfig?>(TvProviderStorage.load(context))
     }
@@ -75,12 +81,96 @@ fun TvRoot(
     }
 
     if (provider == null) {
-        TvSetupScreen(onConnected = { provider = it })
+        TvSetupScreen(
+            onConnected = {
+                provider = it
+            },
+        )
+        return
+    }
+
+    val activeProvider = provider!!
+    val libraryIndex = remember(activeProvider.server, activeProvider.username) {
+        TvLibraryIndex(context)
+    }
+
+    var libraryReady by remember(activeProvider.server, activeProvider.username) {
+        mutableStateOf(libraryIndex.isReady(activeProvider))
+    }
+    var preparationStage by remember { mutableStateOf("Kütüphane hazırlanıyor…") }
+    var preparationCount by remember { mutableIntStateOf(libraryIndex.count(activeProvider)) }
+    var preparationError by remember { mutableStateOf("") }
+    var preparationRetry by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(
+        activeProvider.server,
+        activeProvider.username,
+        preparationRetry,
+    ) {
+        if (libraryIndex.isReady(activeProvider)) {
+            libraryReady = true
+            preparationCount = libraryIndex.count(activeProvider)
+            return@LaunchedEffect
+        }
+
+        libraryReady = false
+        preparationError = ""
+        preparationStage = "Film kütüphanesi hazırlanıyor…"
+        preparationCount = 0
+
+        Thread {
+            val handler = Handler(Looper.getMainLooper())
+            val client = XtreamClient()
+
+            val result =
+                libraryIndex.rebuildProvider(
+                    provider = activeProvider,
+                    client = client,
+                    onProgress = { stage, processed ->
+                        handler.post {
+                            preparationCount = processed
+                            preparationStage =
+                                when (stage) {
+                                    "movies" -> "Filmler hazırlanıyor…"
+                                    "series" -> "Diziler hazırlanıyor…"
+                                    "done" -> "Kütüphane hazır."
+                                    else -> "Kütüphane hazırlanıyor…"
+                                }
+                        }
+                    },
+                )
+
+            handler.post {
+                result
+                    .onSuccess {
+                        preparationCount = it
+                        preparationStage = "Kütüphane hazır."
+                        libraryReady = true
+                    }
+                    .onFailure {
+                        libraryReady = false
+                        preparationError =
+                            it.message
+                                ?: "Kütüphane hazırlanamadı."
+                    }
+            }
+        }.start()
+    }
+
+    if (!libraryReady) {
+        LibraryPreparationScreen(
+            stage = preparationStage,
+            processed = preparationCount,
+            error = preparationError,
+            onRetry = {
+                preparationRetry += 1
+            },
+        )
         return
     }
 
     TvMainScreen(
-        provider = provider!!,
+        provider = activeProvider,
         locale = locale,
         playerFor = playerFor,
         releasePlayer = releasePlayer,
@@ -95,9 +185,103 @@ fun TvRoot(
             TvLiveLibraryCache.clear()
             TvContentCache.clear()
             TvContentStore(context).clear()
+            libraryIndex.clearProvider(activeProvider)
             provider = null
         },
     )
+}
+
+@Composable
+private fun LibraryPreparationScreen(
+    stage: String,
+    processed: Int,
+    error: String,
+    onRetry: () -> Unit,
+) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(Color(0xFF080B12)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier.width(560.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(
+                "StreamLiveX",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.displaySmall,
+            )
+
+            if (error.isBlank()) {
+                CircularProgressIndicator()
+
+                Text(
+                    stage,
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.headlineSmall,
+                    textAlign = TextAlign.Center,
+                )
+
+                Text(
+                    "$processed içerik işlendi",
+                    color = Color(0xFF60A5FA),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+
+                Text(
+                    "İlk kurulum 30 saniye–1 dakika sürebilir. Bu sırada film ve dizi listesi RAM'e yığılmadan diske hazırlanıyor.",
+                    color = Color(0xFF94A3B8),
+                    textAlign = TextAlign.Center,
+                )
+            } else {
+                Text(
+                    error,
+                    color = Color(0xFFF87171),
+                    textAlign = TextAlign.Center,
+                )
+
+                PreparationButton("Yeniden Dene", onRetry)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PreparationButton(
+    text: String,
+    onClick: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+
+    Box(
+        modifier =
+            Modifier
+                .background(
+                    if (focused) Color(0xFF2563EB)
+                    else Color(0xFF1E293B),
+                    RoundedCornerShape(9.dp),
+                )
+                .onFocusChanged {
+                    focused = it.isFocused
+                }
+                .clickable(onClick = onClick)
+                .padding(
+                    horizontal = 18.dp,
+                    vertical = 12.dp,
+                ),
+    ) {
+        Text(
+            text,
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+        )
+    }
 }
 
 @Composable
@@ -111,114 +295,144 @@ private fun TvMainScreen(
     onLocaleChanged: (TvLocale) -> Unit,
     onDisconnect: () -> Unit,
 ) {
-    val context = LocalContext.current
-    val strings = remember(locale) { TvStrings(locale) }
-
-    var selectedSection by remember { mutableStateOf(TvSection.Live) }
-    var menuExpanded by remember { mutableStateOf(true) }
-    var anyFullscreen by remember { mutableStateOf(false) }
-    val liveMenuFocusRequester = remember { FocusRequester() }
-
-    /*
-     * TiviMate-like first preparation without OOM:
-     * Xtream VOD and Series are streamed row-by-row into SQLite.
-     * The complete provider JSON is never held in RAM as one giant JSONArray.
-     */
-    LaunchedEffect(provider.server, provider.username) {
-        Thread {
-            val index = TvLibraryIndex(context)
-            val client = XtreamClient()
-
-            if (index.count(provider) < 10) {
-                index.clearProvider(provider)
-                client.scanVod(provider) { index.put(provider, it) }
-                client.scanSeries(provider) { index.put(provider, it) }
-            }
-        }.start()
+    val strings = remember(locale) {
+        TvStrings(locale)
     }
 
+    var selectedSection by remember {
+        mutableStateOf(TvSection.Home)
+    }
+    var menuExpanded by remember {
+        mutableStateOf(true)
+    }
+    var anyFullscreen by remember {
+        mutableStateOf(false)
+    }
+
+    val liveMenuFocusRequester =
+        remember {
+            FocusRequester()
+        }
+
     Row(
-        modifier = Modifier.fillMaxSize().background(Color(0xFF080B12)),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(Color(0xFF080B12)),
     ) {
         if (!anyFullscreen) {
             TvSideMenu(
                 selectedSection = selectedSection,
                 expanded = menuExpanded,
                 locale = locale,
-                onMenuFocused = { menuExpanded = true },
-                onSectionSelected = { selectedSection = it },
-                liveMenuFocusRequester = liveMenuFocusRequester,
+                onMenuFocused = {
+                    menuExpanded = true
+                },
+                onSectionSelected = {
+                    selectedSection = it
+                },
+                liveMenuFocusRequester =
+                    liveMenuFocusRequester,
             )
         }
 
         Box(
-            modifier = Modifier.fillMaxSize().background(Color(0xFF0D111B)),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFF0D111B)),
         ) {
-            val fullscreenCallback: (Boolean) -> Unit = { active ->
-                anyFullscreen = active
-                onFullscreenStateChanged(active)
-            }
+            val fullscreenCallback:
+                (Boolean) -> Unit = { active ->
+                    anyFullscreen = active
+                    onFullscreenStateChanged(active)
+                }
 
             when (selectedSection) {
-                TvSection.Home -> TvHomeScreen(
-                    provider = provider,
-                    locale = locale,
-                    playerFor = playerFor,
-                    releasePlayer = releasePlayer,
-                    onFullscreenStateChanged = fullscreenCallback,
-                )
+                TvSection.Home ->
+                    TvHomeScreen(
+                        provider = provider,
+                        locale = locale,
+                        playerFor = playerFor,
+                        releasePlayer = releasePlayer,
+                        onFullscreenStateChanged =
+                            fullscreenCallback,
+                    )
 
-                TvSection.Live -> LiveTvScreen(
-                    provider = provider,
-                    playerFor = playerFor,
-                    releasePlayer = releasePlayer,
-                    externalPlayerKeyEvent = externalPlayerKeyEvent,
-                    onFullscreenStateChanged = fullscreenCallback,
-                    onContentFocused = {
-                        if (!anyFullscreen) menuExpanded = false
-                    },
-                    menuFocusRequester = liveMenuFocusRequester,
-                )
+                TvSection.Live ->
+                    LiveTvScreen(
+                        provider = provider,
+                        playerFor = playerFor,
+                        releasePlayer = releasePlayer,
+                        externalPlayerKeyEvent =
+                            externalPlayerKeyEvent,
+                        onFullscreenStateChanged =
+                            fullscreenCallback,
+                        onContentFocused = {
+                            if (!anyFullscreen) {
+                                menuExpanded = false
+                            }
+                        },
+                        menuFocusRequester =
+                            liveMenuFocusRequester,
+                    )
 
-                TvSection.Movies -> TvMoviesScreen(
-                    provider = provider,
-                    locale = locale,
-                    playerFor = playerFor,
-                    releasePlayer = releasePlayer,
-                    onFullscreenStateChanged = fullscreenCallback,
-                    onContentFocused = {
-                        if (!anyFullscreen) menuExpanded = false
-                    },
-                )
+                TvSection.Movies ->
+                    TvMoviesScreen(
+                        provider = provider,
+                        locale = locale,
+                        playerFor = playerFor,
+                        releasePlayer = releasePlayer,
+                        onFullscreenStateChanged =
+                            fullscreenCallback,
+                        onContentFocused = {
+                            if (!anyFullscreen) {
+                                menuExpanded = false
+                            }
+                        },
+                    )
 
-                TvSection.Series -> TvSeriesScreen(
-                    provider = provider,
-                    locale = locale,
-                    playerFor = playerFor,
-                    releasePlayer = releasePlayer,
-                    onFullscreenStateChanged = fullscreenCallback,
-                    onContentFocused = {
-                        if (!anyFullscreen) menuExpanded = false
-                    },
-                )
+                TvSection.Series ->
+                    TvSeriesScreen(
+                        provider = provider,
+                        locale = locale,
+                        playerFor = playerFor,
+                        releasePlayer = releasePlayer,
+                        onFullscreenStateChanged =
+                            fullscreenCallback,
+                        onContentFocused = {
+                            if (!anyFullscreen) {
+                                menuExpanded = false
+                            }
+                        },
+                    )
 
-                TvSection.Search -> TvSearchScreen(
-                    provider = provider,
-                    locale = locale,
-                    onContentFocused = {
-                        if (!anyFullscreen) menuExpanded = false
-                    },
-                )
+                TvSection.Search ->
+                    TvSearchScreen(
+                        provider = provider,
+                        locale = locale,
+                        onContentFocused = {
+                            if (!anyFullscreen) {
+                                menuExpanded = false
+                            }
+                        },
+                    )
 
-                TvSection.MyList -> TvMyListScreen(locale = locale)
+                TvSection.MyList ->
+                    TvMyListScreen(
+                        locale = locale,
+                    )
 
-                TvSection.Settings -> TvSettingsScreen(
-                    provider = provider,
-                    locale = locale,
-                    strings = strings,
-                    onLocaleChanged = onLocaleChanged,
-                    onDisconnect = onDisconnect,
-                )
+                TvSection.Settings ->
+                    TvSettingsScreen(
+                        provider = provider,
+                        locale = locale,
+                        strings = strings,
+                        onLocaleChanged =
+                            onLocaleChanged,
+                        onDisconnect =
+                            onDisconnect,
+                    )
             }
         }
     }
@@ -233,10 +447,18 @@ private fun TvSideMenu(
     onSectionSelected: (TvSection) -> Unit,
     liveMenuFocusRequester: FocusRequester,
 ) {
-    val strings = remember(locale) { TvStrings(locale) }
-    val menuWidth = if (expanded) 190.dp else 72.dp
+    val strings =
+        remember(locale) {
+            TvStrings(locale)
+        }
 
-    fun title(section: TvSection): String =
+    val menuWidth =
+        if (expanded) 190.dp
+        else 72.dp
+
+    fun title(
+        section: TvSection,
+    ): String =
         when (section) {
             TvSection.Home -> strings["home"]
             TvSection.Live -> strings["live"]
@@ -247,7 +469,9 @@ private fun TvSideMenu(
             TvSection.Settings -> strings["settings"]
         }
 
-    fun short(section: TvSection): String =
+    fun short(
+        section: TvSection,
+    ): String =
         when (section) {
             TvSection.Home -> "A"
             TvSection.Live -> "TV"
@@ -259,52 +483,126 @@ private fun TvSideMenu(
         }
 
     Column(
-        modifier = Modifier
-            .width(menuWidth)
-            .fillMaxHeight()
-            .background(Color(0xFF080B12))
-            .padding(horizontal = if (expanded) 12.dp else 8.dp, vertical = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
+        modifier =
+            Modifier
+                .width(menuWidth)
+                .fillMaxHeight()
+                .background(Color(0xFF080B12))
+                .padding(
+                    horizontal =
+                        if (expanded) 12.dp
+                        else 8.dp,
+                    vertical = 18.dp,
+                ),
+        verticalArrangement =
+            Arrangement.spacedBy(7.dp),
     ) {
         Text(
-            text = if (expanded) "StreamLiveX" else "SLX",
+            text =
+                if (expanded) "StreamLiveX"
+                else "SLX",
             color = Color.White,
             fontWeight = FontWeight.Bold,
-            style = if (expanded) MaterialTheme.typography.titleLarge else MaterialTheme.typography.labelLarge,
-            modifier = Modifier.padding(start = if (expanded) 10.dp else 6.dp, bottom = 14.dp),
+            style =
+                if (expanded) {
+                    MaterialTheme.typography.titleLarge
+                } else {
+                    MaterialTheme.typography.labelLarge
+                },
+            modifier =
+                Modifier.padding(
+                    start =
+                        if (expanded) 10.dp
+                        else 6.dp,
+                    bottom = 14.dp,
+                ),
         )
 
-        TvSection.entries.forEach { section ->
-            var focused by remember { mutableStateOf(false) }
-            val background = when {
-                focused -> Color(0xFF2563EB)
-                section == selectedSection -> Color(0xFF172554)
-                else -> Color.Transparent
-            }
+        TvSection.entries.forEach {
+            section ->
+
+            var focused by
+                remember {
+                    mutableStateOf(false)
+                }
+
+            val background =
+                when {
+                    focused ->
+                        Color(0xFF2563EB)
+
+                    section == selectedSection ->
+                        Color(0xFF172554)
+
+                    else ->
+                        Color.Transparent
+                }
 
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(background, RoundedCornerShape(9.dp))
-                    .then(
-                        if (section == TvSection.Live) {
-                            Modifier.focusRequester(liveMenuFocusRequester)
-                        } else {
-                            Modifier
-                        },
-                    )
-                    .onFocusChanged {
-                        focused = it.isFocused
-                        if (it.isFocused) onMenuFocused()
-                    }
-                    .clickable { onSectionSelected(section) }
-                    .padding(horizontal = if (expanded) 13.dp else 6.dp, vertical = 12.dp),
-                contentAlignment = if (expanded) Alignment.CenterStart else Alignment.Center,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .background(
+                            background,
+                            RoundedCornerShape(9.dp),
+                        )
+                        .then(
+                            if (
+                                section ==
+                                TvSection.Live
+                            ) {
+                                Modifier
+                                    .focusRequester(
+                                        liveMenuFocusRequester,
+                                    )
+                            } else {
+                                Modifier
+                            },
+                        )
+                        .onFocusChanged {
+                            focused =
+                                it.isFocused
+
+                            if (it.isFocused) {
+                                onMenuFocused()
+                            }
+                        }
+                        .clickable {
+                            onSectionSelected(
+                                section,
+                            )
+                        }
+                        .padding(
+                            horizontal =
+                                if (expanded) 13.dp
+                                else 6.dp,
+                            vertical = 12.dp,
+                        ),
+                contentAlignment =
+                    if (expanded) {
+                        Alignment.CenterStart
+                    } else {
+                        Alignment.Center
+                    },
             ) {
                 Text(
-                    text = if (expanded) title(section) else short(section),
+                    text =
+                        if (expanded) {
+                            title(section)
+                        } else {
+                            short(section)
+                        },
                     color = Color.White,
-                    fontWeight = if (focused || section == selectedSection) FontWeight.Bold else FontWeight.Medium,
+                    fontWeight =
+                        if (
+                            focused ||
+                            section ==
+                            selectedSection
+                        ) {
+                            FontWeight.Bold
+                        } else {
+                            FontWeight.Medium
+                        },
                     maxLines = 1,
                 )
             }
@@ -321,39 +619,66 @@ private fun TvSettingsScreen(
     onDisconnect: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxSize().background(Color(0xFF0D111B)).padding(36.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(Color(0xFF0D111B))
+                .padding(36.dp),
+        verticalArrangement =
+            Arrangement.spacedBy(18.dp),
     ) {
         Text(
             strings["settings"],
             color = Color.White,
             fontWeight = FontWeight.Bold,
-            style = MaterialTheme.typography.headlineLarge,
+            style =
+                MaterialTheme
+                    .typography
+                    .headlineLarge,
         )
 
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Color(0xFF111827), RoundedCornerShape(14.dp))
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(
+                        Color(0xFF111827),
+                        RoundedCornerShape(14.dp),
+                    )
+                    .padding(20.dp),
+            verticalArrangement =
+                Arrangement.spacedBy(8.dp),
         ) {
-            Text(provider.name, color = Color.White, fontWeight = FontWeight.Bold)
-            Text(provider.server, color = Color(0xFF94A3B8))
+            Text(
+                provider.name,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                provider.server,
+                color = Color(0xFF94A3B8),
+            )
         }
 
         Text(
             strings["language"],
             color = Color.White,
             fontWeight = FontWeight.Bold,
-            style = MaterialTheme.typography.titleLarge,
+            style =
+                MaterialTheme
+                    .typography
+                    .titleLarge,
         )
 
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            horizontalArrangement =
+                Arrangement.spacedBy(10.dp),
+        ) {
             TvLocale.entries.forEach { row ->
                 SettingsButton(
                     text = row.displayName,
-                    selected = row == locale,
+                    selected =
+                        row == locale,
                 ) {
                     onLocaleChanged(row)
                 }
@@ -361,7 +686,8 @@ private fun TvSettingsScreen(
         }
 
         SettingsButton(
-            text = strings["remove_playlist"],
+            text =
+                strings["remove_playlist"],
             destructive = true,
         ) {
             onDisconnect()
@@ -376,22 +702,51 @@ private fun SettingsButton(
     destructive: Boolean = false,
     onClick: () -> Unit,
 ) {
-    var focused by remember { mutableStateOf(false) }
-    val color = when {
-        focused && destructive -> Color(0xFFDC2626)
-        destructive -> Color(0xFF7F1D1D)
-        focused -> Color(0xFF2563EB)
-        selected -> Color(0xFF1D4ED8)
-        else -> Color(0xFF1E293B)
-    }
+    var focused by
+        remember {
+            mutableStateOf(false)
+        }
+
+    val color =
+        when {
+            focused && destructive ->
+                Color(0xFFDC2626)
+
+            destructive ->
+                Color(0xFF7F1D1D)
+
+            focused ->
+                Color(0xFF2563EB)
+
+            selected ->
+                Color(0xFF1D4ED8)
+
+            else ->
+                Color(0xFF1E293B)
+        }
 
     Box(
-        modifier = Modifier
-            .background(color, RoundedCornerShape(9.dp))
-            .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
-            .padding(horizontal = 15.dp, vertical = 12.dp),
+        modifier =
+            Modifier
+                .background(
+                    color,
+                    RoundedCornerShape(9.dp),
+                )
+                .onFocusChanged {
+                    focused = it.isFocused
+                }
+                .clickable(
+                    onClick = onClick,
+                )
+                .padding(
+                    horizontal = 15.dp,
+                    vertical = 12.dp,
+                ),
     ) {
-        Text(text, color = Color.White, fontWeight = FontWeight.Bold)
+        Text(
+            text,
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
