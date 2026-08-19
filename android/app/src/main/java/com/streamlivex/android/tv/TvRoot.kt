@@ -268,23 +268,9 @@ private fun TvSideMenu(
                             onMenuFocused()
                         }
                     }
-                    .onPreviewKeyEvent { composeEvent ->
-                        val event = composeEvent.nativeKeyEvent
-
-                        if (
-                            event.action == android.view.KeyEvent.ACTION_DOWN &&
-                            (
-                                event.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
-                                event.keyCode == android.view.KeyEvent.KEYCODE_ENTER ||
-                                event.keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER
-                            )
-                        ) {
-                            onSectionSelected(section)
-                            true
-                        } else {
-                            false
-                        }
-                    }
+                    .clickable {
+    onSectionSelected(section)
+}
                     .focusable()
                     .padding(
                         horizontal =
