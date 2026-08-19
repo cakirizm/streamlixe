@@ -17,12 +17,17 @@ data class TvSavedItem(
 
 class TvContentStore(context: Context) {
     private val prefs =
-        context.getSharedPreferences("streamlivex_tv_content_v2", Context.MODE_PRIVATE)
+        context.getSharedPreferences(
+            "streamlivex_tv_content_v3",
+            Context.MODE_PRIVATE,
+        )
 
     fun favorites(): List<TvSavedItem> = readArray("favorites")
 
     fun continueWatching(): List<TvSavedItem> =
-        readArray("continue").filter { it.positionMs > 0L }.take(30)
+        readArray("continue")
+            .filter { it.positionMs > 0L }
+            .take(30)
 
     fun isFavorite(id: String): Boolean = favorites().any { it.id == id }
 
@@ -34,7 +39,7 @@ class TvContentStore(context: Context) {
     }
 
     fun saveProgress(item: TvSavedItem) {
-        val rows = continueWatching().toMutableList()
+        val rows = readArray("continue").toMutableList()
         rows.removeAll { it.id == item.id }
 
         val finished =
@@ -48,7 +53,7 @@ class TvContentStore(context: Context) {
     }
 
     fun progressFor(id: String): TvSavedItem? =
-        continueWatching().firstOrNull { it.id == id }
+        readArray("continue").firstOrNull { it.id == id }
 
     fun clear() {
         prefs.edit().clear().apply()
