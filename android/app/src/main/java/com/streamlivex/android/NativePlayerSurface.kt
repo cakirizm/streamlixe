@@ -86,10 +86,25 @@ fun NativePlayerSurface(
 ) {
     val context = LocalContext.current
     val candidates = remember(request.item.url) { playbackCandidates(request.item) }
-    var candidateIndex by remember(request.sessionId) {
-        mutableIntStateOf(PlaybackCandidateMemory.recall(request.sessionId).coerceIn(0, (candidates.size - 1).coerceAtLeast(0)))
+    var candidateIndex by remember(
+        request.sessionId,
+        request.item.url,
+    ) {
+        mutableIntStateOf(
+            PlaybackCandidateMemory
+                .recall(request.sessionId)
+                .coerceIn(
+                    0,
+                    (candidates.size - 1).coerceAtLeast(0),
+                ),
+        )
     }
-    var candidateRetry by remember(request.sessionId) { mutableIntStateOf(0) }
+    var candidateRetry by remember(
+        request.sessionId,
+        request.item.url,
+    ) {
+        mutableIntStateOf(0)
+    }
     var failed by remember(request.sessionId) { mutableStateOf(false) }
     var ready by remember(request.sessionId) { mutableStateOf(player.playbackState == Player.STATE_READY) }
     // Yayin "hazirlaniyor" (buffering) durumunda sonsuza kadar takilabiliyordu (yavas/erisilemez
@@ -218,12 +233,18 @@ fun NativePlayerSurface(
         }
     }
 
-    LaunchedEffect(candidateIndex, candidateRetry, request.sessionId) {
+    LaunchedEffect(
+        candidateIndex,
+        candidateRetry,
+        request.sessionId,
+        request.item.url,
+    ) {
         // On izlemeden tam ekrana gecerken ayni paylasilan player zaten bu adayla oynatiyor
         // olabilir -- boyle bir durumda sifirdan setMediaItem/prepare cagirip yayini yeniden
         // baslatmiyoruz, sadece mevcut oynatmayi devam ettiriyoruz. player.isPlaying gibi
         // zamanlamaya bagli bir kontrol yerine kesin bir kayit (PlaybackStartTracker) kullaniyoruz.
-        val startKey = "${request.sessionId}:$candidateIndex:$candidateRetry"
+        // URL de anahtara dahil: ayni sessionId ile baska kanala gecilince yeni yayin hazirlanir.
+        val startKey = "${request.sessionId}:${request.item.url.hashCode()}:$candidateIndex:$candidateRetry"
         if (PlaybackStartTracker.hasStarted(startKey)) {
             ready = player.playbackState == Player.STATE_READY
             return@LaunchedEffect
@@ -336,8 +357,16 @@ fun NativePlayerSurface(
                     }
                 }
                 android.view.KeyEvent.KEYCODE_DPAD_UP -> if (!request.item.isLive) tracksPanelVisible = true
-                android.view.KeyEvent.KEYCODE_DPAD_LEFT -> player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0))
-                android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> player.seekTo(player.currentPosition + 10_000)
+                android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
+                    if (!request.item.isLive) {
+                        player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0))
+                    }
+                }
+                android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    if (!request.item.isLive) {
+                        player.seekTo(player.currentPosition + 10_000)
+                    }
+                }
             }
         }
     }
