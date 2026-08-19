@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -27,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -35,6 +38,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -45,79 +50,139 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.streamlivex.android.PlaybackItem
 import com.streamlivex.android.PlaybackPreferences
 import com.streamlivex.android.PlaybackRequest
-import com.streamlivex.android.tv.data.NativeSeriesCategory
 import com.streamlivex.android.tv.data.NativeSeriesEpisode
 import com.streamlivex.android.tv.data.NativeSeriesInfo
 import com.streamlivex.android.tv.data.NativeSeriesItem
-import com.streamlivex.android.tv.data.NativeVodCategory
 import com.streamlivex.android.tv.data.NativeVodItem
 import com.streamlivex.android.tv.data.TvContentCache
 import com.streamlivex.android.tv.data.TvContentStore
+import com.streamlivex.android.tv.data.TvIndexedMedia
+import com.streamlivex.android.tv.data.TvLibraryIndex
 import com.streamlivex.android.tv.data.TvProviderConfig
 import com.streamlivex.android.tv.data.TvSavedItem
+import com.streamlivex.android.tv.data.TvTmdbClient
+import com.streamlivex.android.tv.data.TvTmdbDetail
+import com.streamlivex.android.tv.data.TvTmdbEpisode
+import com.streamlivex.android.tv.data.TvTmdbMedia
+import com.streamlivex.android.tv.data.TvTmdbPerson
 import com.streamlivex.android.tv.data.XtreamClient
+import com.streamlivex.android.tv.i18n.TvLocale
+import com.streamlivex.android.tv.i18n.TvStrings
 import com.streamlivex.android.tv.player.TvNativePlayer
+import kotlinx.coroutines.delay
+
+private data class ContentTarget(
+    val kind: String,
+    val name: String,
+    val tmdbId: Long? = null,
+    val poster: String? = null,
+    val local: TvIndexedMedia? = null,
+    val vod: NativeVodItem? = null,
+    val series: NativeSeriesItem? = null,
+)
+
+private data class HomeCard(
+    val id: String,
+    val title: String,
+    val artwork: String?,
+    val subtitle: String,
+    val target: ContentTarget?,
+)
 
 @Composable
 fun TvHomeScreen(
     provider: TvProviderConfig,
+    locale: TvLocale,
     playerFor: (PlaybackRequest) -> ExoPlayer,
     releasePlayer: (String) -> Unit,
     onFullscreenStateChanged: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
+    val strings = remember(locale) { TvStrings(locale) }
     val store = remember { TvContentStore(context) }
-    val client = remember { XtreamClient() }
+    val tmdb = remember { TvTmdbClient() }
+    val index = remember { TvLibraryIndex(context) }
 
-    var moviePreview by remember { mutableStateOf<List<NativeVodItem>>(emptyList()) }
-    var seriesPreview by remember { mutableStateOf<List<NativeSeriesItem>>(emptyList()) }
+    var trendingMovies by remember(locale) { mutableStateOf<List<TvTmdbMedia>>(emptyList()) }
+    var trendingSeries by remember(locale) { mutableStateOf<List<TvTmdbMedia>>(emptyList()) }
+    var forYou by remember { mutableStateOf<List<TvIndexedMedia>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
+    var target by remember { mutableStateOf<ContentTarget?>(null) }
     var playing by remember { mutableStateOf<TvSavedItem?>(null) }
+    var currentPlaylist by remember {
+        mutableStateOf<List<Pair<TvSavedItem, PlaybackItem>>>(emptyList())
+    }
+    var playlistIndex by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(provider.server, provider.username) {
+    LaunchedEffect(provider.server, provider.username, locale) {
         Thread {
-            val movieCategories = client.loadVodCategories(provider).getOrDefault(emptyList())
-            val seriesCategories = client.loadSeriesCategories(provider).getOrDefault(emptyList())
-
-            val movies =
-                movieCategories.firstOrNull()?.let {
-                    client.loadVodCategory(provider, it.id, maxItems = 8).getOrDefault(emptyList())
-                }.orEmpty()
-
-            val series =
-                seriesCategories.firstOrNull()?.let {
-                    client.loadSeriesCategory(provider, it.id, maxItems = 8).getOrDefault(emptyList())
-                }.orEmpty()
+            val movies = tmdb.trending("movie", locale).getOrDefault(emptyList()).take(14)
+            val series = tmdb.trending("series", locale).getOrDefault(emptyList()).take(14)
+            val suggestions = index.suggestions(provider, limit = 14)
 
             Handler(Looper.getMainLooper()).post {
-                moviePreview = movies
-                seriesPreview = series
+                trendingMovies = movies
+                trendingSeries = series
+                forYou = suggestions
                 loading = false
             }
         }.start()
     }
 
+    LaunchedEffect(provider.server, provider.username) {
+        repeat(20) {
+            if (forYou.isNotEmpty()) return@LaunchedEffect
+            delay(1_500)
+            val next = index.suggestions(provider, limit = 14)
+            if (next.isNotEmpty()) {
+                forYou = next
+            }
+        }
+    }
+
     if (playing != null) {
-        val item = playing!!
+        val saved = playing!!
         TvNativePlayer(
-            saved = item,
+            saved = saved,
             request = PlaybackRequest(
-                sessionId = "tv-home-${item.id}",
-                item = PlaybackItem(item.name, item.url, item.kind),
-                resumeTimeMs = item.positionMs,
+                sessionId = "tv-home-${saved.id}",
+                item = PlaybackItem(saved.name, saved.url, saved.kind),
+                resumeTimeMs = store.progressFor(saved.id)?.positionMs ?: saved.positionMs,
                 preferences = PlaybackPreferences(showInfo = true),
             ),
             playerFor = playerFor,
             releasePlayer = releasePlayer,
             store = store,
+            locale = locale,
             onFullscreenStateChanged = onFullscreenStateChanged,
             onClose = { playing = null },
+            playlist = if (saved.kind == "episode") currentPlaylist else emptyList(),
+            playlistStartIndex = if (saved.kind == "episode") playlistIndex else 0,
         )
         return
     }
 
-    if (loading && moviePreview.isEmpty() && seriesPreview.isEmpty()) {
-        LoadingState("Ana Sayfa hazırlanıyor")
+    if (target != null) {
+        GenericDetailScreen(
+            provider = provider,
+            locale = locale,
+            target = target!!,
+            store = store,
+            index = index,
+            onPlay = { saved ->
+                currentPlaylist = emptyList()
+                playlistIndex = 0
+                playing = saved
+            },
+            onEpisodePlaylist = { playlist, indexPosition ->
+                currentPlaylist = playlist
+                playlistIndex = indexPosition
+                playing = playlist.getOrNull(indexPosition)?.first
+            },
+            onOpen = { target = it },
+            onBack = { target = null },
+            onFullscreenStateChanged = onFullscreenStateChanged,
+        )
         return
     }
 
@@ -141,50 +206,95 @@ fun TvHomeScreen(
 
         if (continueRows.isNotEmpty()) {
             item {
-                PosterRail(
-                    title = "Devam Et",
-                    cards = continueRows.take(8).map {
-                        PosterCardModel(it.id, it.name, it.artwork, it.subtitle.orEmpty())
+                HomeRail(
+                    title = strings["continue"],
+                    cards = continueRows.take(12).map {
+                        HomeCard(
+                            id = it.id,
+                            title = it.name,
+                            artwork = it.artwork,
+                            subtitle = it.subtitle.orEmpty(),
+                            target = null,
+                        )
                     },
-                    onClick = { model ->
-                        playing = continueRows.firstOrNull { it.id == model.id }
+                    onClick = { card ->
+                        continueRows.firstOrNull { it.id == card.id }?.let { playing = it }
                     },
                 )
             }
         }
 
-        if (moviePreview.isNotEmpty()) {
-            item {
-                PosterRail(
-                    title = "Filmler",
-                    cards = moviePreview.map {
-                        PosterCardModel(
-                            it.id,
-                            it.name,
-                            it.poster,
-                            listOfNotNull(it.year, it.rating?.let { r -> "★ $r" }).joinToString(" • "),
-                        )
-                    },
-                    onClick = { },
-                )
-            }
+        item {
+            HomeRail(
+                title = strings["trending_movies"],
+                cards = trendingMovies.map { media ->
+                    val local = index.findByTitle(provider, "movie", media.name)
+                    HomeCard(
+                        id = "tmdb-m-${media.id}",
+                        title = media.name,
+                        artwork = media.poster,
+                        subtitle = availabilityText(strings, local != null),
+                        target = ContentTarget(
+                            kind = "movie",
+                            name = media.name,
+                            tmdbId = media.id,
+                            poster = media.poster,
+                            local = local,
+                        ),
+                    )
+                },
+                onClick = { card -> card.target?.let { target = it } },
+            )
         }
 
-        if (seriesPreview.isNotEmpty()) {
-            item {
-                PosterRail(
-                    title = "Diziler",
-                    cards = seriesPreview.map {
-                        PosterCardModel(
-                            it.id,
-                            it.name,
-                            it.cover,
-                            listOfNotNull(it.year, it.rating?.let { r -> "★ $r" }).joinToString(" • "),
-                        )
-                    },
-                    onClick = { },
-                )
-            }
+        item {
+            HomeRail(
+                title = strings["trending_series"],
+                cards = trendingSeries.map { media ->
+                    val local = index.findByTitle(provider, "series", media.name)
+                    HomeCard(
+                        id = "tmdb-s-${media.id}",
+                        title = media.name,
+                        artwork = media.poster,
+                        subtitle = availabilityText(strings, local != null),
+                        target = ContentTarget(
+                            kind = "series",
+                            name = media.name,
+                            tmdbId = media.id,
+                            poster = media.poster,
+                            local = local,
+                        ),
+                    )
+                },
+                onClick = { card -> card.target?.let { target = it } },
+            )
+        }
+
+        item {
+            HomeRail(
+                title = strings["for_you"],
+                cards = forYou.map {
+                    HomeCard(
+                        id = it.localId,
+                        title = it.name,
+                        artwork = it.artwork,
+                        subtitle = availabilityText(strings, true),
+                        target = ContentTarget(
+                            kind = it.kind,
+                            name = it.name,
+                            poster = it.artwork,
+                            local = it,
+                        ),
+                    )
+                },
+                onClick = { card -> card.target?.let { target = it } },
+            )
+        }
+
+        if (loading) {
+            item { Text(strings["loading"], color = Color(0xFF94A3B8)) }
+        } else if (forYou.isEmpty()) {
+            item { Text(strings["library_preparing"], color = Color(0xFF64748B)) }
         }
     }
 }
@@ -192,36 +302,39 @@ fun TvHomeScreen(
 @Composable
 fun TvMoviesScreen(
     provider: TvProviderConfig,
+    locale: TvLocale,
     playerFor: (PlaybackRequest) -> ExoPlayer,
     releasePlayer: (String) -> Unit,
     onFullscreenStateChanged: (Boolean) -> Unit,
     onContentFocused: () -> Unit,
 ) {
     val context = LocalContext.current
+    val strings = remember(locale) { TvStrings(locale) }
     val store = remember { TvContentStore(context) }
     val client = remember { XtreamClient() }
+    val index = remember { TvLibraryIndex(context) }
+    val restoreRequester = remember { FocusRequester() }
+    val movieGridState = rememberLazyListState()
 
-    var categories by remember {
-        mutableStateOf(TvContentCache.vodCategories.orEmpty())
-    }
-    var selectedCategoryId by remember {
-        mutableStateOf(TvContentCache.movieCategoryId)
-    }
+    var categories by remember { mutableStateOf(TvContentCache.vodCategories.orEmpty()) }
+    var selectedCategoryId by remember { mutableStateOf(TvContentCache.movieCategoryId) }
     var movies by remember {
-        mutableStateOf(
-            selectedCategoryId?.let { TvContentCache.vodByCategory[it] }.orEmpty(),
-        )
+        mutableStateOf(selectedCategoryId?.let { TvContentCache.vodByCategory[it] }.orEmpty())
     }
     var loadingCategories by remember { mutableStateOf(categories.isEmpty()) }
     var loadingMovies by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
-    var detailItem by remember { mutableStateOf<NativeVodItem?>(null) }
-    var playing by remember { mutableStateOf<NativeVodItem?>(null) }
-    var refreshFavorite by remember { mutableIntStateOf(0) }
+    var target by remember { mutableStateOf<ContentTarget?>(null) }
+    var playing by remember { mutableStateOf<TvSavedItem?>(null) }
+    var currentPlaylist by remember {
+        mutableStateOf<List<Pair<TvSavedItem, PlaybackItem>>>(emptyList())
+    }
+    var playlistIndex by remember { mutableIntStateOf(0) }
 
     fun loadCategory(categoryId: String) {
         TvContentCache.movieCategoryId = categoryId
         selectedCategoryId = categoryId
+
         TvContentCache.vodByCategory[categoryId]?.let {
             movies = it
             loadingMovies = false
@@ -233,201 +346,12 @@ fun TvMoviesScreen(
             val result = client.loadVodCategory(provider, categoryId)
             Handler(Looper.getMainLooper()).post {
                 result
-                    .onSuccess { movies = it }
+                    .onSuccess { rows ->
+                        rows.forEach { index.put(provider, it) }
+                        movies = rows
+                    }
                     .onFailure { error = it.message.orEmpty() }
                 loadingMovies = false
-            }
-        }.start()
-    }
-
-    LaunchedEffect(provider.server, provider.username) {
-        if (categories.isNotEmpty()) {
-            if (selectedCategoryId == null) {
-                selectedCategoryId = categories.firstOrNull()?.id
-            }
-            selectedCategoryId?.let { loadCategory(it) }
-            return@LaunchedEffect
-        }
-
-        Thread {
-            val result = client.loadVodCategories(provider)
-            Handler(Looper.getMainLooper()).post {
-                result
-                    .onSuccess { rows ->
-                        categories = rows
-                        loadingCategories = false
-                        val target =
-                            TvContentCache.movieCategoryId
-                                ?: rows.firstOrNull()?.id
-                        if (target != null) loadCategory(target)
-                    }
-                    .onFailure {
-                        loadingCategories = false
-                        error = it.message.orEmpty()
-                    }
-            }
-        }.start()
-    }
-
-    if (playing != null) {
-        val item = playing!!
-        val saved = item.toSaved()
-        TvNativePlayer(
-            saved = saved,
-            request = PlaybackRequest(
-                sessionId = "tv-movie-${item.streamId}",
-                item = PlaybackItem(item.name, item.streamUrl, "movie"),
-                resumeTimeMs = store.progressFor(item.id)?.positionMs ?: 0L,
-                preferences = PlaybackPreferences(showInfo = true),
-            ),
-            playerFor = playerFor,
-            releasePlayer = releasePlayer,
-            store = store,
-            onFullscreenStateChanged = onFullscreenStateChanged,
-            onClose = { playing = null },
-        )
-        return
-    }
-
-    if (detailItem != null) {
-        MovieDetailScreen(
-            item = detailItem!!,
-            favorite = store.isFavorite(detailItem!!.id),
-            onPlay = { playing = detailItem },
-            onFavorite = {
-                store.toggleFavorite(detailItem!!.toSaved())
-                refreshFavorite += 1
-            },
-            onBack = { detailItem = null },
-        )
-        return
-    }
-
-    if (loadingCategories && categories.isEmpty()) {
-        LoadingState("Film kategorileri yükleniyor")
-        return
-    }
-
-    Row(
-        modifier = Modifier.fillMaxSize().background(Color(0xFF0D111B)),
-    ) {
-        LazyColumn(
-            modifier = Modifier
-                .width(220.dp)
-                .fillMaxHeight()
-                .background(Color(0xFF101722))
-                .padding(10.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            items(categories, key = { it.id }) { category ->
-                FocusRow(
-                    title = category.name,
-                    selected = category.id == selectedCategoryId,
-                    onFocus = { onContentFocused() },
-                    onClick = {
-                        onContentFocused()
-                        if (category.id != selectedCategoryId) loadCategory(category.id)
-                    },
-                )
-            }
-        }
-
-        Box(
-            modifier = Modifier.weight(1f).fillMaxHeight(),
-        ) {
-            when {
-                error.isNotBlank() -> ErrorState(error)
-                loadingMovies && movies.isEmpty() -> LoadingState("Filmler yükleniyor")
-                else -> {
-                    PosterGrid(
-                        movieCards = movies,
-                        onFocus = { movie ->
-                            TvContentCache.movieFocusedId = movie.id
-                            onContentFocused()
-                        },
-                        onClick = { movie ->
-                            TvContentCache.movieDetailId = movie.id
-                            detailItem = movie
-                        },
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun TvSeriesScreen(
-    provider: TvProviderConfig,
-    playerFor: (PlaybackRequest) -> ExoPlayer,
-    releasePlayer: (String) -> Unit,
-    onFullscreenStateChanged: (Boolean) -> Unit,
-    onContentFocused: () -> Unit,
-) {
-    val context = LocalContext.current
-    val store = remember { TvContentStore(context) }
-    val client = remember { XtreamClient() }
-
-    var categories by remember {
-        mutableStateOf(TvContentCache.seriesCategories.orEmpty())
-    }
-    var selectedCategoryId by remember {
-        mutableStateOf(TvContentCache.seriesCategoryId)
-    }
-    var shows by remember {
-        mutableStateOf(
-            selectedCategoryId?.let { TvContentCache.seriesByCategory[it] }.orEmpty(),
-        )
-    }
-    var loadingCategories by remember { mutableStateOf(categories.isEmpty()) }
-    var loadingShows by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf("") }
-    var detailItem by remember { mutableStateOf<NativeSeriesItem?>(null) }
-    var seriesInfo by remember { mutableStateOf<NativeSeriesInfo?>(null) }
-    var detailLoading by remember { mutableStateOf(false) }
-    var playingEpisode by remember {
-        mutableStateOf<Pair<NativeSeriesItem, NativeSeriesEpisode>?>(null)
-    }
-    var refreshFavorite by remember { mutableIntStateOf(0) }
-
-    fun loadCategory(categoryId: String) {
-        TvContentCache.seriesCategoryId = categoryId
-        selectedCategoryId = categoryId
-
-        TvContentCache.seriesByCategory[categoryId]?.let {
-            shows = it
-            loadingShows = false
-            return
-        }
-
-        loadingShows = true
-        Thread {
-            val result = client.loadSeriesCategory(provider, categoryId)
-            Handler(Looper.getMainLooper()).post {
-                result
-                    .onSuccess { shows = it }
-                    .onFailure { error = it.message.orEmpty() }
-                loadingShows = false
-            }
-        }.start()
-    }
-
-    fun openSeries(series: NativeSeriesItem) {
-        detailItem = series
-        TvContentCache.seriesDetailId = series.id
-        TvContentCache.seriesDetails[series.seriesId]?.let {
-            seriesInfo = it
-            return
-        }
-
-        detailLoading = true
-        Thread {
-            val result = client.loadSeriesInfo(provider, series)
-            Handler(Looper.getMainLooper()).post {
-                result
-                    .onSuccess { seriesInfo = it }
-                    .onFailure { error = it.message.orEmpty() }
-                detailLoading = false
             }
         }.start()
     }
@@ -440,16 +364,14 @@ fun TvSeriesScreen(
         }
 
         Thread {
-            val result = client.loadSeriesCategories(provider)
+            val result = client.loadVodCategories(provider)
             Handler(Looper.getMainLooper()).post {
                 result
                     .onSuccess { rows ->
                         categories = rows
                         loadingCategories = false
-                        val target =
-                            TvContentCache.seriesCategoryId
-                                ?: rows.firstOrNull()?.id
-                        if (target != null) loadCategory(target)
+                        val targetId = TvContentCache.movieCategoryId ?: rows.firstOrNull()?.id
+                        if (targetId != null) loadCategory(targetId)
                     }
                     .onFailure {
                         loadingCategories = false
@@ -459,94 +381,65 @@ fun TvSeriesScreen(
         }.start()
     }
 
-    if (playingEpisode != null) {
-        val pair = playingEpisode!!
-        val series = pair.first
-        val episode = pair.second
-        val allEpisodes = seriesInfo?.episodes.orEmpty()
-        val startIndex = allEpisodes.indexOfFirst { it.id == episode.id }.coerceAtLeast(0)
-
-        val playlist = allEpisodes.map { ep ->
-            val saved = TvSavedItem(
-                id = "series-${series.seriesId}-${ep.episodeId}",
-                kind = "episode",
-                name = "${series.name} • S${ep.season} E${ep.episode}",
-                url = ep.streamUrl,
-                artwork = series.cover,
-                subtitle = series.name,
-            )
-            saved to PlaybackItem(
-                name = saved.name,
-                url = ep.streamUrl,
-                kind = "episode",
-                hasNext = ep != allEpisodes.lastOrNull(),
-            )
-        }
-
-        val saved = playlist.getOrNull(startIndex)?.first ?: TvSavedItem(
-            id = "series-${series.seriesId}-${episode.episodeId}",
-            kind = "episode",
-            name = "${series.name} • S${episode.season} E${episode.episode}",
-            url = episode.streamUrl,
-            artwork = series.cover,
-            subtitle = series.name,
-        )
-
+    if (playing != null) {
+        val saved = playing!!
         TvNativePlayer(
             saved = saved,
             request = PlaybackRequest(
-                sessionId = "tv-series-${series.seriesId}",
-                item = PlaybackItem(saved.name, saved.url, "episode"),
+                sessionId = "tv-movie-${saved.id}",
+                item = PlaybackItem(saved.name, saved.url, "movie"),
                 resumeTimeMs = store.progressFor(saved.id)?.positionMs ?: 0L,
                 preferences = PlaybackPreferences(showInfo = true),
             ),
             playerFor = playerFor,
             releasePlayer = releasePlayer,
             store = store,
+            locale = locale,
             onFullscreenStateChanged = onFullscreenStateChanged,
-            onClose = { playingEpisode = null },
-            playlist = playlist,
-            playlistStartIndex = startIndex,
+            onClose = { playing = null },
+            playlist = if (saved.kind == "episode") currentPlaylist else emptyList(),
+            playlistStartIndex = if (saved.kind == "episode") playlistIndex else 0,
         )
         return
     }
 
-    if (detailItem != null) {
-        SeriesDetailScreen(
-            series = detailItem!!,
-            info = seriesInfo,
-            loading = detailLoading,
-            favorite = store.isFavorite(detailItem!!.id),
-            onFavorite = {
-                store.toggleFavorite(
-                    TvSavedItem(
-                        id = detailItem!!.id,
-                        kind = "series",
-                        name = detailItem!!.name,
-                        url = "",
-                        artwork = detailItem!!.cover,
-                        subtitle = detailItem!!.genre,
-                    ),
-                )
-                refreshFavorite += 1
+    if (target != null) {
+        GenericDetailScreen(
+            provider = provider,
+            locale = locale,
+            target = target!!,
+            store = store,
+            index = index,
+            onPlay = { saved ->
+                currentPlaylist = emptyList()
+                playlistIndex = 0
+                playing = saved
             },
-            onEpisode = { playingEpisode = detailItem!! to it },
-            onBack = {
-                detailItem = null
-                seriesInfo = null
+            onEpisodePlaylist = { playlist, indexPosition ->
+                currentPlaylist = playlist
+                playlistIndex = indexPosition
+                playing = playlist.getOrNull(indexPosition)?.first
             },
+            onOpen = { target = it },
+            onBack = { target = null },
+            onFullscreenStateChanged = onFullscreenStateChanged,
         )
         return
+    }
+
+    LaunchedEffect(target, playing) {
+        if (target == null && playing == null && TvContentCache.movieFocusedId != null) {
+            delay(100)
+            runCatching { restoreRequester.requestFocus() }
+        }
     }
 
     if (loadingCategories && categories.isEmpty()) {
-        LoadingState("Dizi kategorileri yükleniyor")
+        LoadingState(strings["loading"])
         return
     }
 
-    Row(
-        modifier = Modifier.fillMaxSize().background(Color(0xFF0D111B)),
-    ) {
+    Row(modifier = Modifier.fillMaxSize().background(Color(0xFF0D111B))) {
         LazyColumn(
             modifier = Modifier
                 .width(220.dp)
@@ -571,15 +464,707 @@ fun TvSeriesScreen(
         Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
             when {
                 error.isNotBlank() -> ErrorState(error)
-                loadingShows && shows.isEmpty() -> LoadingState("Diziler yükleniyor")
-                else -> {
-                    SeriesPosterGrid(
-                        rows = shows,
-                        onFocus = {
-                            TvContentCache.seriesFocusedId = it.id
-                            onContentFocused()
+                loadingMovies && movies.isEmpty() -> LoadingState(strings["loading"])
+                else -> MoviePosterGrid(
+                    rows = movies,
+                    restoreRequester = restoreRequester,
+                    restoreId = TvContentCache.movieFocusedId,
+                    listState = movieGridState,
+                    onFocus = { movie ->
+                        TvContentCache.movieFocusedId = movie.id
+                        onContentFocused()
+                    },
+                    onClick = { movie ->
+                        index.put(provider, movie)
+                        target = ContentTarget(
+                            kind = "movie",
+                            name = movie.name,
+                            poster = movie.poster,
+                            local = movie.toIndexed(),
+                            vod = movie,
+                        )
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun TvSeriesScreen(
+    provider: TvProviderConfig,
+    locale: TvLocale,
+    playerFor: (PlaybackRequest) -> ExoPlayer,
+    releasePlayer: (String) -> Unit,
+    onFullscreenStateChanged: (Boolean) -> Unit,
+    onContentFocused: () -> Unit,
+) {
+    val context = LocalContext.current
+    val strings = remember(locale) { TvStrings(locale) }
+    val store = remember { TvContentStore(context) }
+    val client = remember { XtreamClient() }
+    val index = remember { TvLibraryIndex(context) }
+    val restoreRequester = remember { FocusRequester() }
+    val seriesGridState = rememberLazyListState()
+
+    var categories by remember { mutableStateOf(TvContentCache.seriesCategories.orEmpty()) }
+    var selectedCategoryId by remember { mutableStateOf(TvContentCache.seriesCategoryId) }
+    var shows by remember {
+        mutableStateOf(selectedCategoryId?.let { TvContentCache.seriesByCategory[it] }.orEmpty())
+    }
+    var loadingCategories by remember { mutableStateOf(categories.isEmpty()) }
+    var loadingShows by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf("") }
+    var target by remember { mutableStateOf<ContentTarget?>(null) }
+    var playingEpisode by remember { mutableStateOf<TvSavedItem?>(null) }
+    var currentPlaylist by remember {
+        mutableStateOf<List<Pair<TvSavedItem, PlaybackItem>>>(emptyList())
+    }
+    var playlistIndex by remember { mutableIntStateOf(0) }
+
+    fun loadCategory(categoryId: String) {
+        TvContentCache.seriesCategoryId = categoryId
+        selectedCategoryId = categoryId
+
+        TvContentCache.seriesByCategory[categoryId]?.let {
+            shows = it
+            loadingShows = false
+            return
+        }
+
+        loadingShows = true
+        Thread {
+            val result = client.loadSeriesCategory(provider, categoryId)
+            Handler(Looper.getMainLooper()).post {
+                result
+                    .onSuccess { rows ->
+                        rows.forEach { index.put(provider, it) }
+                        shows = rows
+                    }
+                    .onFailure { error = it.message.orEmpty() }
+                loadingShows = false
+            }
+        }.start()
+    }
+
+    LaunchedEffect(provider.server, provider.username) {
+        if (categories.isNotEmpty()) {
+            if (selectedCategoryId == null) selectedCategoryId = categories.firstOrNull()?.id
+            selectedCategoryId?.let { loadCategory(it) }
+            return@LaunchedEffect
+        }
+
+        Thread {
+            val result = client.loadSeriesCategories(provider)
+            Handler(Looper.getMainLooper()).post {
+                result
+                    .onSuccess { rows ->
+                        categories = rows
+                        loadingCategories = false
+                        val targetId = TvContentCache.seriesCategoryId ?: rows.firstOrNull()?.id
+                        if (targetId != null) loadCategory(targetId)
+                    }
+                    .onFailure {
+                        loadingCategories = false
+                        error = it.message.orEmpty()
+                    }
+            }
+        }.start()
+    }
+
+    if (playingEpisode != null) {
+        val saved = playingEpisode!!
+        TvNativePlayer(
+            saved = saved,
+            request = PlaybackRequest(
+                sessionId = "tv-series-player-${target?.local?.seriesId ?: saved.id}",
+                item = PlaybackItem(saved.name, saved.url, "episode"),
+                resumeTimeMs = store.progressFor(saved.id)?.positionMs ?: 0L,
+                preferences = PlaybackPreferences(showInfo = true),
+            ),
+            playerFor = playerFor,
+            releasePlayer = releasePlayer,
+            store = store,
+            locale = locale,
+            onFullscreenStateChanged = onFullscreenStateChanged,
+            onClose = { playingEpisode = null },
+            playlist = currentPlaylist,
+            playlistStartIndex = playlistIndex,
+        )
+        return
+    }
+
+    if (target != null) {
+        GenericDetailScreen(
+            provider = provider,
+            locale = locale,
+            target = target!!,
+            store = store,
+            index = index,
+            onPlay = { saved -> playingEpisode = saved },
+            onEpisodePlaylist = { playlist, indexPosition ->
+                currentPlaylist = playlist
+                playlistIndex = indexPosition
+                playingEpisode = playlist.getOrNull(indexPosition)?.first
+            },
+            onOpen = { target = it },
+            onBack = { target = null },
+            onFullscreenStateChanged = onFullscreenStateChanged,
+        )
+        return
+    }
+
+    LaunchedEffect(target, playingEpisode) {
+        if (target == null && playingEpisode == null && TvContentCache.seriesFocusedId != null) {
+            delay(100)
+            runCatching { restoreRequester.requestFocus() }
+        }
+    }
+
+    if (loadingCategories && categories.isEmpty()) {
+        LoadingState(strings["loading"])
+        return
+    }
+
+    Row(modifier = Modifier.fillMaxSize().background(Color(0xFF0D111B))) {
+        LazyColumn(
+            modifier = Modifier
+                .width(220.dp)
+                .fillMaxHeight()
+                .background(Color(0xFF101722))
+                .padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            items(categories, key = { it.id }) { category ->
+                FocusRow(
+                    title = category.name,
+                    selected = category.id == selectedCategoryId,
+                    onFocus = { onContentFocused() },
+                    onClick = {
+                        onContentFocused()
+                        if (category.id != selectedCategoryId) loadCategory(category.id)
+                    },
+                )
+            }
+        }
+
+        Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+            when {
+                error.isNotBlank() -> ErrorState(error)
+                loadingShows && shows.isEmpty() -> LoadingState(strings["loading"])
+                else -> SeriesPosterGrid(
+                    rows = shows,
+                    restoreRequester = restoreRequester,
+                    restoreId = TvContentCache.seriesFocusedId,
+                    listState = seriesGridState,
+                    onFocus = {
+                        TvContentCache.seriesFocusedId = it.id
+                        onContentFocused()
+                    },
+                    onClick = { show ->
+                        index.put(provider, show)
+                        target = ContentTarget(
+                            kind = "series",
+                            name = show.name,
+                            poster = show.cover,
+                            local = show.toIndexed(),
+                            series = show,
+                        )
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun GenericDetailScreen(
+    provider: TvProviderConfig,
+    locale: TvLocale,
+    target: ContentTarget,
+    store: TvContentStore,
+    index: TvLibraryIndex,
+    onPlay: (TvSavedItem) -> Unit,
+    onEpisodePlaylist: (List<Pair<TvSavedItem, PlaybackItem>>, Int) -> Unit = { _, _ -> },
+    onOpen: (ContentTarget) -> Unit,
+    onBack: () -> Unit,
+    onFullscreenStateChanged: (Boolean) -> Unit,
+) {
+    val strings = remember(locale) { TvStrings(locale) }
+    val tmdb = remember { TvTmdbClient() }
+    val xtream = remember { XtreamClient() }
+
+    var detail by remember(target.name, target.tmdbId, locale) {
+        mutableStateOf<TvTmdbDetail?>(null)
+    }
+    var loading by remember(target.name, locale) { mutableStateOf(true) }
+    var person by remember(target.name, target.tmdbId) { mutableStateOf<Pair<TvTmdbPerson, List<TvTmdbMedia>>?>(null) }
+    var seriesInfo by remember(target.local?.seriesId, target.series?.seriesId) {
+        mutableStateOf<NativeSeriesInfo?>(null)
+    }
+    var selectedSeason by remember { mutableIntStateOf(0) }
+    var tmdbEpisodes by remember { mutableStateOf<List<TvTmdbEpisode>>(emptyList()) }
+    var seasonLoading by remember { mutableStateOf(false) }
+    var favoriteRefresh by remember { mutableIntStateOf(0) }
+
+    DisposableEffect(Unit) {
+        onFullscreenStateChanged(true)
+        onDispose { onFullscreenStateChanged(false) }
+    }
+
+    BackHandler {
+        if (person != null) person = null else onBack()
+    }
+
+    LaunchedEffect(target.name, target.tmdbId, target.kind, locale) {
+        loading = true
+        Thread {
+            val result = tmdb.detail(
+                name = target.name,
+                kind = target.kind,
+                locale = locale,
+                tmdbId = target.tmdbId,
+            ).getOrNull()
+            Handler(Looper.getMainLooper()).post {
+                detail = result
+                loading = false
+            }
+        }.start()
+    }
+
+    LaunchedEffect(target.local?.seriesId, target.series?.seriesId) {
+        if (target.kind != "series") return@LaunchedEffect
+
+        val seriesId = target.series?.seriesId ?: target.local?.seriesId ?: return@LaunchedEffect
+        val seriesItem = target.series ?: NativeSeriesItem(
+            id = target.local?.localId ?: "s$seriesId",
+            seriesId = seriesId,
+            categoryId = target.local?.categoryId.orEmpty(),
+            name = target.name,
+            cover = target.poster ?: target.local?.artwork,
+            plot = null,
+            rating = null,
+            year = null,
+            genre = null,
+        )
+
+        Thread {
+            val info = xtream.loadSeriesInfo(provider, seriesItem).getOrNull()
+            Handler(Looper.getMainLooper()).post {
+                seriesInfo = info
+                selectedSeason = info?.episodes?.minOfOrNull { it.season } ?: 0
+            }
+        }.start()
+    }
+
+    LaunchedEffect(selectedSeason, detail?.media?.id, target.name, locale) {
+        if (target.kind != "series" || selectedSeason <= 0) return@LaunchedEffect
+        seasonLoading = true
+        Thread {
+            val rows = tmdb.season(
+                title = target.name,
+                season = selectedSeason,
+                locale = locale,
+                tmdbId = detail?.media?.id?.takeIf { it > 0 },
+            ).getOrDefault(emptyList())
+            Handler(Looper.getMainLooper()).post {
+                tmdbEpisodes = rows
+                seasonLoading = false
+            }
+        }.start()
+    }
+
+    if (person != null) {
+        PersonFilmographyScreen(
+            locale = locale,
+            person = person!!.first,
+            rows = person!!.second,
+            provider = provider,
+            index = index,
+            onBack = { person = null },
+            onOpen = onOpen,
+        )
+        return
+    }
+
+    val media = detail?.media
+    val local = target.local ?: index.findByTitle(provider, target.kind, target.name)
+    val displayPoster = media?.poster ?: target.poster ?: local?.artwork
+    val description =
+        media?.overview
+            ?: target.vod?.plot
+            ?: target.series?.plot
+            ?: strings["no_description"]
+    val favoriteId = local?.localId ?: "tmdb-${target.kind}-${media?.id ?: target.name}"
+    val favorite = remember(favoriteId, favoriteRefresh) { store.isFavorite(favoriteId) }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0D111B))
+            .padding(26.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+    ) {
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(26.dp)) {
+                TvPosterImage(
+                    displayPoster,
+                    modifier = Modifier.width(250.dp).aspectRatio(2f / 3f),
+                )
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        media?.name ?: target.name,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.headlineLarge,
+                    )
+
+                    Text(
+                        listOfNotNull(
+                            media?.year ?: target.vod?.year ?: target.series?.year,
+                            media?.rating?.let { "★ %.1f".format(it) },
+                            availabilityText(strings, local != null),
+                        ).joinToString(" • "),
+                        color = Color(0xFF94A3B8),
+                    )
+
+                    Text(
+                        description,
+                        color = Color(0xFFCBD5E1),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (target.kind == "movie" && local?.streamUrl?.isNotBlank() == true) {
+                            ActionButton("▶ ${strings["play"]}") {
+                                onPlay(
+                                    TvSavedItem(
+                                        id = local.localId,
+                                        kind = "movie",
+                                        name = local.name,
+                                        url = local.streamUrl,
+                                        artwork = displayPoster,
+                                        subtitle = media?.year,
+                                    ),
+                                )
+                            }
+                        }
+
+                        ActionButton(
+                            if (favorite) "★ ${strings["remove_list"]}"
+                            else "☆ ${strings["add_list"]}",
+                        ) {
+                            store.toggleFavorite(
+                                TvSavedItem(
+                                    id = favoriteId,
+                                    kind = target.kind,
+                                    name = media?.name ?: target.name,
+                                    url = local?.streamUrl.orEmpty(),
+                                    artwork = displayPoster,
+                                    subtitle = media?.year,
+                                ),
+                            )
+                            favoriteRefresh += 1
+                        }
+                    }
+
+                    PeopleLine(
+                        title = strings["director"],
+                        rows = detail?.directors.orEmpty(),
+                        onClick = { selected ->
+                            Thread {
+                                val rows = tmdb.person(selected.id, locale).getOrDefault(emptyList())
+                                Handler(Looper.getMainLooper()).post { person = selected to rows }
+                            }.start()
                         },
-                        onClick = { openSeries(it) },
+                    )
+
+                    PeopleLine(
+                        title = strings["cast"],
+                        rows = detail?.cast.orEmpty(),
+                        onClick = { selected ->
+                            Thread {
+                                val rows = tmdb.person(selected.id, locale).getOrDefault(emptyList())
+                                Handler(Looper.getMainLooper()).post { person = selected to rows }
+                            }.start()
+                        },
+                    )
+
+                    if (loading) CircularProgressIndicator()
+                }
+            }
+        }
+
+        if (target.kind == "series") {
+            item {
+                SeriesEpisodesBlock(
+                    locale = locale,
+                    series = seriesInfo,
+                    selectedSeason = selectedSeason,
+                    onSeason = { selectedSeason = it },
+                    tmdbEpisodes = tmdbEpisodes,
+                    loading = seasonLoading,
+                    artwork = displayPoster,
+                    onPlayEpisode = { episode, episodes ->
+                        val playlist = episodes.map { ep ->
+                            val saved = TvSavedItem(
+                                id = "series-${seriesInfo?.series?.seriesId}-${ep.episodeId}",
+                                kind = "episode",
+                                name = "${seriesInfo?.series?.name ?: target.name} • S${ep.season} E${ep.episode}",
+                                url = ep.streamUrl,
+                                artwork = displayPoster,
+                                subtitle = target.name,
+                            )
+                            saved to PlaybackItem(
+                                name = saved.name,
+                                url = ep.streamUrl,
+                                kind = "episode",
+                                hasNext = ep != episodes.lastOrNull(),
+                            )
+                        }
+                        val selectedIndex = episodes.indexOfFirst { it.id == episode.id }.coerceAtLeast(0)
+                        onEpisodePlaylist(playlist, selectedIndex)
+                    },
+                )
+            }
+        }
+
+        val recommendations = detail?.recommendations.orEmpty()
+        if (recommendations.isNotEmpty()) {
+            item {
+                TmdbRail(
+                    locale = locale,
+                    title = if (target.kind == "series") strings["similar_series"] else strings["similar_movies"],
+                    rows = recommendations,
+                    provider = provider,
+                    index = index,
+                    onOpen = onOpen,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PersonFilmographyScreen(
+    locale: TvLocale,
+    person: TvTmdbPerson,
+    rows: List<TvTmdbMedia>,
+    provider: TvProviderConfig,
+    index: TvLibraryIndex,
+    onBack: () -> Unit,
+    onOpen: (ContentTarget) -> Unit,
+) {
+    val strings = remember(locale) { TvStrings(locale) }
+    BackHandler { onBack() }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0D111B))
+            .padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Text(
+            "← ${strings["back"]}",
+            color = Color(0xFF60A5FA),
+            modifier = Modifier.clickable { onBack() }.padding(8.dp),
+        )
+        Text(
+            "${person.name} · ${strings["people_movies"]}",
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.headlineMedium,
+        )
+
+        val chunks = rows.take(60).chunked(5)
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            items(chunks) { chunk ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    chunk.forEach { media ->
+                        val local = index.findByTitle(provider, media.kind, media.name)
+                        MediaCard(
+                            title = media.name,
+                            artwork = media.poster,
+                            subtitle = availabilityText(strings, local != null),
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            onOpen(
+                                ContentTarget(
+                                    kind = media.kind,
+                                    name = media.name,
+                                    tmdbId = media.id,
+                                    poster = media.poster,
+                                    local = local,
+                                ),
+                            )
+                        }
+                    }
+                    repeat(5 - chunk.size) { Box(Modifier.weight(1f)) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SeriesEpisodesBlock(
+    locale: TvLocale,
+    series: NativeSeriesInfo?,
+    selectedSeason: Int,
+    onSeason: (Int) -> Unit,
+    tmdbEpisodes: List<TvTmdbEpisode>,
+    loading: Boolean,
+    artwork: String?,
+    onPlayEpisode: (NativeSeriesEpisode, List<NativeSeriesEpisode>) -> Unit,
+) {
+    val strings = remember(locale) { TvStrings(locale) }
+    val episodes = series?.episodes.orEmpty()
+    val seasons = episodes.map { it.season }.distinct().sorted()
+    val seasonEpisodes = episodes.filter { it.season == selectedSeason }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            strings["seasons_episodes"],
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.headlineSmall,
+        )
+
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(seasons) { season ->
+                ActionButton(
+                    "${strings["season"]} $season",
+                    selected = season == selectedSeason,
+                ) {
+                    onSeason(season)
+                }
+            }
+        }
+
+        if (loading) Text(strings["loading"], color = Color(0xFF94A3B8))
+
+        seasonEpisodes.forEach { episode ->
+            val tmdb = tmdbEpisodes.firstOrNull { it.episodeNumber == episode.episode }
+            EpisodeCard(
+                title = tmdb?.name ?: episode.name,
+                subtitle = buildString {
+                    append("${strings["episode"]} ${episode.episode}")
+                    tmdb?.airDate?.let { append(" • $it") }
+                    tmdb?.runtime?.let { append(" • $it dk") }
+                },
+                description = tmdb?.overview,
+                image = tmdb?.still ?: artwork,
+                onClick = { onPlayEpisode(episode, seasonEpisodes) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun EpisodeCard(
+    title: String,
+    subtitle: String,
+    description: String?,
+    image: String?,
+    onClick: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                if (focused) Color(0xFF1D4ED8) else Color(0xFF151C28),
+                RoundedCornerShape(10.dp),
+            )
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .padding(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        TvPosterImage(
+            image,
+            modifier = Modifier.width(210.dp).aspectRatio(16f / 9f),
+        )
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(title, color = Color.White, fontWeight = FontWeight.Bold)
+            Text(subtitle, color = Color(0xFF94A3B8))
+            Text(
+                description.orEmpty(),
+                color = Color(0xFFCBD5E1),
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PeopleLine(
+    title: String,
+    rows: List<TvTmdbPerson>,
+    onClick: (TvTmdbPerson) -> Unit,
+) {
+    if (rows.isEmpty()) return
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(title, color = Color(0xFF94A3B8), fontWeight = FontWeight.Bold)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(rows, key = { it.id }) { person ->
+                ActionButton(person.name) { onClick(person) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TmdbRail(
+    locale: TvLocale,
+    title: String,
+    rows: List<TvTmdbMedia>,
+    provider: TvProviderConfig,
+    index: TvLibraryIndex,
+    onOpen: (ContentTarget) -> Unit,
+) {
+    val strings = remember(locale) { TvStrings(locale) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            title,
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleLarge,
+        )
+
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(rows, key = { "${it.kind}-${it.id}" }) { media ->
+                val local = index.findByTitle(provider, media.kind, media.name)
+                MediaCard(
+                    title = media.name,
+                    artwork = media.poster,
+                    subtitle = availabilityText(strings, local != null),
+                    modifier = Modifier.width(170.dp),
+                ) {
+                    onOpen(
+                        ContentTarget(
+                            kind = media.kind,
+                            name = media.name,
+                            tmdbId = media.id,
+                            poster = media.poster,
+                            local = local,
+                        ),
                     )
                 }
             }
@@ -590,19 +1175,14 @@ fun TvSeriesScreen(
 @Composable
 fun TvSearchScreen(
     provider: TvProviderConfig,
+    locale: TvLocale,
     onContentFocused: () -> Unit,
 ) {
-    // Search now searches only already cached category data. This is intentional:
-    // never load every VOD + Series row just to build a search index.
+    val strings = remember(locale) { TvStrings(locale) }
     var query by remember { mutableStateOf("") }
 
-    val cachedMovies = remember(TvContentCache.vodByCategory.size) {
-        TvContentCache.vodByCategory.values.flatten().distinctBy { it.id }
-    }
-    val cachedSeries = remember(TvContentCache.seriesByCategory.size) {
-        TvContentCache.seriesByCategory.values.flatten().distinctBy { it.id }
-    }
-
+    val cachedMovies = TvContentCache.vodByCategory.values.flatten().distinctBy { it.id }
+    val cachedSeries = TvContentCache.seriesByCategory.values.flatten().distinctBy { it.id }
     val q = query.trim()
     val movieResults =
         if (q.length < 2) emptyList()
@@ -616,7 +1196,7 @@ fun TvSearchScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Text(
-            "Ara",
+            strings["search"],
             color = Color.White,
             fontWeight = FontWeight.Bold,
             style = MaterialTheme.typography.headlineMedium,
@@ -625,30 +1205,20 @@ fun TvSearchScreen(
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },
-            label = { Text("Yüklenen film ve dizilerde ara") },
+            label = { Text(strings["search_hint"]) },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
         )
 
-        Text(
-            "Arama belleği korumak için yalnızca açılmış kategorilerde çalışır.",
-            color = Color(0xFF64748B),
-            style = MaterialTheme.typography.bodySmall,
-        )
-
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (movieResults.isNotEmpty()) {
-                item {
-                    Text("Filmler", color = Color(0xFF60A5FA), fontWeight = FontWeight.Bold)
-                }
+                item { Text(strings["movies"], color = Color(0xFF60A5FA), fontWeight = FontWeight.Bold) }
                 items(movieResults, key = { it.id }) {
                     SimpleResultRow(it.name, listOfNotNull(it.year, it.genre).joinToString(" • "))
                 }
             }
             if (seriesResults.isNotEmpty()) {
-                item {
-                    Text("Diziler", color = Color(0xFF60A5FA), fontWeight = FontWeight.Bold)
-                }
+                item { Text(strings["series"], color = Color(0xFF60A5FA), fontWeight = FontWeight.Bold) }
                 items(seriesResults, key = { it.id }) {
                     SimpleResultRow(it.name, listOfNotNull(it.year, it.genre).joinToString(" • "))
                 }
@@ -658,8 +1228,9 @@ fun TvSearchScreen(
 }
 
 @Composable
-fun TvMyListScreen() {
+fun TvMyListScreen(locale: TvLocale) {
     val context = LocalContext.current
+    val strings = remember(locale) { TvStrings(locale) }
     val store = remember { TvContentStore(context) }
     val rows = remember { store.favorites() }
 
@@ -668,14 +1239,14 @@ fun TvMyListScreen() {
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Text(
-            "Listem",
+            strings["my_list"],
             color = Color.White,
             fontWeight = FontWeight.Bold,
             style = MaterialTheme.typography.headlineMedium,
         )
 
         if (rows.isEmpty()) {
-            Text("Henüz favori eklenmedi.", color = Color(0xFF94A3B8))
+            Text(strings["empty"], color = Color(0xFF94A3B8))
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(rows, key = { it.id }) { item ->
@@ -686,10 +1257,7 @@ fun TvMyListScreen() {
                             .padding(10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        TvPosterImage(
-                            item.artwork,
-                            modifier = Modifier.width(58.dp).height(84.dp),
-                        )
+                        TvPosterImage(item.artwork, modifier = Modifier.width(58.dp).height(84.dp))
                         Column(modifier = Modifier.padding(start = 12.dp)) {
                             Text(item.name, color = Color.White, fontWeight = FontWeight.Bold)
                             Text(item.kind.uppercase(), color = Color(0xFF94A3B8))
@@ -701,18 +1269,11 @@ fun TvMyListScreen() {
     }
 }
 
-private data class PosterCardModel(
-    val id: String,
-    val title: String,
-    val artwork: String?,
-    val subtitle: String,
-)
-
 @Composable
-private fun PosterRail(
+private fun HomeRail(
     title: String,
-    cards: List<PosterCardModel>,
-    onClick: (PosterCardModel) -> Unit,
+    cards: List<HomeCard>,
+    onClick: (HomeCard) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
         Text(
@@ -722,119 +1283,59 @@ private fun PosterRail(
             style = MaterialTheme.typography.titleLarge,
         )
 
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             items(cards, key = { it.id }) { card ->
-                PosterCard(
-                    card = card,
-                    onClick = { onClick(card) },
-                )
+                MediaCard(
+                    title = card.title,
+                    artwork = card.artwork,
+                    subtitle = card.subtitle,
+                    modifier = Modifier.width(170.dp),
+                ) {
+                    onClick(card)
+                }
             }
         }
     }
 }
 
 @Composable
-private fun PosterCard(
-    card: PosterCardModel,
-    onClick: () -> Unit,
-) {
-    var focused by remember { mutableStateOf(false) }
-
-    Column(
-        modifier = Modifier
-            .width(170.dp)
-            .background(
-                if (focused) Color(0xFF2563EB) else Color(0xFF151C28),
-                RoundedCornerShape(10.dp),
-            )
-            .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
-            .padding(7.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
-    ) {
-        TvPosterImage(
-            url = card.artwork,
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(2f / 3f),
-        )
-        Text(
-            card.title,
-            color = Color.White,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            card.subtitle,
-            color = if (focused) Color.White else Color(0xFF94A3B8),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.labelMedium,
-        )
-    }
-}
-
-@Composable
-private fun PosterGrid(
-    movieCards: List<NativeVodItem>,
+private fun MoviePosterGrid(
+    rows: List<NativeVodItem>,
+    restoreRequester: FocusRequester,
+    restoreId: String?,
+    listState: LazyListState,
     onFocus: (NativeVodItem) -> Unit,
     onClick: (NativeVodItem) -> Unit,
 ) {
-    // 5 columns by using rows of 5; LazyColumn only composes visible rows.
-    val rows = remember(movieCards) { movieCards.chunked(5) }
+    val chunks = remember(rows) { rows.chunked(5) }
 
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        items(rows) { row ->
+        items(chunks) { row ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 row.forEach { movie ->
-                    var focused by remember(movie.id) { mutableStateOf(false) }
-                    Column(
+                    MediaCard(
+                        title = movie.name,
+                        artwork = movie.poster,
+                        subtitle = listOfNotNull(movie.year, movie.rating?.let { "★ $it" }).joinToString(" • "),
                         modifier = Modifier
                             .weight(1f)
-                            .background(
-                                if (focused) Color(0xFF2563EB) else Color(0xFF151C28),
-                                RoundedCornerShape(10.dp),
-                            )
-                            .onFocusChanged {
-                                focused = it.isFocused
-                                if (it.isFocused) onFocus(movie)
-                            }
-                            .clickable { onClick(movie) }
-                            .padding(7.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                            .then(
+                                if (movie.id == restoreId) Modifier.focusRequester(restoreRequester)
+                                else Modifier,
+                            ),
+                        onFocus = { onFocus(movie) },
                     ) {
-                        TvPosterImage(
-                            movie.poster,
-                            modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f),
-                        )
-                        Text(
-                            movie.name,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            listOfNotNull(movie.year, movie.rating?.let { "★ $it" }).joinToString(" • "),
-                            color = Color(0xFF94A3B8),
-                            maxLines = 1,
-                            style = MaterialTheme.typography.labelSmall,
-                        )
+                        onClick(movie)
                     }
                 }
-
-                repeat(5 - row.size) {
-                    Box(modifier = Modifier.weight(1f))
-                }
+                repeat(5 - row.size) { Box(Modifier.weight(1f)) }
             }
         }
     }
@@ -843,12 +1344,16 @@ private fun PosterGrid(
 @Composable
 private fun SeriesPosterGrid(
     rows: List<NativeSeriesItem>,
+    restoreRequester: FocusRequester,
+    restoreId: String?,
+    listState: LazyListState,
     onFocus: (NativeSeriesItem) -> Unit,
     onClick: (NativeSeriesItem) -> Unit,
 ) {
     val chunks = remember(rows) { rows.chunked(5) }
 
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
@@ -858,165 +1363,67 @@ private fun SeriesPosterGrid(
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 row.forEach { show ->
-                    var focused by remember(show.id) { mutableStateOf(false) }
-                    Column(
+                    MediaCard(
+                        title = show.name,
+                        artwork = show.cover,
+                        subtitle = listOfNotNull(show.year, show.rating?.let { "★ $it" }).joinToString(" • "),
                         modifier = Modifier
                             .weight(1f)
-                            .background(
-                                if (focused) Color(0xFF2563EB) else Color(0xFF151C28),
-                                RoundedCornerShape(10.dp),
-                            )
-                            .onFocusChanged {
-                                focused = it.isFocused
-                                if (it.isFocused) onFocus(show)
-                            }
-                            .clickable { onClick(show) }
-                            .padding(7.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                            .then(
+                                if (show.id == restoreId) Modifier.focusRequester(restoreRequester)
+                                else Modifier,
+                            ),
+                        onFocus = { onFocus(show) },
                     ) {
-                        TvPosterImage(
-                            show.cover,
-                            modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f),
-                        )
-                        Text(
-                            show.name,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            listOfNotNull(show.year, show.rating?.let { "★ $it" }).joinToString(" • "),
-                            color = Color(0xFF94A3B8),
-                            maxLines = 1,
-                            style = MaterialTheme.typography.labelSmall,
-                        )
+                        onClick(show)
                     }
                 }
-                repeat(5 - row.size) {
-                    Box(modifier = Modifier.weight(1f))
-                }
+                repeat(5 - row.size) { Box(Modifier.weight(1f)) }
             }
         }
     }
 }
 
 @Composable
-private fun MovieDetailScreen(
-    item: NativeVodItem,
-    favorite: Boolean,
-    onPlay: () -> Unit,
-    onFavorite: () -> Unit,
-    onBack: () -> Unit,
+private fun MediaCard(
+    title: String,
+    artwork: String?,
+    subtitle: String,
+    modifier: Modifier = Modifier,
+    onFocus: () -> Unit = {},
+    onClick: () -> Unit,
 ) {
-    BackHandler { onBack() }
+    var focused by remember(title) { mutableStateOf(false) }
 
-    Row(
-        modifier = Modifier.fillMaxSize().background(Color(0xFF0D111B)).padding(32.dp),
-        horizontalArrangement = Arrangement.spacedBy(28.dp),
+    Column(
+        modifier = modifier
+            .background(
+                if (focused) Color(0xFF2563EB) else Color(0xFF151C28),
+                RoundedCornerShape(10.dp),
+            )
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) onFocus()
+            }
+            .clickable(onClick = onClick)
+            .padding(7.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        TvPosterImage(
-            item.poster,
-            modifier = Modifier.width(270.dp).aspectRatio(2f / 3f),
+        TvPosterImage(artwork, modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f))
+        Text(
+            title,
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
-
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Text(
-                item.name,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.headlineLarge,
-            )
-            Text(
-                listOfNotNull(item.year, item.genre, item.rating?.let { "★ $it" }).joinToString(" • "),
-                color = Color(0xFF94A3B8),
-            )
-            Text(
-                item.plot ?: "Açıklama bulunamadı.",
-                color = Color(0xFFCBD5E1),
-                style = MaterialTheme.typography.bodyLarge,
-            )
-            ActionButton("▶ Oynat", onPlay)
-            ActionButton(
-                if (favorite) "★ Listemden çıkar" else "☆ Listeme ekle",
-                onFavorite,
-            )
-        }
-    }
-}
-
-@Composable
-private fun SeriesDetailScreen(
-    series: NativeSeriesItem,
-    info: NativeSeriesInfo?,
-    loading: Boolean,
-    favorite: Boolean,
-    onFavorite: () -> Unit,
-    onEpisode: (NativeSeriesEpisode) -> Unit,
-    onBack: () -> Unit,
-) {
-    BackHandler { onBack() }
-
-    Row(
-        modifier = Modifier.fillMaxSize().background(Color(0xFF0D111B)).padding(28.dp),
-        horizontalArrangement = Arrangement.spacedBy(26.dp),
-    ) {
-        Column(
-            modifier = Modifier.width(260.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            TvPosterImage(
-                series.cover,
-                modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f),
-            )
-            ActionButton(
-                if (favorite) "★ Listemden çıkar" else "☆ Listeme ekle",
-                onFavorite,
-            )
-        }
-
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                series.name,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.headlineLarge,
-            )
-            Text(
-                listOfNotNull(series.year, series.genre, series.rating?.let { "★ $it" }).joinToString(" • "),
-                color = Color(0xFF94A3B8),
-            )
-            Text(
-                series.plot ?: "Açıklama bulunamadı.",
-                color = Color(0xFFCBD5E1),
-                maxLines = 4,
-                overflow = TextOverflow.Ellipsis,
-            )
-
-            if (loading) {
-                CircularProgressIndicator()
-            } else {
-                val episodes = info?.episodes.orEmpty()
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    items(episodes, key = { it.id }) { episode ->
-                        FocusRow(
-                            title = "S${episode.season} E${episode.episode} • ${episode.name}",
-                            selected = false,
-                            onFocus = {},
-                            onClick = { onEpisode(episode) },
-                        )
-                    }
-                }
-            }
-        }
+        Text(
+            subtitle,
+            color = if (focused) Color.White else Color(0xFF94A3B8),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.labelSmall,
+        )
     }
 }
 
@@ -1060,29 +1467,30 @@ private fun FocusRow(
 @Composable
 private fun ActionButton(
     text: String,
+    selected: Boolean = false,
     onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
     Box(
         modifier = Modifier
-            .width(240.dp)
             .background(
-                if (focused) Color(0xFF2563EB) else Color(0xFF1E293B),
+                when {
+                    focused -> Color(0xFF2563EB)
+                    selected -> Color(0xFF1D4ED8)
+                    else -> Color(0xFF1E293B)
+                },
                 RoundedCornerShape(9.dp),
             )
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 13.dp),
+            .padding(horizontal = 16.dp, vertical = 11.dp),
     ) {
         Text(text, color = Color.White, fontWeight = FontWeight.Bold)
     }
 }
 
 @Composable
-private fun SimpleResultRow(
-    title: String,
-    subtitle: String,
-) {
+private fun SimpleResultRow(title: String, subtitle: String) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1093,16 +1501,6 @@ private fun SimpleResultRow(
         Text(subtitle, color = Color(0xFF94A3B8))
     }
 }
-
-private fun NativeVodItem.toSaved() =
-    TvSavedItem(
-        id = id,
-        kind = "movie",
-        name = name,
-        url = streamUrl,
-        artwork = poster,
-        subtitle = listOfNotNull(year, genre).joinToString(" • "),
-    )
 
 @Composable
 private fun LoadingState(text: String) {
@@ -1129,3 +1527,28 @@ private fun ErrorState(text: String) {
         Text(text, color = Color(0xFFF87171))
     }
 }
+
+private fun NativeVodItem.toIndexed(): TvIndexedMedia =
+    TvIndexedMedia(
+        kind = "movie",
+        localId = id,
+        name = name,
+        streamUrl = streamUrl,
+        artwork = poster,
+        seriesId = null,
+        categoryId = categoryId,
+    )
+
+private fun NativeSeriesItem.toIndexed(): TvIndexedMedia =
+    TvIndexedMedia(
+        kind = "series",
+        localId = id,
+        name = name,
+        streamUrl = "",
+        artwork = cover,
+        seriesId = seriesId,
+        categoryId = categoryId,
+    )
+
+private fun availabilityText(strings: TvStrings, available: Boolean): String =
+    if (available) strings["in_playlist"] else strings["not_in_playlist"]
