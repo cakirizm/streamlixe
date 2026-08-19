@@ -2,7 +2,6 @@ package com.streamlivex.android.tv
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -68,7 +67,6 @@ fun TvRoot(
                 provider = connectedProvider
             },
         )
-
         return
     }
 
@@ -94,29 +92,28 @@ private fun TvMainScreen(
     onFullscreenStateChanged: (Boolean) -> Unit,
     onDisconnect: () -> Unit,
 ) {
-    var selectedSection by remember {
-        mutableStateOf(TvSection.Live)
-    }
-
-    var menuExpanded by remember {
-        mutableStateOf(true)
-    }
+    var selectedSection by remember { mutableStateOf(TvSection.Live) }
+    var menuExpanded by remember { mutableStateOf(true) }
+    var liveFullscreen by remember { mutableStateOf(false) }
 
     Row(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF080B12)),
     ) {
-        TvSideMenu(
-            selectedSection = selectedSection,
-            expanded = menuExpanded,
-            onMenuFocused = {
-                menuExpanded = true
-            },
-            onSectionSelected = {
-                selectedSection = it
-            },
-        )
+        // Fullscreen canlı yayında ana menü tamamen kaybolur.
+        if (!liveFullscreen) {
+            TvSideMenu(
+                selectedSection = selectedSection,
+                expanded = menuExpanded,
+                onMenuFocused = {
+                    menuExpanded = true
+                },
+                onSectionSelected = {
+                    selectedSection = it
+                },
+            )
+        }
 
         Box(
             modifier = Modifier
@@ -124,11 +121,7 @@ private fun TvMainScreen(
                 .background(Color(0xFF0D111B)),
         ) {
             when (selectedSection) {
-                TvSection.Home -> {
-                    PlaceholderScreen(
-                        title = "Ana Sayfa",
-                    )
-                }
+                TvSection.Home -> PlaceholderScreen(title = "Ana Sayfa")
 
                 TvSection.Live -> {
                     LiveTvScreen(
@@ -136,36 +129,22 @@ private fun TvMainScreen(
                         playerFor = playerFor,
                         releasePlayer = releasePlayer,
                         externalPlayerKeyEvent = externalPlayerKeyEvent,
-                        onFullscreenStateChanged = onFullscreenStateChanged,
+                        onFullscreenStateChanged = { active ->
+                            liveFullscreen = active
+                            onFullscreenStateChanged(active)
+                        },
                         onContentFocused = {
-                            menuExpanded = false
+                            if (!liveFullscreen) {
+                                menuExpanded = false
+                            }
                         },
                     )
                 }
 
-                TvSection.Movies -> {
-                    PlaceholderScreen(
-                        title = "Filmler",
-                    )
-                }
-
-                TvSection.Series -> {
-                    PlaceholderScreen(
-                        title = "Diziler",
-                    )
-                }
-
-                TvSection.Search -> {
-                    PlaceholderScreen(
-                        title = "Ara",
-                    )
-                }
-
-                TvSection.MyList -> {
-                    PlaceholderScreen(
-                        title = "Listem",
-                    )
-                }
+                TvSection.Movies -> PlaceholderScreen(title = "Filmler")
+                TvSection.Series -> PlaceholderScreen(title = "Diziler")
+                TvSection.Search -> PlaceholderScreen(title = "Ara")
+                TvSection.MyList -> PlaceholderScreen(title = "Listem")
 
                 TvSection.Settings -> {
                     TvSettingsScreen(
@@ -185,12 +164,7 @@ private fun TvSideMenu(
     onMenuFocused: () -> Unit,
     onSectionSelected: (TvSection) -> Unit,
 ) {
-    val menuWidth =
-        if (expanded) {
-            190.dp
-        } else {
-            72.dp
-        }
+    val menuWidth = if (expanded) 190.dp else 72.dp
 
     Column(
         modifier = Modifier
@@ -198,61 +172,34 @@ private fun TvSideMenu(
             .fillMaxHeight()
             .background(Color(0xFF080B12))
             .padding(
-                horizontal =
-                    if (expanded) {
-                        12.dp
-                    } else {
-                        8.dp
-                    },
+                horizontal = if (expanded) 12.dp else 8.dp,
                 vertical = 18.dp,
             ),
         verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         Text(
-            text =
-                if (expanded) {
-                    "StreamLiveX"
-                } else {
-                    "SLX"
-                },
+            text = if (expanded) "StreamLiveX" else "SLX",
             color = Color.White,
             fontWeight = FontWeight.Bold,
-            style =
-                if (expanded) {
-                    MaterialTheme.typography.titleLarge
-                } else {
-                    MaterialTheme.typography.labelLarge
-                },
+            style = if (expanded) {
+                MaterialTheme.typography.titleLarge
+            } else {
+                MaterialTheme.typography.labelLarge
+            },
             modifier = Modifier.padding(
-                start =
-                    if (expanded) {
-                        10.dp
-                    } else {
-                        6.dp
-                    },
+                start = if (expanded) 10.dp else 6.dp,
                 bottom = 14.dp,
             ),
         )
 
         TvSection.entries.forEach { section ->
-            var focused by remember {
-                mutableStateOf(false)
+            var focused by remember { mutableStateOf(false) }
+
+            val background = when {
+                focused -> Color(0xFF2563EB)
+                section == selectedSection -> Color(0xFF172554)
+                else -> Color.Transparent
             }
-
-            val background =
-                when {
-                    focused -> {
-                        Color(0xFF2563EB)
-                    }
-
-                    section == selectedSection -> {
-                        Color(0xFF172554)
-                    }
-
-                    else -> {
-                        Color.Transparent
-                    }
-                }
 
             Box(
                 modifier = Modifier
@@ -263,48 +210,33 @@ private fun TvSideMenu(
                     )
                     .onFocusChanged {
                         focused = it.isFocused
-
                         if (it.isFocused) {
                             onMenuFocused()
                         }
                     }
+                    // Kumanda OK / Enter, focused clickable öğeyi çalıştırır.
+                    // Focus değişimi bölüm değiştirmez; sadece OK değiştirir.
                     .clickable {
-    onSectionSelected(section)
-}
-                    .focusable()
+                        onSectionSelected(section)
+                    }
                     .padding(
-                        horizontal =
-                            if (expanded) {
-                                13.dp
-                            } else {
-                                6.dp
-                            },
+                        horizontal = if (expanded) 13.dp else 6.dp,
                         vertical = 12.dp,
                     ),
-                contentAlignment =
-                    if (expanded) {
-                        Alignment.CenterStart
-                    } else {
-                        Alignment.Center
-                    },
+                contentAlignment = if (expanded) {
+                    Alignment.CenterStart
+                } else {
+                    Alignment.Center
+                },
             ) {
                 Text(
-                    text =
-                        if (expanded) {
-                            section.title
-                        } else {
-                            section.shortTitle
-                        },
+                    text = if (expanded) section.title else section.shortTitle,
                     color = Color.White,
-                    fontWeight =
-                        if (
-                            focused ||
-                            section == selectedSection
-                        ) {
-                            FontWeight.Bold
-                        } else {
-                            FontWeight.Medium
-                        },
+                    fontWeight = if (focused || section == selectedSection) {
+                        FontWeight.Bold
+                    } else {
+                        FontWeight.Medium
+                    },
                     maxLines = 1,
                 )
             }
@@ -380,26 +312,25 @@ private fun TvSettingsScreen(
             )
         }
 
-        var disconnectFocused by remember {
-            mutableStateOf(false)
-        }
+        var disconnectFocused by remember { mutableStateOf(false) }
 
         Box(
             modifier = Modifier
                 .width(280.dp)
                 .background(
-                    color =
-                        if (disconnectFocused) {
-                            Color(0xFFDC2626)
-                        } else {
-                            Color(0xFF7F1D1D)
-                        },
+                    color = if (disconnectFocused) {
+                        Color(0xFFDC2626)
+                    } else {
+                        Color(0xFF7F1D1D)
+                    },
                     shape = RoundedCornerShape(10.dp),
                 )
                 .onFocusChanged {
                     disconnectFocused = it.isFocused
                 }
-                .focusable()
+                .clickable {
+                    onDisconnect()
+                }
                 .padding(
                     horizontal = 18.dp,
                     vertical = 14.dp,
