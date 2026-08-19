@@ -106,7 +106,9 @@ private fun TvMainScreen(
                 }
 
                 TvSection.Live -> {
-                    LiveTvScreen()
+                   LiveTvScreen(
+    provider = provider,
+)
                 }
 
                 TvSection.Movies -> {
