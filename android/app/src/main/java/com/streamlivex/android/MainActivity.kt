@@ -2,9 +2,12 @@ package com.streamlivex.android
 
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.webkit.CookieManager
+import java.util.Locale
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowInsets
@@ -57,6 +60,33 @@ class MainActivity : ComponentActivity() {
     // Player, sessionId'ye hem inlinePlayback hem playbackRequest tarafından referans
     // verilmediği anda ("orphan" olduğunda) serbest bırakılır.
     private val sharedPlayers = mutableMapOf<String, ExoPlayer>()
+
+    // Native oynatici metinleri (ör. "Yayin haziriyor…") cihaz diline gore geliyordu; kullanici
+    // uygulamada baska bir dil sectiyse yine cihaz dilinde kaliyordu. Uygulamanin sectigi dili
+    // (web'in yazdigi `slx-language` cookie'sinden okunup SharedPreferences'a kaydedilir)
+    // Activity acilirken tum kaynaklara uyguluyoruz -- boylece native metinler de uygulama
+    // diliyle eslesiyor. Cihaz dili yalnizca hicbir secim yapilmamis ilk acilista kullanilir.
+    override fun attachBaseContext(newBase: Context) {
+        val lang = newBase.getSharedPreferences("streamlivex", MODE_PRIVATE).getString("app-locale", null)
+        if (lang.isNullOrBlank()) {
+            super.attachBaseContext(newBase)
+            return
+        }
+        val locale = Locale.forLanguageTag(lang)
+        Locale.setDefault(locale)
+        val config = Configuration(newBase.resources.configuration)
+        config.setLocale(locale)
+        super.attachBaseContext(newBase.createConfigurationContext(config))
+    }
+
+    private fun syncAppLocaleFromCookie() {
+        val cookies = CookieManager.getInstance().getCookie(BuildConfig.WEB_APP_URL) ?: return
+        val lang = Regex("slx-language=([A-Za-z-]+)").find(cookies)?.groupValues?.getOrNull(1) ?: return
+        val prefs = getSharedPreferences("streamlivex", MODE_PRIVATE)
+        if (prefs.getString("app-locale", null) != lang) {
+            prefs.edit().putString("app-locale", lang).apply()
+        }
+    }
 
     private fun playerFor(request: PlaybackRequest): ExoPlayer {
         sharedPlayers[request.sessionId]?.let { return it }
@@ -122,6 +152,13 @@ class MainActivity : ComponentActivity() {
             filePicker.launch("*/*")
             return true
         }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Kullanici uygulama dilini degistirmis olabilir; en guncel secimi cookie'den okuyup
+        // kaydediyoruz. attachBaseContext bunu bir sonraki acilista tum kaynaklara uygular.
+        syncAppLocaleFromCookie()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

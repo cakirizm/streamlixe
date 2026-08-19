@@ -91,6 +91,11 @@ fun NativePlayerSurface(
     var candidateRetry by remember(request.sessionId) { mutableIntStateOf(0) }
     var failed by remember(request.sessionId) { mutableStateOf(false) }
     var ready by remember(request.sessionId) { mutableStateOf(player.playbackState == Player.STATE_READY) }
+    // Yayin "hazirlaniyor" (buffering) durumunda sonsuza kadar takilabiliyordu (yavas/erisilemez
+    // kaynak ya da bu cihazin cozemedigi codec) -- kullaniciya hicbir hata gosterilmeden ekran
+    // donup duruyordu. Bu durumu izleyip belirli bir sure sonra hata/aday-degistirme yoluna
+    // sokuyoruz (asagidaki LaunchedEffect).
+    var buffering by remember(request.sessionId) { mutableStateOf(player.playbackState == Player.STATE_BUFFERING) }
     var resizeMode by remember(request.sessionId) { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
     var qualityLabel by remember(request.sessionId) { mutableStateOf("AUTO") }
     var tracksPanelVisible by remember(request.sessionId) { mutableStateOf(false) }
@@ -138,6 +143,7 @@ fun NativePlayerSurface(
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 ready = state == Player.STATE_READY
+                buffering = state == Player.STATE_BUFFERING
                 if (state == Player.STATE_ENDED) onClose(progress())
             }
 
@@ -189,6 +195,25 @@ fun NativePlayerSurface(
         onDispose {
             onProgress(progress())
             player.removeListener(listener)
+        }
+    }
+
+    // Buffering zaman asimi: yayin ~25 sn boyunca "hazirlaniyor"da takili kalir ve hazir olmazsa
+    // (kaynak yanit vermiyor / bu cihaz codec'i cozemiyor), sonsuz donme yerine varsa siradaki
+    // adayi deniyoruz; aday kalmadiysa net bir hatayla bitiriyoruz. Efekt `buffering`'e bagli
+    // oldugundan, yayin bu sure icinde hazir olursa (buffering=false) otomatik iptal olur.
+    LaunchedEffect(buffering, candidateIndex, candidateRetry, request.sessionId) {
+        if (!buffering || failed || ready) return@LaunchedEffect
+        delay(25_000)
+        if (buffering && !ready && !failed) {
+            if (candidateIndex + 1 < candidates.size) {
+                candidateRetry = 0
+                candidateIndex += 1
+            } else {
+                failed = true
+                ready = false
+                onFailure(streamFailedMessage)
+            }
         }
     }
 

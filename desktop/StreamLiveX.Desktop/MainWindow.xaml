@@ -375,6 +375,7 @@
                                         <Slider x:Name="VolumeSlider" Width="72" Style="{StaticResource PlayerSlider}" IsMoveToPointEnabled="True" Minimum="0" Maximum="100" Value="100" ValueChanged="VolumeSlider_ValueChanged" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Margin="12,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal">
+                                        <Button x:Name="NextEpisodeButton" Margin="4,0" Padding="14,7" Visibility="Collapsed" Click="NextEpisode_Click" ToolTip="Sonraki bölüm" Background="#7C5CFF" Foreground="White" BorderThickness="0" FontSize="13" FontWeight="SemiBold" Content="Sonraki bölüm  ⏭" Cursor="Hand" />
                                         <ToggleButton x:Name="SpeedSettingsButton" Margin="4,0" Style="{StaticResource IconPlayerToggle}" Content="⏱" ToolTip="Oynatma hızı" Checked="SpeedSettingsButton_Checked" Unchecked="SpeedSettingsButton_Unchecked" />
                                         <ToggleButton x:Name="MediaSettingsButton" Margin="4,0" Style="{StaticResource IconPlayerToggle}" Content="💬" ToolTip="Ses ve altyazı" Checked="MediaSettingsButton_Checked" Unchecked="MediaSettingsButton_Unchecked" />
 

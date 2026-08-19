@@ -43,7 +43,13 @@ async function get(url: URL) {
     // 502/504 kullanmıyoruz: relay mimarisinde bu istek bir Cloudflare Worker'ın fetch()
     // alt-isteği olarak görülebiliyor ve Cloudflare, 502/504 durum kodlu alt-istek yanıtlarının
     // gövdesini kendi jenerik hata sayfasıyla değiştiriyor -- bizim Türkçe mesajımızı yutuyor.
-    if (!response.ok) throw new ImportError(`Yayın sunucusu ${response.status} hatası verdi`, 500);
+    if (!response.ok) {
+      // 401/403/404/512: Xtream panelleri hatalı giriş veya süresi dolmuş abonelik için
+      // genelde bu kodları döndürür; kullanıcıya teknik durum kodu yerine ne yapması
+      // gerektiğini anlatan bir mesaj gösteriyoruz.
+      if ([401, 403, 404, 512].includes(response.status)) throw new ImportError("Bilgileriniz hatalı veya aboneliğinizin süresi dolmuş olabilir. Sunucu adresi, kullanıcı adı ve şifreyi kontrol edip tekrar deneyin.", 500);
+      throw new ImportError(`Yayın sunucusu ${response.status} hatası verdi`, 500);
+    }
     return response;
   } catch (error) {
     if (error instanceof ImportError) throw error;
