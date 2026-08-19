@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,20 +38,25 @@ import com.streamlivex.android.tv.content.TvSearchScreen
 import com.streamlivex.android.tv.content.TvSeriesScreen
 import com.streamlivex.android.tv.data.TvContentCache
 import com.streamlivex.android.tv.data.TvContentStore
+import com.streamlivex.android.tv.data.TvLibraryIndex
 import com.streamlivex.android.tv.data.TvLiveLibraryCache
 import com.streamlivex.android.tv.data.TvProviderConfig
+import com.streamlivex.android.tv.data.XtreamClient
+import com.streamlivex.android.tv.i18n.TvLocale
+import com.streamlivex.android.tv.i18n.TvLocaleStore
+import com.streamlivex.android.tv.i18n.TvStrings
 import com.streamlivex.android.tv.live.LiveTvScreen
 import com.streamlivex.android.tv.setup.TvProviderStorage
 import com.streamlivex.android.tv.setup.TvSetupScreen
 
-enum class TvSection(val title: String, val shortTitle: String) {
-    Home("Ana Sayfa", "A"),
-    Live("Canlı TV", "TV"),
-    Movies("Filmler", "F"),
-    Series("Diziler", "D"),
-    Search("Ara", "⌕"),
-    MyList("Listem", "★"),
-    Settings("Ayarlar", "⚙"),
+enum class TvSection {
+    Home,
+    Live,
+    Movies,
+    Series,
+    Search,
+    MyList,
+    Settings,
 }
 
 @Composable
@@ -64,6 +70,9 @@ fun TvRoot(
     var provider by remember {
         mutableStateOf<TvProviderConfig?>(TvProviderStorage.load(context))
     }
+    var locale by remember {
+        mutableStateOf(TvLocaleStore.get(context))
+    }
 
     if (provider == null) {
         TvSetupScreen(onConnected = { provider = it })
@@ -72,10 +81,15 @@ fun TvRoot(
 
     TvMainScreen(
         provider = provider!!,
+        locale = locale,
         playerFor = playerFor,
         releasePlayer = releasePlayer,
         externalPlayerKeyEvent = externalPlayerKeyEvent,
         onFullscreenStateChanged = onFullscreenStateChanged,
+        onLocaleChanged = {
+            TvLocaleStore.set(context, it)
+            locale = it
+        },
         onDisconnect = {
             TvProviderStorage.clear(context)
             TvLiveLibraryCache.clear()
@@ -89,16 +103,39 @@ fun TvRoot(
 @Composable
 private fun TvMainScreen(
     provider: TvProviderConfig,
+    locale: TvLocale,
     playerFor: (PlaybackRequest) -> ExoPlayer,
     releasePlayer: (String) -> Unit,
     externalPlayerKeyEvent: Triple<Int, Int, Long>?,
     onFullscreenStateChanged: (Boolean) -> Unit,
+    onLocaleChanged: (TvLocale) -> Unit,
     onDisconnect: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val strings = remember(locale) { TvStrings(locale) }
+
     var selectedSection by remember { mutableStateOf(TvSection.Live) }
     var menuExpanded by remember { mutableStateOf(true) }
     var anyFullscreen by remember { mutableStateOf(false) }
     val liveMenuFocusRequester = remember { FocusRequester() }
+
+    /*
+     * TiviMate-like first preparation without OOM:
+     * Xtream VOD and Series are streamed row-by-row into SQLite.
+     * The complete provider JSON is never held in RAM as one giant JSONArray.
+     */
+    LaunchedEffect(provider.server, provider.username) {
+        Thread {
+            val index = TvLibraryIndex(context)
+            val client = XtreamClient()
+
+            if (index.count(provider) < 10) {
+                index.clearProvider(provider)
+                client.scanVod(provider) { index.put(provider, it) }
+                client.scanSeries(provider) { index.put(provider, it) }
+            }
+        }.start()
+    }
 
     Row(
         modifier = Modifier.fillMaxSize().background(Color(0xFF080B12)),
@@ -107,6 +144,7 @@ private fun TvMainScreen(
             TvSideMenu(
                 selectedSection = selectedSection,
                 expanded = menuExpanded,
+                locale = locale,
                 onMenuFocused = { menuExpanded = true },
                 onSectionSelected = { selectedSection = it },
                 liveMenuFocusRequester = liveMenuFocusRequester,
@@ -124,6 +162,7 @@ private fun TvMainScreen(
             when (selectedSection) {
                 TvSection.Home -> TvHomeScreen(
                     provider = provider,
+                    locale = locale,
                     playerFor = playerFor,
                     releasePlayer = releasePlayer,
                     onFullscreenStateChanged = fullscreenCallback,
@@ -143,6 +182,7 @@ private fun TvMainScreen(
 
                 TvSection.Movies -> TvMoviesScreen(
                     provider = provider,
+                    locale = locale,
                     playerFor = playerFor,
                     releasePlayer = releasePlayer,
                     onFullscreenStateChanged = fullscreenCallback,
@@ -153,6 +193,7 @@ private fun TvMainScreen(
 
                 TvSection.Series -> TvSeriesScreen(
                     provider = provider,
+                    locale = locale,
                     playerFor = playerFor,
                     releasePlayer = releasePlayer,
                     onFullscreenStateChanged = fullscreenCallback,
@@ -163,15 +204,19 @@ private fun TvMainScreen(
 
                 TvSection.Search -> TvSearchScreen(
                     provider = provider,
+                    locale = locale,
                     onContentFocused = {
                         if (!anyFullscreen) menuExpanded = false
                     },
                 )
 
-                TvSection.MyList -> TvMyListScreen()
+                TvSection.MyList -> TvMyListScreen(locale = locale)
 
                 TvSection.Settings -> TvSettingsScreen(
                     provider = provider,
+                    locale = locale,
+                    strings = strings,
+                    onLocaleChanged = onLocaleChanged,
                     onDisconnect = onDisconnect,
                 )
             }
@@ -183,11 +228,35 @@ private fun TvMainScreen(
 private fun TvSideMenu(
     selectedSection: TvSection,
     expanded: Boolean,
+    locale: TvLocale,
     onMenuFocused: () -> Unit,
     onSectionSelected: (TvSection) -> Unit,
     liveMenuFocusRequester: FocusRequester,
 ) {
+    val strings = remember(locale) { TvStrings(locale) }
     val menuWidth = if (expanded) 190.dp else 72.dp
+
+    fun title(section: TvSection): String =
+        when (section) {
+            TvSection.Home -> strings["home"]
+            TvSection.Live -> strings["live"]
+            TvSection.Movies -> strings["movies"]
+            TvSection.Series -> strings["series"]
+            TvSection.Search -> strings["search"]
+            TvSection.MyList -> strings["my_list"]
+            TvSection.Settings -> strings["settings"]
+        }
+
+    fun short(section: TvSection): String =
+        when (section) {
+            TvSection.Home -> "A"
+            TvSection.Live -> "TV"
+            TvSection.Movies -> "F"
+            TvSection.Series -> "D"
+            TvSection.Search -> "⌕"
+            TvSection.MyList -> "★"
+            TvSection.Settings -> "⚙"
+        }
 
     Column(
         modifier = Modifier
@@ -218,8 +287,11 @@ private fun TvSideMenu(
                     .fillMaxWidth()
                     .background(background, RoundedCornerShape(9.dp))
                     .then(
-                        if (section == TvSection.Live) Modifier.focusRequester(liveMenuFocusRequester)
-                        else Modifier,
+                        if (section == TvSection.Live) {
+                            Modifier.focusRequester(liveMenuFocusRequester)
+                        } else {
+                            Modifier
+                        },
                     )
                     .onFocusChanged {
                         focused = it.isFocused
@@ -230,7 +302,7 @@ private fun TvSideMenu(
                 contentAlignment = if (expanded) Alignment.CenterStart else Alignment.Center,
             ) {
                 Text(
-                    text = if (expanded) section.title else section.shortTitle,
+                    text = if (expanded) title(section) else short(section),
                     color = Color.White,
                     fontWeight = if (focused || section == selectedSection) FontWeight.Bold else FontWeight.Medium,
                     maxLines = 1,
@@ -243,14 +315,17 @@ private fun TvSideMenu(
 @Composable
 private fun TvSettingsScreen(
     provider: TvProviderConfig,
+    locale: TvLocale,
+    strings: TvStrings,
+    onLocaleChanged: (TvLocale) -> Unit,
     onDisconnect: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxSize().background(Color(0xFF0D111B)).padding(42.dp),
+        modifier = Modifier.fillMaxSize().background(Color(0xFF0D111B)).padding(36.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         Text(
-            "Ayarlar",
+            strings["settings"],
             color = Color.White,
             fontWeight = FontWeight.Bold,
             style = MaterialTheme.typography.headlineLarge,
@@ -260,25 +335,63 @@ private fun TvSettingsScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Color(0xFF111827), RoundedCornerShape(14.dp))
-                .padding(22.dp),
+                .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Aktif oynatma listesi", color = Color(0xFF94A3B8))
             Text(provider.name, color = Color.White, fontWeight = FontWeight.Bold)
             Text(provider.server, color = Color(0xFF94A3B8))
         }
 
-        var focused by remember { mutableStateOf(false) }
-        Box(
-            modifier = Modifier
-                .width(280.dp)
-                .background(if (focused) Color(0xFFDC2626) else Color(0xFF7F1D1D), RoundedCornerShape(10.dp))
-                .onFocusChanged { focused = it.isFocused }
-                .clickable { onDisconnect() }
-                .padding(horizontal = 18.dp, vertical = 14.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("Oynatma listesini kaldır", color = Color.White, fontWeight = FontWeight.Bold)
+        Text(
+            strings["language"],
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleLarge,
+        )
+
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            TvLocale.entries.forEach { row ->
+                SettingsButton(
+                    text = row.displayName,
+                    selected = row == locale,
+                ) {
+                    onLocaleChanged(row)
+                }
+            }
         }
+
+        SettingsButton(
+            text = strings["remove_playlist"],
+            destructive = true,
+        ) {
+            onDisconnect()
+        }
+    }
+}
+
+@Composable
+private fun SettingsButton(
+    text: String,
+    selected: Boolean = false,
+    destructive: Boolean = false,
+    onClick: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val color = when {
+        focused && destructive -> Color(0xFFDC2626)
+        destructive -> Color(0xFF7F1D1D)
+        focused -> Color(0xFF2563EB)
+        selected -> Color(0xFF1D4ED8)
+        else -> Color(0xFF1E293B)
+    }
+
+    Box(
+        modifier = Modifier
+            .background(color, RoundedCornerShape(9.dp))
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .padding(horizontal = 15.dp, vertical = 12.dp),
+    ) {
+        Text(text, color = Color.White, fontWeight = FontWeight.Bold)
     }
 }
