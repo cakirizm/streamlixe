@@ -57,17 +57,52 @@ fun LiveTvScreen() {
 
     val channels = remember {
         listOf(
-            TvChannel("1", "beIN SPORTS 1 HD", "Fenerbahçe - Galatasaray", "20:00 - 22:00"),
-            TvChannel("2", "beIN SPORTS 2 HD", "Premier League Özetler", "20:00 - 21:00"),
-            TvChannel("3", "TRT SPOR HD", "Stadyum", "20:30 - 22:00"),
-            TvChannel("4", "S SPORT HD", "NBA: Play-Off Özel", "21:00 - 23:00"),
-            TvChannel("5", "A SPOR HD", "Spor Gündemi", "20:00 - 21:30"),
-            TvChannel("6", "EUROSPORT 1 HD", "Bisiklet Turu", "20:15 - 22:15"),
+            TvChannel(
+                "1",
+                "beIN SPORTS 1 HD",
+                "Fenerbahçe - Galatasaray",
+                "20:00 - 22:00",
+            ),
+            TvChannel(
+                "2",
+                "beIN SPORTS 2 HD",
+                "Premier League Özetler",
+                "20:00 - 21:00",
+            ),
+            TvChannel(
+                "3",
+                "TRT SPOR HD",
+                "Stadyum",
+                "20:30 - 22:00",
+            ),
+            TvChannel(
+                "4",
+                "S SPORT HD",
+                "NBA: Play-Off Özel",
+                "21:00 - 23:00",
+            ),
+            TvChannel(
+                "5",
+                "A SPOR HD",
+                "Spor Gündemi",
+                "20:00 - 21:30",
+            ),
+            TvChannel(
+                "6",
+                "EUROSPORT 1 HD",
+                "Bisiklet Turu",
+                "20:15 - 22:15",
+            ),
         )
     }
 
-    var selectedCategory by remember { mutableStateOf(categories[3]) }
-    var selectedChannel by remember { mutableStateOf(channels.first()) }
+    var selectedCategory by remember {
+        mutableStateOf(categories[3])
+    }
+
+    var selectedChannel by remember {
+        mutableStateOf(channels.first())
+    }
 
     Row(
         modifier = Modifier
@@ -77,17 +112,22 @@ fun LiveTvScreen() {
         CategoryColumn(
             categories = categories,
             selectedCategory = selectedCategory,
-            onSelected = { selectedCategory = it },
+            onSelected = {
+                selectedCategory = it
+            },
         )
 
         ChannelColumn(
             channels = channels,
             selectedChannel = selectedChannel,
-            onSelected = { selectedChannel = it },
+            onSelected = {
+                selectedChannel = it
+            },
         )
 
         PreviewAndEpgPanel(
             channel = selectedChannel,
+            modifier = Modifier.weight(1f),
         )
     }
 }
@@ -115,7 +155,9 @@ private fun CategoryColumn(
         )
 
         categories.forEach { category ->
-            var focused by remember { mutableStateOf(false) }
+            var focused by remember {
+                mutableStateOf(false)
+            }
 
             val background = when {
                 focused -> Color(0xFF2563EB)
@@ -127,17 +169,21 @@ private fun CategoryColumn(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(
-                        background,
-                        RoundedCornerShape(8.dp),
+                        color = background,
+                        shape = RoundedCornerShape(8.dp),
                     )
                     .onFocusChanged {
                         focused = it.isFocused
+
                         if (it.isFocused) {
                             onSelected(category)
                         }
                     }
                     .focusable()
-                    .padding(horizontal = 12.dp, vertical = 11.dp),
+                    .padding(
+                        horizontal = 12.dp,
+                        vertical = 11.dp,
+                    ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -149,7 +195,11 @@ private fun CategoryColumn(
 
                 Text(
                     text = category.count.toString(),
-                    color = if (focused) Color.White else Color(0xFF94A3B8),
+                    color = if (focused) {
+                        Color.White
+                    } else {
+                        Color(0xFF94A3B8)
+                    },
                     style = MaterialTheme.typography.labelMedium,
                 )
             }
@@ -180,7 +230,9 @@ private fun ChannelColumn(
         )
 
         channels.forEachIndexed { index, channel ->
-            var focused by remember { mutableStateOf(false) }
+            var focused by remember {
+                mutableStateOf(false)
+            }
 
             val background = when {
                 focused -> Color(0xFF1D4ED8)
@@ -192,17 +244,21 @@ private fun ChannelColumn(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(
-                        background,
-                        RoundedCornerShape(8.dp),
+                        color = background,
+                        shape = RoundedCornerShape(8.dp),
                     )
                     .onFocusChanged {
                         focused = it.isFocused
+
                         if (it.isFocused) {
                             onSelected(channel)
                         }
                     }
                     .focusable()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                    .padding(
+                        horizontal = 12.dp,
+                        vertical = 10.dp,
+                    ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -238,10 +294,10 @@ private fun ChannelColumn(
 @Composable
 private fun PreviewAndEpgPanel(
     channel: TvChannel,
+    modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = Modifier
-            .weight(1f)
+        modifier = modifier
             .fillMaxHeight()
             .background(Color(0xFF0B1018))
             .padding(18.dp),
@@ -252,8 +308,8 @@ private fun PreviewAndEpgPanel(
                 .fillMaxWidth()
                 .weight(0.52f)
                 .background(
-                    Color.Black,
-                    RoundedCornerShape(12.dp),
+                    color = Color.Black,
+                    shape = RoundedCornerShape(12.dp),
                 ),
             contentAlignment = Alignment.Center,
         ) {
@@ -281,8 +337,8 @@ private fun PreviewAndEpgPanel(
                 .fillMaxWidth()
                 .weight(0.48f)
                 .background(
-                    Color(0xFF111827),
-                    RoundedCornerShape(12.dp),
+                    color = Color(0xFF111827),
+                    shape = RoundedCornerShape(12.dp),
                 )
                 .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -311,8 +367,8 @@ private fun PreviewAndEpgPanel(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(
-                        Color(0xFF1F2937),
-                        RoundedCornerShape(4.dp),
+                        color = Color(0xFF1F2937),
+                        shape = RoundedCornerShape(4.dp),
                     )
                     .padding(vertical = 4.dp),
             )
