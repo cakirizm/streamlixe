@@ -36,9 +36,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
-import com.streamlivex.android.NativePlayerSurface
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import com.streamlivex.android.PlaybackItem
 import com.streamlivex.android.PlaybackPreferences
 import com.streamlivex.android.PlaybackRequest
@@ -48,6 +52,10 @@ import com.streamlivex.android.tv.data.TvLiveLibraryCache
 import com.streamlivex.android.tv.data.TvProviderConfig
 import com.streamlivex.android.tv.data.XtreamClient
 import com.streamlivex.android.tv.data.XtreamLiveLibrary
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlinx.coroutines.delay
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -76,7 +84,9 @@ fun LiveTvScreen(
     var error by remember { mutableStateOf("") }
     var selectedCategoryId by remember { mutableStateOf("all") }
     var selectedChannelId by remember { mutableStateOf<String?>(null) }
+    var playbackChannelId by remember { mutableStateOf<String?>(null) }
     var fullscreen by remember { mutableStateOf(false) }
+    var channelOverlayVisible by remember { mutableStateOf(false) }
 
     fun requestFor(channel: NativeLiveChannel): PlaybackRequest {
         return PlaybackRequest(
@@ -86,7 +96,7 @@ fun LiveTvScreen(
                 url = channel.streamUrl,
                 kind = "live",
             ),
-            preferences = PlaybackPreferences(showInfo = true),
+            preferences = PlaybackPreferences(showInfo = false),
         )
     }
 
@@ -169,6 +179,22 @@ fun LiveTvScreen(
         visibleChannels.firstOrNull { it.id == selectedChannelId }
             ?: visibleChannels.firstOrNull()
 
+    val initialChannel = selectedChannel ?: currentLibrary.channels.firstOrNull()
+    if (initialChannel == null) {
+        LiveErrorScreen(message = "Canlı TV kanalı bulunamadı.")
+        return
+    }
+
+    // Tek bir ExoPlayer kullanıyoruz. Kanal geçişinde yeni player oluşturmuyoruz.
+    val livePlayer = remember(sessionId) {
+        playerFor(requestFor(initialChannel))
+    }
+
+    val playbackChannel =
+        visibleChannels.firstOrNull { it.id == playbackChannelId }
+            ?: currentLibrary.channels.firstOrNull { it.id == playbackChannelId }
+            ?: selectedChannel
+
     fun moveChannel(direction: Int) {
         if (visibleChannels.isEmpty()) return
 
@@ -179,8 +205,47 @@ fun LiveTvScreen(
             (currentIndex + direction + visibleChannels.size) % visibleChannels.size
 
         selectedChannelId = visibleChannels[nextIndex].id
+        playbackChannelId = visibleChannels[nextIndex].id
     }
 
+    // Liste içinde hızlı gezinirken her satırda stream açma:
+    // 180 ms debounce ile sadece kısa süre durulan kanalı küçük ön izlemede aç.
+    LaunchedEffect(selectedChannel?.id, fullscreen) {
+        val channel = selectedChannel ?: return@LaunchedEffect
+
+        if (!fullscreen) {
+            delay(180)
+        }
+
+        playbackChannelId = channel.id
+    }
+
+    // Aynı ExoPlayer'a yeni kanal URL'sini ver; player yeniden yaratılmaz.
+    LaunchedEffect(playbackChannel?.id) {
+        val channel = playbackChannel ?: return@LaunchedEffect
+
+        livePlayer.setMediaItem(MediaItem.fromUri(channel.streamUrl))
+        livePlayer.prepare()
+        livePlayer.playWhenReady = true
+    }
+
+    // Live yayın asla pause durumda kalmasın.
+    DisposableEffect(livePlayer) {
+        val listener = object : Player.Listener {
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (!playWhenReady && fullscreen) {
+                    livePlayer.playWhenReady = true
+                }
+            }
+        }
+
+        livePlayer.addListener(listener)
+        onDispose {
+            livePlayer.removeListener(listener)
+        }
+    }
+
+    // Fullscreen zapping: yukarı/aşağı kanal değiştirir.
     LaunchedEffect(externalPlayerKeyEvent, fullscreen) {
         if (!fullscreen) return@LaunchedEffect
 
@@ -192,14 +257,37 @@ fun LiveTvScreen(
         when (keyCode) {
             KeyEvent.KEYCODE_DPAD_UP -> moveChannel(-1)
             KeyEvent.KEYCODE_DPAD_DOWN -> moveChannel(1)
+
+            // Canlı TV'de ileri/geri ve merkez tuş player kontrolü yapmaz.
+            KeyEvent.KEYCODE_DPAD_LEFT,
+            KeyEvent.KEYCODE_DPAD_RIGHT,
+            KeyEvent.KEYCODE_DPAD_CENTER,
+            KeyEvent.KEYCODE_ENTER,
+            -> Unit
         }
+    }
+
+    // Kanal değişiminde gerçek TV/TiviMate tarzı alt bilgi bandı.
+    LaunchedEffect(fullscreen, selectedChannel?.id) {
+        if (!fullscreen || selectedChannel == null) {
+            channelOverlayVisible = false
+            return@LaunchedEffect
+        }
+
+        channelOverlayVisible = true
+        delay(2600)
+        channelOverlayVisible = false
     }
 
     BackHandler(enabled = fullscreen) {
         fullscreen = false
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black),
+    ) {
         if (!fullscreen) {
             Row(
                 modifier = Modifier
@@ -214,7 +302,7 @@ fun LiveTvScreen(
                         selectedCategoryId = category.id
                         selectedChannelId = null
                     },
-                    modifier = Modifier.weight(0.31f),
+                    modifier = Modifier.weight(0.30f),
                 )
 
                 ChannelColumn(
@@ -227,31 +315,39 @@ fun LiveTvScreen(
                     onActivate = { channel ->
                         onContentFocused()
                         selectedChannelId = channel.id
+                        playbackChannelId = channel.id
                         fullscreen = true
                     },
                     modifier = Modifier.weight(0.42f),
                 )
 
-                ChannelInfoPanel(
+                ChannelPreviewPanel(
                     channel = selectedChannel,
-                    modifier = Modifier.weight(0.55f),
+                    player = livePlayer,
+                    modifier = Modifier.weight(0.58f),
                 )
             }
-        }
+        } else {
+            LiveVideoSurface(
+                player = livePlayer,
+                modifier = Modifier.fillMaxSize(),
+            )
 
-        if (fullscreen) {
-            val channel = selectedChannel
-
-            if (channel != null) {
-                val request = requestFor(channel)
-
-                NativePlayerSurface(
-                    request = request,
-                    player = playerFor(request),
-                    externalKeyEvent = externalPlayerKeyEvent,
-                    onClose = { fullscreen = false },
-                    onProgress = {},
-                    onFailure = {},
+            if (channelOverlayVisible && selectedChannel != null) {
+                ChannelOverlay(
+                    channel = selectedChannel,
+                    channelNumber = visibleChannels.indexOfFirst {
+                        it.id == selectedChannel.id
+                    }.let { if (it >= 0) it + 1 else 0 },
+                    categoryName = selectedCategory.name,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(
+                            start = 34.dp,
+                            end = 34.dp,
+                            bottom = 30.dp,
+                        ),
                 )
             }
         }
@@ -369,7 +465,9 @@ private fun CategoryColumn(
                         .background(background, RoundedCornerShape(8.dp))
                         .onFocusChanged {
                             focused = it.isFocused
-                            if (it.isFocused) onSelected(category)
+                            if (it.isFocused) {
+                                onSelected(category)
+                            }
                         }
                         .focusable()
                         .padding(horizontal = 10.dp, vertical = 10.dp),
@@ -462,12 +560,15 @@ private fun ChannelColumn(
                         .background(background, RoundedCornerShape(8.dp))
                         .onFocusChanged {
                             focused = it.isFocused
-                            if (it.isFocused) onFocused(channel)
+                            if (it.isFocused) {
+                                onFocused(channel)
+                            }
                         }
+                        // Kumanda OK / Enter sadece burada fullscreen açar.
+                        // Focus tek başına fullscreen açmaz; yalnızca küçük preview'i değiştirir.
                         .clickable {
-    onActivate(channel)
-}
-                        .focusable()
+                            onActivate(channel)
+                        }
                         .padding(horizontal = 10.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -487,12 +588,11 @@ private fun ChannelColumn(
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            text =
-                                if (channel.epgId.isNullOrBlank()) {
-                                    "Canlı yayın"
-                                } else {
-                                    "EPG mevcut"
-                                },
+                            text = if (channel.epgId.isNullOrBlank()) {
+                                "Canlı yayın"
+                            } else {
+                                "EPG mevcut"
+                            },
                             color = Color(0xFF64748B),
                             style = MaterialTheme.typography.labelSmall,
                         )
@@ -503,9 +603,11 @@ private fun ChannelColumn(
     }
 }
 
+@OptIn(UnstableApi::class)
 @Composable
-private fun ChannelInfoPanel(
+private fun ChannelPreviewPanel(
     channel: NativeLiveChannel?,
+    player: ExoPlayer,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -518,61 +620,46 @@ private fun ChannelInfoPanel(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(0.62f)
+                .weight(0.68f)
                 .background(
                     color = Color.Black,
                     shape = RoundedCornerShape(10.dp),
                 ),
-            contentAlignment = Alignment.Center,
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(18.dp),
-            ) {
-                Text(
-                    text = "KANAL SEÇİLDİ",
-                    color = Color(0xFF60A5FA),
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.labelLarge,
-                )
-                Text(
-                    text = channel?.name ?: "Kanal seç",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (channel != null) {
-                    Text(
-                        text = "OK ile tam ekran aç",
-                        color = Color(0xFF94A3B8),
-                        style = MaterialTheme.typography.bodyMedium,
+            LiveVideoSurface(
+                player = player,
+                modifier = Modifier.fillMaxSize(),
+            )
+
+            Text(
+                text = "CANLI",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(10.dp)
+                    .background(
+                        color = Color(0xFFD91E36),
+                        shape = RoundedCornerShape(6.dp),
                     )
-                }
-            }
+                    .padding(horizontal = 9.dp, vertical = 5.dp),
+            )
         }
 
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(0.38f)
+                .weight(0.32f)
                 .background(
                     color = Color(0xFF111827),
                     shape = RoundedCornerShape(10.dp),
                 )
                 .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
             Text(
-                text = "Şimdi",
-                color = Color(0xFF60A5FA),
-                fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.labelLarge,
-            )
-            Text(
-                text = channel?.name ?: "Kanal seçilmedi",
+                text = channel?.name ?: "Kanal seç",
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
                 style = MaterialTheme.typography.titleMedium,
@@ -580,15 +667,124 @@ private fun ChannelInfoPanel(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text =
-                    if (channel == null) {
-                        "Bir kanal seç"
-                    } else if (channel.epgId.isNullOrBlank()) {
-                        "Program bilgisi bulunamadı"
-                    } else {
-                        "EPG bağlantısı mevcut"
-                    },
+                text = if (channel == null) {
+                    "Kanal seçildiğinde burada ön izleme açılır"
+                } else {
+                    "OK ile tam ekran"
+                },
+                color = Color(0xFF60A5FA),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                text = if (channel?.epgId.isNullOrBlank()) {
+                    "Program bilgisi bulunamadı"
+                } else {
+                    "EPG mevcut"
+                },
                 color = Color(0xFF94A3B8),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+@OptIn(UnstableApi::class)
+@Composable
+private fun LiveVideoSurface(
+    player: ExoPlayer,
+    modifier: Modifier = Modifier,
+) {
+    AndroidView(
+        modifier = modifier.background(Color.Black),
+        factory = { context ->
+            PlayerView(context).apply {
+                this.player = player
+                useController = false
+                controllerAutoShow = false
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                keepScreenOn = true
+            }
+        },
+        update = { view ->
+            if (view.player !== player) {
+                view.player = player
+            }
+            view.useController = false
+            view.controllerAutoShow = false
+            view.keepScreenOn = true
+        },
+    )
+}
+
+@Composable
+private fun ChannelOverlay(
+    channel: NativeLiveChannel,
+    channelNumber: Int,
+    categoryName: String,
+    modifier: Modifier = Modifier,
+) {
+    val now = remember(channel.id) {
+        SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+    }
+
+    Row(
+        modifier = modifier
+            .background(
+                color = Color(0xE6151A23),
+                shape = RoundedCornerShape(14.dp),
+            )
+            .padding(horizontal = 22.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
+    ) {
+        Text(
+            text = if (channelNumber > 0) {
+                channelNumber.toString().padStart(3, '0')
+            } else {
+                "TV"
+            },
+            color = Color(0xFF60A5FA),
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.headlineSmall,
+        )
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Text(
+                text = channel.name,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = if (channel.epgId.isNullOrBlank()) {
+                    "$categoryName • Canlı yayın"
+                } else {
+                    "$categoryName • EPG mevcut"
+                },
+                color = Color(0xFFCBD5E1),
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        Column(
+            horizontalAlignment = Alignment.End,
+        ) {
+            Text(
+                text = "CANLI",
+                color = Color(0xFFF87171),
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Text(
+                text = now,
+                color = Color(0xFFCBD5E1),
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
