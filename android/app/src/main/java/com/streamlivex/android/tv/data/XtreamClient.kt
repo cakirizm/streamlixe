@@ -1,11 +1,10 @@
 package com.streamlivex.android.tv.data
 
-import com.streamlivex.android.BuildConfig
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
-import java.net.URI
 import java.net.URL
+import java.net.URLEncoder
 
 data class TvProviderConfig(
     val name: String = "Oynatma Listem",
@@ -49,154 +48,318 @@ class XtreamClient {
         provider: TvProviderConfig,
     ): Result<XtreamLiveLibrary> {
         return runCatching {
-            val apiUrl = streamLiveXApiUrl()
+            val server =
+                provider.server
+                    .trim()
+                    .trimEnd('/')
 
-            val payload = JSONObject().apply {
-                put("method", "xtream")
-                put(
-                    "server",
-                    provider.server.trim().trimEnd('/'),
-                )
-                put(
-                    "username",
-                    provider.username.trim(),
-                )
-                put(
-                    "password",
-                    provider.password,
+            val username =
+                provider.username.trim()
+
+            val password =
+                provider.password
+
+            if (
+                server.isBlank() ||
+                username.isBlank() ||
+                password.isBlank()
+            ) {
+                throw IllegalArgumentException(
+                    "Sunucu, kullanıcı adı ve şifre gerekli.",
                 )
             }
 
-            val connection =
-                URL(apiUrl).openConnection() as HttpURLConnection
+            /*
+             * ÖNEMLİ:
+             *
+             * /api/import kullanmıyoruz.
+             *
+             * Çünkü /api/import aynı anda:
+             * - live
+             * - vod
+             * - series
+             *
+             * verilerinin tamamını indiriyor.
+             *
+             * Android TV'de bu yüzlerce MB RAM tüketebiliyor.
+             *
+             * Canlı TV ekranı için yalnızca:
+             * - hesap doğrulama
+             * - canlı kategoriler
+             * - canlı kanallar
+             *
+             * çekiyoruz.
+             */
 
-            try {
-                connection.requestMethod = "POST"
-                connection.connectTimeout = 45_000
-                connection.readTimeout = 60_000
-                connection.doInput = true
-                connection.doOutput = true
+            validateAccount(
+                server = server,
+                username = username,
+                password = password,
+            )
 
-                connection.setRequestProperty(
-                    "Content-Type",
-                    "application/json",
+            val categoryArray =
+                requestArray(
+                    server = server,
+                    username = username,
+                    password = password,
+                    action = "get_live_categories",
                 )
 
-                connection.setRequestProperty(
-                    "Accept",
-                    "application/json",
+            val liveArray =
+                requestArray(
+                    server = server,
+                    username = username,
+                    password = password,
+                    action = "get_live_streams",
                 )
 
-                connection.setRequestProperty(
-                    "User-Agent",
-                    "StreamLiveX-TV/${BuildConfig.VERSION_NAME}",
+            val channels =
+                buildChannels(
+                    liveArray = liveArray,
+                    server = server,
+                    username = username,
+                    password = password,
                 )
 
-                connection.outputStream.use { output ->
-                    output.write(
-                        payload
-                            .toString()
-                            .toByteArray(Charsets.UTF_8),
-                    )
-                    output.flush()
-                }
+            if (channels.isEmpty()) {
+                throw IllegalStateException(
+                    "Hesap doğrulandı ancak canlı kanal bulunamadı.",
+                )
+            }
 
-                val status = connection.responseCode
-
-                val stream =
-                    if (status in 200..299) {
-                        connection.inputStream
-                    } else {
-                        connection.errorStream
+            val categoryCounts =
+                channels
+                    .groupingBy {
+                        it.categoryId
                     }
+                    .eachCount()
 
-                val responseText =
-                    stream
-                        ?.bufferedReader(Charsets.UTF_8)
-                        ?.use { it.readText() }
-                        .orEmpty()
+            val categories =
+                buildCategories(
+                    categoryArray = categoryArray,
+                    categoryCounts = categoryCounts,
+                    totalChannelCount = channels.size,
+                )
 
-                if (status !in 200..299) {
-                    val serverMessage =
-                        runCatching {
-                            JSONObject(responseText)
-                                .optString("error")
-                                .trim()
-                                .takeIf { it.isNotEmpty() }
-                        }.getOrNull()
+            val library =
+                XtreamLiveLibrary(
+                    categories = categories,
+                    channels = channels,
+                )
 
-                    throw IllegalStateException(
-                        serverMessage
-                            ?: "Liste alınamadı. HTTP $status",
-                    )
-                }
-
-                if (responseText.isBlank()) {
-                    throw IllegalStateException(
-                        "Sunucu boş yanıt döndürdü.",
-                    )
-                }
-
-                val response = JSONObject(responseText)
-
-                val liveArray =
-                    response.optJSONArray("live")
-                        ?: JSONArray()
-
-                val categoryArray =
-                    response.optJSONArray("liveCategories")
-                        ?: JSONArray()
-
-                val server =
-                    provider.server
-                        .trim()
-                        .trimEnd('/')
-
-                val username =
-                    provider.username.trim()
-
-                val password =
-                    provider.password
-
-                val channels =
-                    buildChannels(
-                        liveArray = liveArray,
-                        server = server,
-                        username = username,
-                        password = password,
-                    )
-
-                if (channels.isEmpty()) {
-                    throw IllegalStateException(
-                        "Hesapta canlı kanal bulunamadı.",
-                    )
-                }
-
-                val categoryCounts =
-                    channels
-                        .groupingBy { it.categoryId }
-                        .eachCount()
-
-                val categories =
-                    buildCategories(
-                        categoryArray = categoryArray,
-                        categoryCounts = categoryCounts,
-                        totalChannelCount = channels.size,
-                    )
-
-                val library =
-                    XtreamLiveLibrary(
-                        categories = categories,
-                        channels = channels,
-                    )
-
-                TvLiveLibraryCache.library =
-                    library
-
+            TvLiveLibraryCache.library =
                 library
-            } finally {
-                connection.disconnect()
+
+            library
+        }
+    }
+
+    private fun validateAccount(
+        server: String,
+        username: String,
+        password: String,
+    ) {
+        val response =
+            requestObject(
+                server = server,
+                username = username,
+                password = password,
+            )
+
+        val userInfo =
+            response.optJSONObject("user_info")
+                ?: throw IllegalStateException(
+                    "Xtream hesap bilgisi alınamadı.",
+                )
+
+        val auth =
+            userInfo
+                .optString("auth")
+                .trim()
+
+        if (auth != "1") {
+            val message =
+                userInfo
+                    .optString("message")
+                    .trim()
+
+            throw IllegalStateException(
+                message.ifBlank {
+                    "Kullanıcı adı, şifre veya abonelik bilgisi geçersiz."
+                },
+            )
+        }
+
+        val status =
+            userInfo
+                .optString("status")
+                .trim()
+
+        if (
+            status.isNotBlank() &&
+            !status.equals(
+                "Active",
+                ignoreCase = true,
+            )
+        ) {
+            throw IllegalStateException(
+                "Xtream hesabı aktif değil: $status",
+            )
+        }
+    }
+
+    private fun requestObject(
+        server: String,
+        username: String,
+        password: String,
+    ): JSONObject {
+        val url =
+            buildApiUrl(
+                server = server,
+                username = username,
+                password = password,
+                action = null,
+            )
+
+        val text =
+            requestText(url)
+
+        return try {
+            JSONObject(text)
+        } catch (_: Exception) {
+            throw IllegalStateException(
+                "Xtream sunucusu geçerli hesap bilgisi döndürmedi.",
+            )
+        }
+    }
+
+    private fun requestArray(
+        server: String,
+        username: String,
+        password: String,
+        action: String,
+    ): JSONArray {
+        val url =
+            buildApiUrl(
+                server = server,
+                username = username,
+                password = password,
+                action = action,
+            )
+
+        val text =
+            requestText(url)
+
+        return try {
+            JSONArray(text)
+        } catch (_: Exception) {
+            throw IllegalStateException(
+                "$action verisi okunamadı.",
+            )
+        }
+    }
+
+    private fun buildApiUrl(
+        server: String,
+        username: String,
+        password: String,
+        action: String?,
+    ): String {
+        val encodedUsername =
+            URLEncoder.encode(
+                username,
+                "UTF-8",
+            )
+
+        val encodedPassword =
+            URLEncoder.encode(
+                password,
+                "UTF-8",
+            )
+
+        return buildString {
+            append(server)
+            append("/player_api.php")
+            append("?username=")
+            append(encodedUsername)
+            append("&password=")
+            append(encodedPassword)
+
+            if (!action.isNullOrBlank()) {
+                append("&action=")
+                append(
+                    URLEncoder.encode(
+                        action,
+                        "UTF-8",
+                    ),
+                )
             }
+        }
+    }
+
+    private fun requestText(
+        url: String,
+    ): String {
+        val connection =
+            URL(url)
+                .openConnection() as HttpURLConnection
+
+        try {
+            connection.requestMethod =
+                "GET"
+
+            connection.connectTimeout =
+                20_000
+
+            connection.readTimeout =
+                45_000
+
+            connection.instanceFollowRedirects =
+                true
+
+            connection.setRequestProperty(
+                "Accept",
+                "application/json",
+            )
+
+            connection.setRequestProperty(
+                "User-Agent",
+                "VLC/3.0 StreamLiveX-TV",
+            )
+
+            val status =
+                connection.responseCode
+
+            val stream =
+                if (status in 200..299) {
+                    connection.inputStream
+                } else {
+                    connection.errorStream
+                }
+
+            val text =
+                stream
+                    ?.bufferedReader(Charsets.UTF_8)
+                    ?.use {
+                        it.readText()
+                    }
+                    .orEmpty()
+
+            if (status !in 200..299) {
+                throw IllegalStateException(
+                    "Yayın sunucusu HTTP $status hatası verdi.",
+                )
+            }
+
+            if (text.isBlank()) {
+                throw IllegalStateException(
+                    "Yayın sunucusu boş yanıt döndürdü.",
+                )
+            }
+
+            return text
+        } finally {
+            connection.disconnect()
         }
     }
 
@@ -215,9 +378,13 @@ class XtreamClient {
                 count = totalChannelCount,
             )
 
-        for (index in 0 until categoryArray.length()) {
+        for (
+            index in
+            0 until categoryArray.length()
+        ) {
             val item =
-                categoryArray.optJSONObject(index)
+                categoryArray
+                    .optJSONObject(index)
                     ?: continue
 
             val categoryId =
@@ -259,9 +426,13 @@ class XtreamClient {
         val result =
             mutableListOf<NativeLiveChannel>()
 
-        for (index in 0 until liveArray.length()) {
+        for (
+            index in
+            0 until liveArray.length()
+        ) {
             val item =
-                liveArray.optJSONObject(index)
+                liveArray
+                    .optJSONObject(index)
                     ?: continue
 
             val streamId =
@@ -288,7 +459,9 @@ class XtreamClient {
 
             val extension =
                 item
-                    .optString("container_extension")
+                    .optString(
+                        "container_extension",
+                    )
                     .trim()
                     .ifBlank {
                         "ts"
@@ -304,7 +477,9 @@ class XtreamClient {
 
             val epgId =
                 item
-                    .optString("epg_channel_id")
+                    .optString(
+                        "epg_channel_id",
+                    )
                     .trim()
                     .takeIf {
                         it.isNotEmpty()
@@ -326,30 +501,5 @@ class XtreamClient {
         }
 
         return result
-    }
-
-    private fun streamLiveXApiUrl(): String {
-        val configured =
-            BuildConfig.WEB_APP_URL
-
-        val uri =
-            URI(configured)
-
-        val scheme =
-            uri.scheme
-                ?: "https"
-
-        val host =
-            uri.host
-                ?: "streamlivex.com"
-
-        val port =
-            if (uri.port == -1) {
-                ""
-            } else {
-                ":${uri.port}"
-            }
-
-        return "$scheme://$host$port/api/import"
     }
 }
