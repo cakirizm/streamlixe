@@ -21,6 +21,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -95,6 +97,7 @@ private fun TvMainScreen(
     var selectedSection by remember { mutableStateOf(TvSection.Live) }
     var menuExpanded by remember { mutableStateOf(true) }
     var liveFullscreen by remember { mutableStateOf(false) }
+    val liveMenuFocusRequester = remember { FocusRequester() }
 
     Row(
         modifier = Modifier
@@ -112,6 +115,7 @@ private fun TvMainScreen(
                 onSectionSelected = {
                     selectedSection = it
                 },
+                liveMenuFocusRequester = liveMenuFocusRequester,
             )
         }
 
@@ -138,6 +142,7 @@ private fun TvMainScreen(
                                 menuExpanded = false
                             }
                         },
+                        menuFocusRequester = liveMenuFocusRequester,
                     )
                 }
 
@@ -163,6 +168,7 @@ private fun TvSideMenu(
     expanded: Boolean,
     onMenuFocused: () -> Unit,
     onSectionSelected: (TvSection) -> Unit,
+    liveMenuFocusRequester: FocusRequester,
 ) {
     val menuWidth = if (expanded) 190.dp else 72.dp
 
@@ -207,6 +213,13 @@ private fun TvSideMenu(
                     .background(
                         color = background,
                         shape = RoundedCornerShape(9.dp),
+                    )
+                    .then(
+                        if (section == TvSection.Live) {
+                            Modifier.focusRequester(liveMenuFocusRequester)
+                        } else {
+                            Modifier
+                        },
                     )
                     .onFocusChanged {
                         focused = it.isFocused
