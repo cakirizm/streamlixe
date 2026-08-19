@@ -81,6 +81,7 @@ fun NativePlayerSurface(
     onProgress: (PlaybackProgress) -> Unit,
     onFailure: (String) -> Unit,
     onPreferencesChanged: (PlaybackPreferences) -> Unit = {},
+    onNext: () -> Unit = {},
     externalKeyEvent: Triple<Int, Int, Long>? = null,
 ) {
     val context = LocalContext.current
@@ -491,6 +492,12 @@ fun NativePlayerSurface(
                     color = ComposeColor(0xFFB8B4C8),
                     style = MaterialTheme.typography.labelSmall,
                 )
+            }
+            if (!request.item.isLive && request.item.hasNext) OutlinedButton(
+                onClick = onNext,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+            ) {
+                Text("⏭ " + stringResource(R.string.next_episode), maxLines = 1, style = MaterialTheme.typography.labelSmall)
             }
             if (!request.item.isLive) OutlinedButton(
                 onClick = { tracksPanelVisible = !tracksPanelVisible },

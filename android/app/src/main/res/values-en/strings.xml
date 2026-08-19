@@ -4,6 +4,7 @@
     <string name="web_error">Could not connect to the application interface.</string>
     <string name="retry">Try again</string>
     <string name="preparing_stream">Preparing stream…</string>
+    <string name="next_episode">Next episode</string>
     <string name="stream_failed">Stream could not be played</string>
     <string name="stream_failed_detail">The source may be offline, expired, or using a codec unsupported by this device.</string>
     <string name="back">Back</string>

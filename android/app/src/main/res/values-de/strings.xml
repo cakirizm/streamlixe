@@ -4,6 +4,7 @@
     <string name="web_error">Die App-Oberfläche konnte nicht geladen werden.</string>
     <string name="retry">Erneut versuchen</string>
     <string name="preparing_stream">Stream wird vorbereitet…</string>
+    <string name="next_episode">Nächste Folge</string>
     <string name="stream_failed">Stream konnte nicht abgespielt werden</string>
     <string name="stream_failed_detail">Die Quelle ist möglicherweise offline, abgelaufen oder verwendet einen auf diesem Gerät nicht unterstützten Codec.</string>
     <string name="back">Zurück</string>

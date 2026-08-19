@@ -4,6 +4,7 @@
     <string name="web_error">Impossible de charger l’interface de l’application.</string>
     <string name="retry">Réessayer</string>
     <string name="preparing_stream">Préparation du flux…</string>
+    <string name="next_episode">Épisode suivant</string>
     <string name="stream_failed">Impossible de lire le flux</string>
     <string name="stream_failed_detail">La source est peut-être hors ligne, expirée ou utilise un codec non pris en charge par cet appareil.</string>
     <string name="back">Retour</string>

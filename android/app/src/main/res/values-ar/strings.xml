@@ -4,6 +4,7 @@
     <string name="web_error">تعذر تحميل واجهة التطبيق.</string>
     <string name="retry">إعادة المحاولة</string>
     <string name="preparing_stream">جارٍ تجهيز البث…</string>
+    <string name="next_episode">الحلقة التالية</string>
     <string name="stream_failed">تعذر تشغيل البث</string>
     <string name="stream_failed_detail">قد يكون المصدر غير متصل أو منتهي الصلاحية أو يستخدم ترميزًا لا يدعمه هذا الجهاز.</string>
     <string name="back">رجوع</string>

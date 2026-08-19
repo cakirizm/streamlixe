@@ -4,6 +4,7 @@
     <string name="web_error">No se pudo cargar la interfaz de la aplicación.</string>
     <string name="retry">Reintentar</string>
     <string name="preparing_stream">Preparando emisión…</string>
+    <string name="next_episode">Siguiente episodio</string>
     <string name="stream_failed">No se pudo reproducir la emisión</string>
     <string name="stream_failed_detail">La fuente puede estar desconectada, caducada o usar un códec no compatible con este dispositivo.</string>
     <string name="back">Volver</string>

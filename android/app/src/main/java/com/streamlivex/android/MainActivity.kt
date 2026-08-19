@@ -235,6 +235,7 @@ class MainActivity : ComponentActivity() {
                                     .put("subtitleBackground", prefs.subtitleBackground)
                                 sendWebEvent("streamlivex:native-settings", detail.toString())
                             },
+                            onNext = { sendWebEvent("streamlivex:native-player-next", "{}") },
                         )
                     }
                 }
