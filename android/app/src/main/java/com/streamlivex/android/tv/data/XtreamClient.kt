@@ -290,6 +290,103 @@ class XtreamClient {
         }
     }
 
+
+    fun scanVod(
+        provider: TvProviderConfig,
+        onItem: (NativeVodItem) -> Unit,
+    ): Result<Int> = runCatching {
+        val p = normalized(provider)
+        val url = buildApiUrl(p, "get_vod_streams")
+        var count = 0
+
+        forEachArrayStream(url) { reader ->
+            var streamId = ""
+            var catId = ""
+            var name = ""
+            var icon: String? = null
+            var extension = "mp4"
+
+            reader.beginObject()
+            while (reader.hasNext()) {
+                when (reader.nextName()) {
+                    "stream_id" -> streamId = reader.nextStringSafe()
+                    "category_id" -> catId = reader.nextStringSafe()
+                    "name" -> name = reader.nextStringSafe()
+                    "stream_icon" -> icon = reader.nextStringSafe().takeIf { it.isNotBlank() }
+                    "container_extension" -> extension = reader.nextStringSafe().ifBlank { "mp4" }
+                    else -> reader.skipValue()
+                }
+            }
+            reader.endObject()
+
+            if (streamId.isNotBlank()) {
+                onItem(
+                    NativeVodItem(
+                        id = "m$streamId",
+                        streamId = streamId,
+                        categoryId = catId,
+                        name = name.ifBlank { "İsimsiz Film" },
+                        poster = icon,
+                        plot = null,
+                        rating = null,
+                        year = null,
+                        genre = null,
+                        extension = extension,
+                        streamUrl = "${p.server}/movie/${p.username}/${p.password}/$streamId.$extension",
+                    ),
+                )
+                count += 1
+            }
+        }
+        count
+    }
+
+    fun scanSeries(
+        provider: TvProviderConfig,
+        onItem: (NativeSeriesItem) -> Unit,
+    ): Result<Int> = runCatching {
+        val p = normalized(provider)
+        val url = buildApiUrl(p, "get_series")
+        var count = 0
+
+        forEachArrayStream(url) { reader ->
+            var seriesId = ""
+            var catId = ""
+            var name = ""
+            var cover: String? = null
+
+            reader.beginObject()
+            while (reader.hasNext()) {
+                when (reader.nextName()) {
+                    "series_id" -> seriesId = reader.nextStringSafe()
+                    "category_id" -> catId = reader.nextStringSafe()
+                    "name" -> name = reader.nextStringSafe()
+                    "cover" -> cover = reader.nextStringSafe().takeIf { it.isNotBlank() }
+                    else -> reader.skipValue()
+                }
+            }
+            reader.endObject()
+
+            if (seriesId.isNotBlank()) {
+                onItem(
+                    NativeSeriesItem(
+                        id = "s$seriesId",
+                        seriesId = seriesId,
+                        categoryId = catId,
+                        name = name.ifBlank { "İsimsiz Dizi" },
+                        cover = cover,
+                        plot = null,
+                        rating = null,
+                        year = null,
+                        genre = null,
+                    ),
+                )
+                count += 1
+            }
+        }
+        count
+    }
+
     private fun normalized(provider: TvProviderConfig): TvProviderConfig {
         val server = provider.server.trim().trimEnd('/')
         val username = provider.username.trim()
@@ -415,6 +512,26 @@ class XtreamClient {
                 // Closing reader/connection aborts the remaining response without allocating it.
             }
             return result
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+
+    private fun forEachArrayStream(
+        url: String,
+        block: (JsonReader) -> Unit,
+    ) {
+        val connection = open(url)
+        try {
+            val reader = JsonReader(InputStreamReader(connection.inputStream, Charsets.UTF_8))
+            reader.use {
+                it.beginArray()
+                while (it.hasNext()) {
+                    block(it)
+                }
+                it.endArray()
+            }
         } finally {
             connection.disconnect()
         }
