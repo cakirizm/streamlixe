@@ -1,7 +1,9 @@
 package com.streamlivex.android.tv.data
 
-import org.json.JSONArray
+import android.util.JsonReader
+import android.util.JsonToken
 import org.json.JSONObject
+import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -41,73 +43,207 @@ object TvLiveLibraryCache {
 
 class XtreamClient {
 
+    /*
+     * MEMORY RULE:
+     * VOD/Series için provider'ın bütün kütüphanesini ASLA tek JSONArray/String olarak RAM'e almıyoruz.
+     * Kategori listesini ayrı, seçilen kategorinin içeriklerini ayrı ve JsonReader ile stream ederek okuyoruz.
+     */
+
     fun loadLiveLibrary(provider: TvProviderConfig): Result<XtreamLiveLibrary> = runCatching {
+        TvLiveLibraryCache.library?.let { return@runCatching it }
         val p = normalized(provider)
         validateAccount(p)
 
-        val categoriesJson = requestArray(p, "get_live_categories")
-        val streamsJson = requestArray(p, "get_live_streams")
-        val channels = buildLiveChannels(streamsJson, p)
-
-        if (channels.isEmpty()) error("Hesap doğrulandı ancak canlı kanal bulunamadı.")
+        val categories = readLiveCategories(p)
+        val channels = readLiveChannels(p)
+        if (channels.isEmpty()) error("Canlı kanal bulunamadı.")
 
         val counts = channels.groupingBy { it.categoryId }.eachCount()
-        val categories = buildLiveCategories(categoriesJson, counts, channels.size)
+        val resultCategories = buildList {
+            add(NativeLiveCategory("all", "Tümü", channels.size))
+            categories.forEach { (id, name) ->
+                add(NativeLiveCategory(id, name, counts[id] ?: 0))
+            }
+        }
 
-        XtreamLiveLibrary(categories, channels).also {
+        XtreamLiveLibrary(resultCategories, channels).also {
             TvLiveLibraryCache.library = it
         }
     }
 
-    fun loadVodLibrary(provider: TvProviderConfig): Result<XtreamVodLibrary> = runCatching {
-        TvVodLibraryCache.library?.let { return@runCatching it }
+    fun loadVodCategories(provider: TvProviderConfig): Result<List<NativeVodCategory>> =
+        runCatching {
+            TvContentCache.vodCategories?.let { return@runCatching it }
+            val p = normalized(provider)
+            val rows = readSimpleCategories(p, "get_vod_categories")
+                .map { NativeVodCategory(it.first, it.second) }
+            TvContentCache.vodCategories = rows
+            rows
+        }
+
+    fun loadSeriesCategories(provider: TvProviderConfig): Result<List<NativeSeriesCategory>> =
+        runCatching {
+            TvContentCache.seriesCategories?.let { return@runCatching it }
+            val p = normalized(provider)
+            val rows = readSimpleCategories(p, "get_series_categories")
+                .map { NativeSeriesCategory(it.first, it.second) }
+            TvContentCache.seriesCategories = rows
+            rows
+        }
+
+    fun loadVodCategory(
+        provider: TvProviderConfig,
+        categoryId: String,
+        maxItems: Int = Int.MAX_VALUE,
+    ): Result<List<NativeVodItem>> = runCatching {
+        if (maxItems == Int.MAX_VALUE) {
+            TvContentCache.vodByCategory[categoryId]?.let { return@runCatching it }
+        }
 
         val p = normalized(provider)
-        validateAccount(p)
+        val url = buildApiUrl(
+            p,
+            "get_vod_streams",
+            mapOf("category_id" to categoryId),
+        )
 
-        val categoriesJson = requestArray(p, "get_vod_categories")
-        val streamsJson = requestArray(p, "get_vod_streams")
-        val items = buildVodItems(streamsJson, p)
+        val rows = readArrayStream(url, maxItems) { reader ->
+            var streamId = ""
+            var catId = categoryId
+            var name = ""
+            var icon: String? = null
+            var plot: String? = null
+            var rating: Double? = null
+            var year: String? = null
+            var genre: String? = null
+            var extension = "mp4"
 
-        val counts = items.groupingBy { it.categoryId }.eachCount()
-        val categories = buildVodCategories(categoriesJson, counts, items.size)
+            reader.beginObject()
+            while (reader.hasNext()) {
+                when (reader.nextName()) {
+                    "stream_id" -> streamId = reader.nextStringSafe()
+                    "category_id" -> catId = reader.nextStringSafe().ifBlank { categoryId }
+                    "name" -> name = reader.nextStringSafe()
+                    "stream_icon" -> icon = reader.nextStringSafe().takeIf { it.isNotBlank() }
+                    "plot" -> plot = reader.nextStringSafe().takeIf { it.isNotBlank() }
+                    "rating" -> rating = reader.nextStringSafe().toDoubleOrNull()
+                    "year" -> year = reader.nextStringSafe().takeIf { it.isNotBlank() }
+                    "genre" -> genre = reader.nextStringSafe().takeIf { it.isNotBlank() }
+                    "container_extension" -> {
+                        extension = reader.nextStringSafe().ifBlank { "mp4" }
+                    }
+                    else -> reader.skipValue()
+                }
+            }
+            reader.endObject()
 
-        XtreamVodLibrary(categories, items).also {
-            TvVodLibraryCache.library = it
+            if (streamId.isBlank()) {
+                null
+            } else {
+                NativeVodItem(
+                    id = "m$streamId",
+                    streamId = streamId,
+                    categoryId = catId,
+                    name = name.ifBlank { "İsimsiz Film" },
+                    poster = icon,
+                    plot = plot,
+                    rating = rating,
+                    year = year,
+                    genre = genre,
+                    extension = extension,
+                    streamUrl = "${p.server}/movie/${p.username}/${p.password}/$streamId.$extension",
+                )
+            }
         }
+
+        if (maxItems == Int.MAX_VALUE) {
+            TvContentCache.vodByCategory[categoryId] = rows
+        }
+        rows
     }
 
-    fun loadSeriesLibrary(provider: TvProviderConfig): Result<XtreamSeriesLibrary> = runCatching {
-        TvSeriesLibraryCache.library?.let { return@runCatching it }
+    fun loadSeriesCategory(
+        provider: TvProviderConfig,
+        categoryId: String,
+        maxItems: Int = Int.MAX_VALUE,
+    ): Result<List<NativeSeriesItem>> = runCatching {
+        if (maxItems == Int.MAX_VALUE) {
+            TvContentCache.seriesByCategory[categoryId]?.let { return@runCatching it }
+        }
 
         val p = normalized(provider)
-        validateAccount(p)
+        val url = buildApiUrl(
+            p,
+            "get_series",
+            mapOf("category_id" to categoryId),
+        )
 
-        val categoriesJson = requestArray(p, "get_series_categories")
-        val seriesJson = requestArray(p, "get_series")
-        val items = buildSeriesItems(seriesJson)
+        val rows = readArrayStream(url, maxItems) { reader ->
+            var seriesId = ""
+            var catId = categoryId
+            var name = ""
+            var cover: String? = null
+            var plot: String? = null
+            var rating: Double? = null
+            var year: String? = null
+            var genre: String? = null
 
-        val counts = items.groupingBy { it.categoryId }.eachCount()
-        val categories = buildSeriesCategories(categoriesJson, counts, items.size)
+            reader.beginObject()
+            while (reader.hasNext()) {
+                when (reader.nextName()) {
+                    "series_id" -> seriesId = reader.nextStringSafe()
+                    "category_id" -> catId = reader.nextStringSafe().ifBlank { categoryId }
+                    "name" -> name = reader.nextStringSafe()
+                    "cover" -> cover = reader.nextStringSafe().takeIf { it.isNotBlank() }
+                    "plot" -> plot = reader.nextStringSafe().takeIf { it.isNotBlank() }
+                    "rating" -> rating = reader.nextStringSafe().toDoubleOrNull()
+                    "releaseDate", "release_date", "year" -> {
+                        val raw = reader.nextStringSafe()
+                        year = raw.takeIf { it.isNotBlank() }?.take(4)
+                    }
+                    "genre" -> genre = reader.nextStringSafe().takeIf { it.isNotBlank() }
+                    else -> reader.skipValue()
+                }
+            }
+            reader.endObject()
 
-        XtreamSeriesLibrary(categories, items).also {
-            TvSeriesLibraryCache.library = it
+            if (seriesId.isBlank()) {
+                null
+            } else {
+                NativeSeriesItem(
+                    id = "s$seriesId",
+                    seriesId = seriesId,
+                    categoryId = catId,
+                    name = name.ifBlank { "İsimsiz Dizi" },
+                    cover = cover,
+                    plot = plot,
+                    rating = rating,
+                    year = year,
+                    genre = genre,
+                )
+            }
         }
+
+        if (maxItems == Int.MAX_VALUE) {
+            TvContentCache.seriesByCategory[categoryId] = rows
+        }
+        rows
     }
 
     fun loadSeriesInfo(
         provider: TvProviderConfig,
         series: NativeSeriesItem,
     ): Result<NativeSeriesInfo> = runCatching {
-        TvSeriesLibraryCache.details[series.seriesId]?.let { return@runCatching it }
+        TvContentCache.seriesDetails[series.seriesId]?.let { return@runCatching it }
 
         val p = normalized(provider)
-        val root = requestObject(
+        val url = buildApiUrl(
             p,
-            action = "get_series_info",
-            extra = mapOf("series_id" to series.seriesId),
+            "get_series_info",
+            mapOf("series_id" to series.seriesId),
         )
-
+        val text = requestSmallText(url, 8 * 1024 * 1024)
+        val root = JSONObject(text)
         val episodesObject = root.optJSONObject("episodes")
         val episodes = mutableListOf<NativeSeriesEpisode>()
 
@@ -123,9 +259,10 @@ class XtreamClient {
                     val episodeId = row.optString("id").trim()
                     if (episodeId.isBlank()) continue
 
-                    val extension = row.optString("container_extension").trim().ifBlank { "mp4" }
+                    val extension =
+                        row.optString("container_extension").trim().ifBlank { "mp4" }
                     val episodeNumber =
-                        row.optInt("episode_num", i + 1).takeIf { it > 0 } ?: (i + 1)
+                        row.optInt("episode_num", i + 1).takeIf { it > 0 } ?: i + 1
                     val title =
                         row.optString("title").trim()
                             .ifBlank { "S${seasonNumber} E${episodeNumber}" }
@@ -145,9 +282,11 @@ class XtreamClient {
 
         NativeSeriesInfo(
             series = series,
-            episodes = episodes.sortedWith(compareBy<NativeSeriesEpisode> { it.season }.thenBy { it.episode }),
+            episodes = episodes.sortedWith(
+                compareBy<NativeSeriesEpisode> { it.season }.thenBy { it.episode },
+            ),
         ).also {
-            TvSeriesLibraryCache.details[series.seriesId] = it
+            TvContentCache.seriesDetails[series.seriesId] = it
         }
     }
 
@@ -159,50 +298,77 @@ class XtreamClient {
         if (server.isBlank() || username.isBlank() || password.isBlank()) {
             throw IllegalArgumentException("Sunucu, kullanıcı adı ve şifre gerekli.")
         }
-
         return provider.copy(server = server, username = username)
     }
 
     private fun validateAccount(provider: TvProviderConfig) {
-        val response = requestObject(provider)
-        val userInfo = response.optJSONObject("user_info")
-            ?: throw IllegalStateException("Xtream hesap bilgisi alınamadı.")
-
+        val text = requestSmallText(buildApiUrl(provider), 2 * 1024 * 1024)
+        val userInfo = JSONObject(text).optJSONObject("user_info")
+            ?: error("Xtream hesap bilgisi alınamadı.")
         if (userInfo.optString("auth").trim() != "1") {
-            throw IllegalStateException(
-                userInfo.optString("message").trim()
-                    .ifBlank { "Kullanıcı adı, şifre veya abonelik bilgisi geçersiz." },
-            )
-        }
-
-        val status = userInfo.optString("status").trim()
-        if (status.isNotBlank() && !status.equals("Active", true)) {
-            throw IllegalStateException("Xtream hesabı aktif değil: $status")
+            error("Xtream hesabı doğrulanamadı.")
         }
     }
 
-    private fun requestObject(
-        provider: TvProviderConfig,
-        action: String? = null,
-        extra: Map<String, String> = emptyMap(),
-    ): JSONObject {
-        val text = requestText(buildApiUrl(provider, action, extra))
-        return try {
-            JSONObject(text)
-        } catch (_: Exception) {
-            throw IllegalStateException("${action ?: "account"} verisi okunamadı.")
-        }
-    }
-
-    private fun requestArray(
+    private fun readSimpleCategories(
         provider: TvProviderConfig,
         action: String,
-    ): JSONArray {
-        val text = requestText(buildApiUrl(provider, action))
-        return try {
-            JSONArray(text)
-        } catch (_: Exception) {
-            throw IllegalStateException("$action verisi okunamadı.")
+    ): List<Pair<String, String>> {
+        val url = buildApiUrl(provider, action)
+        return readArrayStream(url) { reader ->
+            var id = ""
+            var name = ""
+            reader.beginObject()
+            while (reader.hasNext()) {
+                when (reader.nextName()) {
+                    "category_id" -> id = reader.nextStringSafe()
+                    "category_name" -> name = reader.nextStringSafe()
+                    else -> reader.skipValue()
+                }
+            }
+            reader.endObject()
+            if (id.isBlank()) null else id to name.ifBlank { "Diğer" }
+        }
+    }
+
+    private fun readLiveCategories(provider: TvProviderConfig): List<Pair<String, String>> =
+        readSimpleCategories(provider, "get_live_categories")
+
+    private fun readLiveChannels(provider: TvProviderConfig): List<NativeLiveChannel> {
+        val url = buildApiUrl(provider, "get_live_streams")
+        return readArrayStream(url) { reader ->
+            var streamId = ""
+            var categoryId = ""
+            var name = ""
+            var logo: String? = null
+            var epgId: String? = null
+            var extension = "ts"
+
+            reader.beginObject()
+            while (reader.hasNext()) {
+                when (reader.nextName()) {
+                    "stream_id" -> streamId = reader.nextStringSafe()
+                    "category_id" -> categoryId = reader.nextStringSafe()
+                    "name" -> name = reader.nextStringSafe()
+                    "stream_icon" -> logo = reader.nextStringSafe().takeIf { it.isNotBlank() }
+                    "epg_channel_id" -> epgId = reader.nextStringSafe().takeIf { it.isNotBlank() }
+                    "container_extension" -> {
+                        extension = reader.nextStringSafe().ifBlank { "ts" }
+                    }
+                    else -> reader.skipValue()
+                }
+            }
+            reader.endObject()
+
+            if (streamId.isBlank()) null else NativeLiveChannel(
+                id = "l$streamId",
+                streamId = streamId,
+                categoryId = categoryId,
+                name = name.ifBlank { "İsimsiz Kanal" },
+                logo = logo,
+                epgId = epgId,
+                streamUrl = "${provider.server}/live/${provider.username}/${provider.password}/$streamId.$extension",
+            )
         }
     }
 
@@ -221,7 +387,6 @@ class XtreamClient {
             append("&action=")
             append(URLEncoder.encode(action, "UTF-8"))
         }
-
         extra.forEach { (key, value) ->
             append("&")
             append(URLEncoder.encode(key, "UTF-8"))
@@ -230,169 +395,81 @@ class XtreamClient {
         }
     }
 
-    private fun requestText(url: String): String {
-        val connection = URL(url).openConnection() as HttpURLConnection
+    private fun <T> readArrayStream(
+        url: String,
+        maxItems: Int = Int.MAX_VALUE,
+        mapper: (JsonReader) -> T?,
+    ): List<T> {
+        val connection = open(url)
         try {
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 15_000
-            connection.readTimeout = 35_000
-            connection.instanceFollowRedirects = true
-            connection.setRequestProperty("Accept", "application/json")
-            connection.setRequestProperty("User-Agent", "VLC/3.0 StreamLiveX-TV")
-
-            val status = connection.responseCode
-            val stream =
-                if (status in 200..299) connection.inputStream
-                else connection.errorStream
-
-            val text =
-                stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-
-            if (status !in 200..299) {
-                throw IllegalStateException("Yayın sunucusu HTTP $status hatası verdi.")
+            val reader = JsonReader(InputStreamReader(connection.inputStream, Charsets.UTF_8))
+            val result = ArrayList<T>(if (maxItems == Int.MAX_VALUE) 64 else maxItems.coerceAtMost(64))
+            reader.use {
+                it.beginArray()
+                while (it.hasNext()) {
+                    if (result.size >= maxItems) break
+                    val item = mapper(it)
+                    if (item != null) result.add(item)
+                }
+                // We intentionally stop early for Home preview requests.
+                // Closing reader/connection aborts the remaining response without allocating it.
             }
-            if (text.isBlank()) {
-                throw IllegalStateException("Yayın sunucusu boş yanıt döndürdü.")
-            }
-            return text
+            return result
         } finally {
             connection.disconnect()
         }
     }
 
-    private fun buildLiveCategories(
-        array: JSONArray,
-        counts: Map<String, Int>,
-        total: Int,
-    ): List<NativeLiveCategory> {
-        val result = mutableListOf(NativeLiveCategory("all", "Tümü", total))
-        for (i in 0 until array.length()) {
-            val item = array.optJSONObject(i) ?: continue
-            val id = item.optString("category_id").trim()
-            if (id.isBlank()) continue
-            result += NativeLiveCategory(
-                id = id,
-                name = item.optString("category_name").trim().ifBlank { "Diğer" },
-                count = counts[id] ?: 0,
-            )
-        }
-        return result
-    }
-
-    private fun buildVodCategories(
-        array: JSONArray,
-        counts: Map<String, Int>,
-        total: Int,
-    ): List<NativeVodCategory> {
-        val result = mutableListOf(NativeVodCategory("all", "Tümü", total))
-        for (i in 0 until array.length()) {
-            val item = array.optJSONObject(i) ?: continue
-            val id = item.optString("category_id").trim()
-            if (id.isBlank()) continue
-            result += NativeVodCategory(
-                id = id,
-                name = item.optString("category_name").trim().ifBlank { "Diğer" },
-                count = counts[id] ?: 0,
-            )
-        }
-        return result
-    }
-
-    private fun buildSeriesCategories(
-        array: JSONArray,
-        counts: Map<String, Int>,
-        total: Int,
-    ): List<NativeSeriesCategory> {
-        val result = mutableListOf(NativeSeriesCategory("all", "Tümü", total))
-        for (i in 0 until array.length()) {
-            val item = array.optJSONObject(i) ?: continue
-            val id = item.optString("category_id").trim()
-            if (id.isBlank()) continue
-            result += NativeSeriesCategory(
-                id = id,
-                name = item.optString("category_name").trim().ifBlank { "Diğer" },
-                count = counts[id] ?: 0,
-            )
-        }
-        return result
-    }
-
-    private fun buildLiveChannels(
-        array: JSONArray,
-        provider: TvProviderConfig,
-    ): List<NativeLiveChannel> = buildList {
-        for (i in 0 until array.length()) {
-            val item = array.optJSONObject(i) ?: continue
-            val streamId = item.optString("stream_id").trim()
-            if (streamId.isBlank()) continue
-
-            val extension = item.optString("container_extension").trim().ifBlank { "ts" }
-            add(
-                NativeLiveChannel(
-                    id = "l$streamId",
-                    streamId = streamId,
-                    categoryId = item.optString("category_id").trim(),
-                    name = item.optString("name").trim().ifBlank { "İsimsiz Kanal" },
-                    logo = item.optString("stream_icon").trim().takeIf { it.isNotEmpty() },
-                    epgId = item.optString("epg_channel_id").trim().takeIf { it.isNotEmpty() },
-                    streamUrl = "${provider.server}/live/${provider.username}/${provider.password}/$streamId.$extension",
-                ),
-            )
+    private fun requestSmallText(url: String, maxBytes: Int): String {
+        val connection = open(url)
+        try {
+            val input = connection.inputStream
+            val buffer = ByteArray(8192)
+            val out = StringBuilder()
+            var total = 0
+            while (true) {
+                val read = input.read(buffer)
+                if (read <= 0) break
+                total += read
+                if (total > maxBytes) error("Sunucu yanıtı güvenli bellek sınırını aştı.")
+                out.append(String(buffer, 0, read, Charsets.UTF_8))
+            }
+            return out.toString()
+        } finally {
+            connection.disconnect()
         }
     }
 
-    private fun buildVodItems(
-        array: JSONArray,
-        provider: TvProviderConfig,
-    ): List<NativeVodItem> = buildList {
-        for (i in 0 until array.length()) {
-            val item = array.optJSONObject(i) ?: continue
-            val streamId = item.optString("stream_id").trim()
-            if (streamId.isBlank()) continue
+    private fun open(url: String): HttpURLConnection {
+        val connection = URL(url).openConnection() as HttpURLConnection
+        connection.requestMethod = "GET"
+        connection.connectTimeout = 12_000
+        connection.readTimeout = 30_000
+        connection.instanceFollowRedirects = true
+        connection.setRequestProperty("Accept", "application/json")
+        connection.setRequestProperty("User-Agent", "VLC/3.0 StreamLiveX-TV")
+        connection.connect()
 
-            val extension = item.optString("container_extension").trim().ifBlank { "mp4" }
-            val rating = item.optString("rating").trim().toDoubleOrNull()
-
-            add(
-                NativeVodItem(
-                    id = "m$streamId",
-                    streamId = streamId,
-                    categoryId = item.optString("category_id").trim(),
-                    name = item.optString("name").trim().ifBlank { "İsimsiz Film" },
-                    poster = item.optString("stream_icon").trim().takeIf { it.isNotEmpty() },
-                    plot = item.optString("plot").trim().takeIf { it.isNotEmpty() },
-                    rating = rating,
-                    year = item.optString("year").trim().takeIf { it.isNotEmpty() },
-                    genre = item.optString("genre").trim().takeIf { it.isNotEmpty() },
-                    extension = extension,
-                    streamUrl = "${provider.server}/movie/${provider.username}/${provider.password}/$streamId.$extension",
-                ),
-            )
+        val status = connection.responseCode
+        if (status !in 200..299) {
+            connection.disconnect()
+            error("Yayın sunucusu HTTP $status hatası verdi.")
         }
+        return connection
     }
 
-    private fun buildSeriesItems(array: JSONArray): List<NativeSeriesItem> = buildList {
-        for (i in 0 until array.length()) {
-            val item = array.optJSONObject(i) ?: continue
-            val seriesId = item.optString("series_id").trim()
-            if (seriesId.isBlank()) continue
-
-            add(
-                NativeSeriesItem(
-                    id = "s$seriesId",
-                    seriesId = seriesId,
-                    categoryId = item.optString("category_id").trim(),
-                    name = item.optString("name").trim().ifBlank { "İsimsiz Dizi" },
-                    cover = item.optString("cover").trim().takeIf { it.isNotEmpty() },
-                    plot = item.optString("plot").trim().takeIf { it.isNotEmpty() },
-                    rating = item.optString("rating").trim().toDoubleOrNull(),
-                    year =
-                        item.optString("releaseDate").trim()
-                            .takeIf { it.isNotEmpty() }
-                            ?.take(4),
-                    genre = item.optString("genre").trim().takeIf { it.isNotEmpty() },
-                ),
-            )
+    private fun JsonReader.nextStringSafe(): String {
+        return when (peek()) {
+            JsonToken.NULL -> {
+                nextNull()
+                ""
+            }
+            JsonToken.STRING, JsonToken.NUMBER -> nextString()
+            JsonToken.BOOLEAN -> nextBoolean().toString()
+            else -> {
+                skipValue()
+                ""
+            }
         }
     }
 }
