@@ -10,11 +10,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.viewinterop.AndroidView
+import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
@@ -24,25 +24,37 @@ private object TvImageLoader {
     private val executor = Executors.newFixedThreadPool(3)
     private val main = Handler(Looper.getMainLooper())
 
-    // Hard cap: poster cache max 12 MB.
-    private val cache = object : LruCache<String, Bitmap>(12 * 1024) {
+    // Hard cap: poster bitmap cache max ~14 MB.
+    private val cache = object : LruCache<String, Bitmap>(14 * 1024) {
         override fun sizeOf(key: String, value: Bitmap): Int =
             value.byteCount / 1024
     }
 
     private val token = AtomicInteger(0)
 
-    fun load(url: String, width: Int, height: Int, imageView: ImageView): Int {
+    fun load(
+        url: String,
+        width: Int,
+        height: Int,
+        imageView: ImageView,
+    ) {
         val requestToken = token.incrementAndGet()
         imageView.tag = requestToken
 
         cache.get(url)?.let {
             imageView.setImageBitmap(it)
-            return requestToken
+            return
         }
 
         executor.execute {
-            val bitmap = runCatching { fetchSampled(url, width, height) }.getOrNull()
+            val bitmap = runCatching {
+                fetchAndDecode(
+                    url = url,
+                    reqWidth = width.coerceAtLeast(180),
+                    reqHeight = height.coerceAtLeast(270),
+                )
+            }.getOrNull()
+
             if (bitmap != null) cache.put(url, bitmap)
 
             main.post {
@@ -51,30 +63,80 @@ private object TvImageLoader {
                 }
             }
         }
-
-        return requestToken
     }
 
-    private fun fetchSampled(url: String, reqWidth: Int, reqHeight: Int): Bitmap? {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        open(url).useConnection { input ->
-            BitmapFactory.decodeStream(input, null, bounds)
-        }
+    /*
+     * One HTTP request per poster.
+     * The previous V2 loader opened the same URL twice (bounds + decode).
+     * Here bytes are downloaded once with a hard size cap, then sampled locally.
+     */
+    private fun fetchAndDecode(
+        url: String,
+        reqWidth: Int,
+        reqHeight: Int,
+    ): Bitmap? {
+        val bytes = downloadLimited(url, 4 * 1024 * 1024)
+        if (bytes.isEmpty()) return null
 
-        val sample = calculateSampleSize(
-            width = bounds.outWidth,
-            height = bounds.outHeight,
-            reqWidth = reqWidth.coerceAtLeast(160),
-            reqHeight = reqHeight.coerceAtLeast(240),
-        )
+        val bounds = BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
 
         val options = BitmapFactory.Options().apply {
-            inSampleSize = sample
+            inSampleSize = calculateSampleSize(
+                width = bounds.outWidth,
+                height = bounds.outHeight,
+                reqWidth = reqWidth,
+                reqHeight = reqHeight,
+            )
             inPreferredConfig = Bitmap.Config.RGB_565
         }
 
-        return open(url).useConnection { input ->
-            BitmapFactory.decodeStream(input, null, options)
+        return BitmapFactory.decodeByteArray(
+            bytes,
+            0,
+            bytes.size,
+            options,
+        )
+    }
+
+    private fun downloadLimited(
+        url: String,
+        maxBytes: Int,
+    ): ByteArray {
+        val connection = URL(url).openConnection() as HttpURLConnection
+        try {
+            connection.connectTimeout = 7_000
+            connection.readTimeout = 10_000
+            connection.instanceFollowRedirects = true
+            connection.setRequestProperty("User-Agent", "StreamLiveX-TV")
+            connection.connect()
+
+            if (connection.responseCode !in 200..299) return ByteArray(0)
+
+            val announced = connection.contentLength
+            if (announced > maxBytes) return ByteArray(0)
+
+            val output = ByteArrayOutputStream(
+                if (announced in 1..maxBytes) announced else 64 * 1024,
+            )
+            val buffer = ByteArray(16 * 1024)
+            var total = 0
+
+            connection.inputStream.use { input ->
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read <= 0) break
+                    total += read
+                    if (total > maxBytes) return ByteArray(0)
+                    output.write(buffer, 0, read)
+                }
+            }
+
+            return output.toByteArray()
+        } finally {
+            connection.disconnect()
         }
     }
 
@@ -84,6 +146,7 @@ private object TvImageLoader {
         reqWidth: Int,
         reqHeight: Int,
     ): Int {
+        if (width <= 0 || height <= 0) return 1
         var sample = 1
         var w = width
         var h = height
@@ -94,26 +157,6 @@ private object TvImageLoader {
             h /= 2
         }
         return sample.coerceAtLeast(1)
-    }
-
-    private fun open(url: String): HttpURLConnection {
-        return (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 8_000
-            readTimeout = 12_000
-            instanceFollowRedirects = true
-            setRequestProperty("User-Agent", "StreamLiveX-TV")
-            connect()
-        }
-    }
-
-    private inline fun <T> HttpURLConnection.useConnection(
-        block: (java.io.InputStream) -> T,
-    ): T {
-        try {
-            return inputStream.use(block)
-        } finally {
-            disconnect()
-        }
     }
 }
 
