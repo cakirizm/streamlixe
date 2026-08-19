@@ -23,6 +23,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.nativeKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -265,7 +267,23 @@ private fun TvSideMenu(
 
                         if (it.isFocused) {
                             onMenuFocused()
+                        }
+                    }
+                    .onPreviewKeyEvent { composeEvent ->
+                        val event = composeEvent.nativeKeyEvent
+
+                        if (
+                            event.action == android.view.KeyEvent.ACTION_DOWN &&
+                            (
+                                event.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
+                                event.keyCode == android.view.KeyEvent.KEYCODE_ENTER ||
+                                event.keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER
+                            )
+                        ) {
                             onSectionSelected(section)
+                            true
+                        } else {
+                            false
                         }
                     }
                     .focusable()
