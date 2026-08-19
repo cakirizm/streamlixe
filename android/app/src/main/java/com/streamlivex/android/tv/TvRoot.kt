@@ -35,11 +35,10 @@ import com.streamlivex.android.tv.content.TvMoviesScreen
 import com.streamlivex.android.tv.content.TvMyListScreen
 import com.streamlivex.android.tv.content.TvSearchScreen
 import com.streamlivex.android.tv.content.TvSeriesScreen
+import com.streamlivex.android.tv.data.TvContentCache
 import com.streamlivex.android.tv.data.TvContentStore
 import com.streamlivex.android.tv.data.TvLiveLibraryCache
 import com.streamlivex.android.tv.data.TvProviderConfig
-import com.streamlivex.android.tv.data.TvSeriesLibraryCache
-import com.streamlivex.android.tv.data.TvVodLibraryCache
 import com.streamlivex.android.tv.live.LiveTvScreen
 import com.streamlivex.android.tv.setup.TvProviderStorage
 import com.streamlivex.android.tv.setup.TvSetupScreen
@@ -80,8 +79,7 @@ fun TvRoot(
         onDisconnect = {
             TvProviderStorage.clear(context)
             TvLiveLibraryCache.clear()
-            TvVodLibraryCache.clear()
-            TvSeriesLibraryCache.clear()
+            TvContentCache.clear()
             TvContentStore(context).clear()
             provider = null
         },
@@ -128,7 +126,6 @@ private fun TvMainScreen(
                     provider = provider,
                     playerFor = playerFor,
                     releasePlayer = releasePlayer,
-                    externalPlayerKeyEvent = externalPlayerKeyEvent,
                     onFullscreenStateChanged = fullscreenCallback,
                 )
 
@@ -148,7 +145,6 @@ private fun TvMainScreen(
                     provider = provider,
                     playerFor = playerFor,
                     releasePlayer = releasePlayer,
-                    externalPlayerKeyEvent = externalPlayerKeyEvent,
                     onFullscreenStateChanged = fullscreenCallback,
                     onContentFocused = {
                         if (!anyFullscreen) menuExpanded = false
@@ -159,7 +155,6 @@ private fun TvMainScreen(
                     provider = provider,
                     playerFor = playerFor,
                     releasePlayer = releasePlayer,
-                    externalPlayerKeyEvent = externalPlayerKeyEvent,
                     onFullscreenStateChanged = fullscreenCallback,
                     onContentFocused = {
                         if (!anyFullscreen) menuExpanded = false
@@ -168,18 +163,12 @@ private fun TvMainScreen(
 
                 TvSection.Search -> TvSearchScreen(
                     provider = provider,
-                    playerFor = playerFor,
-                    releasePlayer = releasePlayer,
-                    externalPlayerKeyEvent = externalPlayerKeyEvent,
-                    onFullscreenStateChanged = fullscreenCallback,
+                    onContentFocused = {
+                        if (!anyFullscreen) menuExpanded = false
+                    },
                 )
 
-                TvSection.MyList -> TvMyListScreen(
-                    playerFor = playerFor,
-                    releasePlayer = releasePlayer,
-                    externalPlayerKeyEvent = externalPlayerKeyEvent,
-                    onFullscreenStateChanged = fullscreenCallback,
-                )
+                TvSection.MyList -> TvMyListScreen()
 
                 TvSection.Settings -> TvSettingsScreen(
                     provider = provider,
@@ -275,7 +264,7 @@ private fun TvSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("Aktif oynatma listesi", color = Color(0xFF94A3B8))
-            Text(provider.name, color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
+            Text(provider.name, color = Color.White, fontWeight = FontWeight.Bold)
             Text(provider.server, color = Color(0xFF94A3B8))
         }
 
