@@ -464,22 +464,9 @@ private fun ChannelColumn(
                             focused = it.isFocused
                             if (it.isFocused) onFocused(channel)
                         }
-                        .onPreviewKeyEvent { composeEvent ->
-                            val event = composeEvent.nativeKeyEvent
-                            if (
-                                event.action == KeyEvent.ACTION_DOWN &&
-                                (
-                                    event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
-                                    event.keyCode == KeyEvent.KEYCODE_ENTER ||
-                                    event.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
-                                )
-                            ) {
-                                onActivate(channel)
-                                true
-                            } else {
-                                false
-                            }
-                        }
+                        .clickable {
+    onActivate(channel)
+}
                         .focusable()
                         .padding(horizontal = 10.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
