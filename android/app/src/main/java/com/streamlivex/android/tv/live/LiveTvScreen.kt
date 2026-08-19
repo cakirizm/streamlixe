@@ -2,6 +2,8 @@ package com.streamlivex.android.tv.live
 
 import android.os.Handler
 import android.os.Looper
+import android.view.KeyEvent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +22,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,23 +32,62 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import com.streamlivex.android.NativeInlinePlayerSurface
+import com.streamlivex.android.NativePlayerSurface
+import com.streamlivex.android.PlaybackItem
+import com.streamlivex.android.PlaybackPreferences
+import com.streamlivex.android.PlaybackRequest
 import com.streamlivex.android.tv.data.NativeLiveCategory
 import com.streamlivex.android.tv.data.NativeLiveChannel
 import com.streamlivex.android.tv.data.TvLiveLibraryCache
 import com.streamlivex.android.tv.data.TvProviderConfig
 import com.streamlivex.android.tv.data.XtreamClient
 import com.streamlivex.android.tv.data.XtreamLiveLibrary
+import kotlinx.coroutines.delay
 
+@OptIn(UnstableApi::class)
 @Composable
 fun LiveTvScreen(
     provider: TvProviderConfig,
+    playerFor: (PlaybackRequest) -> ExoPlayer,
+    releasePlayer: (String) -> Unit,
+    externalPlayerKeyEvent: Triple<Int, Int, Long>?,
+    onFullscreenStateChanged: (Boolean) -> Unit,
+    onContentFocused: () -> Unit,
 ) {
     val client = remember {
         XtreamClient()
     }
+
+    /*
+     * Canli TV boyunca ayni sessionId kullaniliyor.
+     *
+     * Boylece preview -> fullscreen gecisinde
+     * ayni ExoPlayer instance korunuyor.
+     *
+     * Kanal degistiginde URL degisiyor ama
+     * player instance degismiyor.
+     */
+    val sessionId =
+        remember(
+            provider.server,
+            provider.username,
+        ) {
+            "tv-live-" +
+                provider.server.hashCode() +
+                "-" +
+                provider.username.hashCode()
+        }
 
     var library by remember(
         provider.server,
@@ -61,7 +103,7 @@ fun LiveTvScreen(
         provider.username,
     ) {
         mutableStateOf(
-            TvLiveLibraryCache.library == null,
+            library == null,
         )
     }
 
@@ -77,6 +119,60 @@ fun LiveTvScreen(
         mutableStateOf<String?>(null)
     }
 
+    /*
+     * Sag tarafta gercekten oynatilan
+     * preview request.
+     *
+     * Focus degisir degismez degil,
+     * 500 ms ayni kanalda kalinca set edilir.
+     */
+    var previewRequest by remember {
+        mutableStateOf<PlaybackRequest?>(null)
+    }
+
+    var fullscreen by remember {
+        mutableStateOf(false)
+    }
+
+    fun requestFor(
+        channel: NativeLiveChannel,
+    ): PlaybackRequest {
+        return PlaybackRequest(
+            sessionId = sessionId,
+            item = PlaybackItem(
+                name = channel.name,
+                url = channel.streamUrl,
+                kind = "live",
+            ),
+            preferences = PlaybackPreferences(
+                showInfo = true,
+            ),
+        )
+    }
+
+    /*
+     * Canli TV ekranindan tamamen cikinca
+     * player serbest birakilir.
+     *
+     * Preview -> fullscreen gecisinde
+     * release YOK.
+     */
+    DisposableEffect(sessionId) {
+        onDispose {
+            onFullscreenStateChanged(false)
+            releasePlayer(sessionId)
+        }
+    }
+
+    LaunchedEffect(fullscreen) {
+        onFullscreenStateChanged(
+            fullscreen,
+        )
+    }
+
+    /*
+     * Gercek Xtream kanal/kategori kutuphanesi.
+     */
     LaunchedEffect(
         provider.server,
         provider.username,
@@ -127,7 +223,8 @@ fun LiveTvScreen(
         return
     }
 
-    val currentLibrary = library
+    val currentLibrary =
+        library
 
     if (currentLibrary == null) {
         LiveErrorScreen(
@@ -150,6 +247,12 @@ fun LiveTvScreen(
             }
             ?: currentLibrary.categories.first()
 
+    /*
+     * Sadece secilen kategorinin kanallari.
+     *
+     * 6325 kanalin tamamini Compose
+     * elemani olarak yaratmiyoruz.
+     */
     val visibleChannels =
         remember(
             currentLibrary.channels,
@@ -171,46 +274,269 @@ fun LiveTvScreen(
         }
             ?: visibleChannels.firstOrNull()
 
-    Row(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF0D111B)),
+    /*
+     * KANAL PREVIEW GECIKMESI
+     *
+     * Kullanici kumandada hizli hizli
+     * kanallar arasinda gezerken her focus
+     * degisiminde stream baslatmiyoruz.
+     *
+     * 500 ms ayni kanalda durursa yayin acilir.
+     */
+    LaunchedEffect(
+        selectedChannel?.id,
+        fullscreen,
     ) {
-        CategoryColumn(
-            categories =
-                currentLibrary.categories,
-            selectedCategory =
-                selectedCategory,
-            onSelected = { category ->
-                selectedCategoryId =
-                    category.id
+        if (
+            fullscreen ||
+            selectedChannel == null
+        ) {
+            return@LaunchedEffect
+        }
 
-                selectedChannelId =
-                    null
-            },
-            modifier =
-                Modifier.weight(0.28f),
-        )
+        delay(500)
 
-        ChannelColumn(
-            channels =
-                visibleChannels,
-            selectedChannel =
+        previewRequest =
+            requestFor(
                 selectedChannel,
-            onSelected = { channel ->
-                selectedChannelId =
-                    channel.id
-            },
-            modifier =
-                Modifier.weight(0.42f),
-        )
+            )
+    }
 
-        PreviewAndEpgPanel(
-            channel =
-                selectedChannel,
-            modifier =
-                Modifier.weight(0.50f),
-        )
+    /*
+     * Tam ekranda onceki/sonraki kanal.
+     */
+    fun moveChannel(
+        direction: Int,
+    ) {
+        if (visibleChannels.isEmpty()) {
+            return
+        }
+
+        val currentIndex =
+            visibleChannels
+                .indexOfFirst {
+                    it.id ==
+                        selectedChannel?.id
+                }
+                .let {
+                    if (it >= 0) {
+                        it
+                    } else {
+                        0
+                    }
+                }
+
+        /*
+         * Listenin sonunda asagi basilirsa
+         * basa doner.
+         *
+         * Ilk kanalda yukari basilirsa
+         * son kanala gider.
+         */
+        val nextIndex =
+            (
+                currentIndex +
+                    direction +
+                    visibleChannels.size
+                ) %
+                visibleChannels.size
+
+        val nextChannel =
+            visibleChannels[
+                nextIndex
+            ]
+
+        selectedChannelId =
+            nextChannel.id
+
+        if (fullscreen) {
+            /*
+             * Tam ekranda kanal degisimi
+             * aninda baslasin.
+             * Preview'daki 500 ms gecikme yok.
+             */
+            previewRequest =
+                requestFor(
+                    nextChannel,
+                )
+        }
+    }
+
+    /*
+     * MainActivity.dispatchKeyEvent
+     * fullscreen TV tuslarini buraya yollar.
+     *
+     * ↑ onceki kanal
+     * ↓ sonraki kanal
+     */
+    LaunchedEffect(
+        externalPlayerKeyEvent,
+        fullscreen,
+    ) {
+        if (!fullscreen) {
+            return@LaunchedEffect
+        }
+
+        val event =
+            externalPlayerKeyEvent
+                ?: return@LaunchedEffect
+
+        val (
+            keyCode,
+            action,
+            _,
+        ) = event
+
+        if (
+            action !=
+            KeyEvent.ACTION_DOWN
+        ) {
+            return@LaunchedEffect
+        }
+
+        when (keyCode) {
+            KeyEvent.KEYCODE_DPAD_UP -> {
+                moveChannel(-1)
+            }
+
+            KeyEvent.KEYCODE_DPAD_DOWN -> {
+                moveChannel(1)
+            }
+        }
+    }
+
+    /*
+     * BACK:
+     * Uygulamadan cikma.
+     * Canli TV'den cikma.
+     *
+     * Sadece fullscreen'i kapatip
+     * ayni kanal listesine geri don.
+     */
+    BackHandler(
+        enabled = fullscreen,
+    ) {
+        fullscreen = false
+    }
+
+    Box(
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        if (!fullscreen) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Color(0xFF0D111B),
+                    ),
+            ) {
+                CategoryColumn(
+                    categories =
+                        currentLibrary.categories,
+                    selectedCategory =
+                        selectedCategory,
+                    onSelected = { category ->
+                        onContentFocused()
+
+                        selectedCategoryId =
+                            category.id
+
+                        selectedChannelId =
+                            null
+
+                        previewRequest =
+                            null
+                    },
+                    modifier =
+                        Modifier.weight(
+                            0.31f,
+                        ),
+                )
+
+                ChannelColumn(
+                    channels =
+                        visibleChannels,
+                    selectedChannel =
+                        selectedChannel,
+                    onFocused = { channel ->
+                        onContentFocused()
+
+                        selectedChannelId =
+                            channel.id
+                    },
+                    onActivate = { channel ->
+                        onContentFocused()
+
+                        selectedChannelId =
+                            channel.id
+
+                        previewRequest =
+                            requestFor(channel)
+
+                        fullscreen =
+                            true
+                    },
+                    modifier =
+                        Modifier.weight(
+                            0.42f,
+                        ),
+                )
+
+                PreviewPanel(
+                    channel =
+                        selectedChannel,
+                    request =
+                        previewRequest,
+                    playerFor =
+                        playerFor,
+                    onFullscreen = {
+                        val channel =
+                            selectedChannel
+
+                        if (channel != null) {
+                            previewRequest =
+                                requestFor(channel)
+
+                            fullscreen = true
+                        }
+                    },
+                    modifier =
+                        Modifier.weight(
+                            0.55f,
+                        ),
+                )
+            }
+        }
+
+        /*
+         * TAM EKRAN
+         */
+        if (fullscreen) {
+            val channel =
+                selectedChannel
+
+            if (channel != null) {
+                val request =
+                    requestFor(
+                        channel,
+                    )
+
+                NativePlayerSurface(
+                    request = request,
+                    player =
+                        playerFor(
+                            request,
+                        ),
+                    externalKeyEvent =
+                        externalPlayerKeyEvent,
+                    onClose = {
+                        fullscreen = false
+                    },
+                    onProgress = {},
+                    onFailure = {},
+                )
+            }
+        }
     }
 }
 
@@ -219,25 +545,33 @@ private fun LiveLoadingScreen() {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0D111B)),
-        contentAlignment = Alignment.Center,
+            .background(
+                Color(0xFF0D111B),
+            ),
+        contentAlignment =
+            Alignment.Center,
     ) {
         Column(
             horizontalAlignment =
                 Alignment.CenterHorizontally,
             verticalArrangement =
-                Arrangement.spacedBy(14.dp),
+                Arrangement.spacedBy(
+                    14.dp,
+                ),
         ) {
             CircularProgressIndicator()
 
             Text(
                 text =
                     "Canlı TV yükleniyor...",
-                color = Color.White,
+                color =
+                    Color.White,
                 fontWeight =
                     FontWeight.SemiBold,
                 style =
-                    MaterialTheme.typography.titleMedium,
+                    MaterialTheme
+                        .typography
+                        .titleMedium,
             )
 
             Text(
@@ -246,7 +580,9 @@ private fun LiveLoadingScreen() {
                 color =
                     Color(0xFF94A3B8),
                 style =
-                    MaterialTheme.typography.bodyMedium,
+                    MaterialTheme
+                        .typography
+                        .bodyMedium,
             )
         }
     }
@@ -259,8 +595,12 @@ private fun LiveErrorScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0D111B))
-            .padding(36.dp),
+            .background(
+                Color(0xFF0D111B),
+            )
+            .padding(
+                36.dp,
+            ),
         contentAlignment =
             Alignment.Center,
     ) {
@@ -268,15 +608,21 @@ private fun LiveErrorScreen(
             horizontalAlignment =
                 Alignment.CenterHorizontally,
             verticalArrangement =
-                Arrangement.spacedBy(10.dp),
+                Arrangement.spacedBy(
+                    10.dp,
+                ),
         ) {
             Text(
-                text = "Canlı TV yüklenemedi",
-                color = Color.White,
+                text =
+                    "Canlı TV yüklenemedi",
+                color =
+                    Color.White,
                 fontWeight =
                     FontWeight.Bold,
                 style =
-                    MaterialTheme.typography.headlineSmall,
+                    MaterialTheme
+                        .typography
+                        .headlineSmall,
             )
 
             Text(
@@ -284,7 +630,9 @@ private fun LiveErrorScreen(
                 color =
                     Color(0xFFF87171),
                 style =
-                    MaterialTheme.typography.bodyLarge,
+                    MaterialTheme
+                        .typography
+                        .bodyLarge,
             )
         }
     }
@@ -292,16 +640,24 @@ private fun LiveErrorScreen(
 
 @Composable
 private fun CategoryColumn(
-    categories: List<NativeLiveCategory>,
-    selectedCategory: NativeLiveCategory,
-    onSelected: (NativeLiveCategory) -> Unit,
-    modifier: Modifier = Modifier,
+    categories:
+        List<NativeLiveCategory>,
+    selectedCategory:
+        NativeLiveCategory,
+    onSelected:
+        (NativeLiveCategory) -> Unit,
+    modifier:
+        Modifier = Modifier,
 ) {
     Column(
         modifier = modifier
             .fillMaxHeight()
-            .background(Color(0xFF101722))
-            .padding(12.dp),
+            .background(
+                Color(0xFF101722),
+            )
+            .padding(
+                12.dp,
+            ),
     ) {
         Row(
             modifier = Modifier
@@ -314,23 +670,30 @@ private fun CategoryColumn(
                 Alignment.CenterVertically,
         ) {
             Text(
-                text = "Kategoriler",
-                color = Color.White,
+                text =
+                    "Kategoriler",
+                color =
+                    Color.White,
                 fontWeight =
                     FontWeight.Bold,
                 style =
-                    MaterialTheme.typography.titleMedium,
+                    MaterialTheme
+                        .typography
+                        .titleMedium,
                 modifier =
                     Modifier.weight(1f),
             )
 
             Text(
                 text =
-                    categories.size.toString(),
+                    categories.size
+                        .toString(),
                 color =
                     Color(0xFF64748B),
                 style =
-                    MaterialTheme.typography.labelMedium,
+                    MaterialTheme
+                        .typography
+                        .labelMedium,
             )
         }
 
@@ -338,7 +701,9 @@ private fun CategoryColumn(
             modifier =
                 Modifier.fillMaxSize(),
             verticalArrangement =
-                Arrangement.spacedBy(6.dp),
+                Arrangement.spacedBy(
+                    6.dp,
+                ),
         ) {
             itemsIndexed(
                 items = categories,
@@ -354,16 +719,22 @@ private fun CategoryColumn(
                 val background =
                     when {
                         focused -> {
-                            Color(0xFF2563EB)
+                            Color(
+                                0xFF2563EB,
+                            )
                         }
 
                         category.id ==
                             selectedCategory.id -> {
-                            Color(0xFF172554)
+                            Color(
+                                0xFF172554,
+                            )
                         }
 
                         else -> {
-                            Color(0xFF151C28)
+                            Color(
+                                0xFF151C28,
+                            )
                         }
                     }
 
@@ -371,15 +742,20 @@ private fun CategoryColumn(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(
-                            color = background,
+                            color =
+                                background,
                             shape =
-                                RoundedCornerShape(8.dp),
+                                RoundedCornerShape(
+                                    8.dp,
+                                ),
                         )
                         .onFocusChanged {
                             focused =
                                 it.isFocused
 
-                            if (it.isFocused) {
+                            if (
+                                it.isFocused
+                            ) {
                                 onSelected(
                                     category,
                                 )
@@ -387,8 +763,10 @@ private fun CategoryColumn(
                         }
                         .focusable()
                         .padding(
-                            horizontal = 10.dp,
-                            vertical = 10.dp,
+                            horizontal =
+                                10.dp,
+                            vertical =
+                                10.dp,
                         ),
                     verticalAlignment =
                         Alignment.CenterVertically,
@@ -402,7 +780,8 @@ private fun CategoryColumn(
                             Modifier.weight(1f),
                         maxLines = 1,
                         overflow =
-                            TextOverflow.Ellipsis,
+                            TextOverflow
+                                .Ellipsis,
                     )
 
                     Text(
@@ -413,10 +792,13 @@ private fun CategoryColumn(
                             if (focused) {
                                 Color.White
                             } else {
-                                Color(0xFF94A3B8)
+                                Color(
+                                    0xFF94A3B8,
+                                )
                             },
                         style =
-                            MaterialTheme.typography
+                            MaterialTheme
+                                .typography
                                 .labelMedium,
                     )
                 }
@@ -427,16 +809,26 @@ private fun CategoryColumn(
 
 @Composable
 private fun ChannelColumn(
-    channels: List<NativeLiveChannel>,
-    selectedChannel: NativeLiveChannel?,
-    onSelected: (NativeLiveChannel) -> Unit,
-    modifier: Modifier = Modifier,
+    channels:
+        List<NativeLiveChannel>,
+    selectedChannel:
+        NativeLiveChannel?,
+    onFocused:
+        (NativeLiveChannel) -> Unit,
+    onActivate:
+        (NativeLiveChannel) -> Unit,
+    modifier:
+        Modifier = Modifier,
 ) {
     Column(
         modifier = modifier
             .fillMaxHeight()
-            .background(Color(0xFF0F141E))
-            .padding(12.dp),
+            .background(
+                Color(0xFF0F141E),
+            )
+            .padding(
+                12.dp,
+            ),
     ) {
         Row(
             modifier = Modifier
@@ -449,23 +841,30 @@ private fun ChannelColumn(
                 Alignment.CenterVertically,
         ) {
             Text(
-                text = "Kanallar",
-                color = Color.White,
+                text =
+                    "Kanallar",
+                color =
+                    Color.White,
                 fontWeight =
                     FontWeight.Bold,
                 style =
-                    MaterialTheme.typography.titleMedium,
+                    MaterialTheme
+                        .typography
+                        .titleMedium,
                 modifier =
                     Modifier.weight(1f),
             )
 
             Text(
                 text =
-                    channels.size.toString(),
+                    channels.size
+                        .toString(),
                 color =
                     Color(0xFF64748B),
                 style =
-                    MaterialTheme.typography.labelMedium,
+                    MaterialTheme
+                        .typography
+                        .labelMedium,
             )
         }
 
@@ -491,7 +890,9 @@ private fun ChannelColumn(
             modifier =
                 Modifier.fillMaxSize(),
             verticalArrangement =
-                Arrangement.spacedBy(6.dp),
+                Arrangement.spacedBy(
+                    6.dp,
+                ),
         ) {
             itemsIndexed(
                 items = channels,
@@ -507,16 +908,22 @@ private fun ChannelColumn(
                 val background =
                     when {
                         focused -> {
-                            Color(0xFF1D4ED8)
+                            Color(
+                                0xFF1D4ED8,
+                            )
                         }
 
                         channel.id ==
                             selectedChannel?.id -> {
-                            Color(0xFF172554)
+                            Color(
+                                0xFF172554,
+                            )
                         }
 
                         else -> {
-                            Color(0xFF141B26)
+                            Color(
+                                0xFF141B26,
+                            )
                         }
                     }
 
@@ -524,24 +931,51 @@ private fun ChannelColumn(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(
-                            color = background,
+                            color =
+                                background,
                             shape =
-                                RoundedCornerShape(8.dp),
+                                RoundedCornerShape(
+                                    8.dp,
+                                ),
                         )
                         .onFocusChanged {
                             focused =
                                 it.isFocused
 
-                            if (it.isFocused) {
-                                onSelected(
+                            if (
+                                it.isFocused
+                            ) {
+                                onFocused(
                                     channel,
                                 )
                             }
                         }
+                        .onKeyEvent { event ->
+                            if (
+                                event.type ==
+                                KeyEventType.KeyDown &&
+                                (
+                                    event.key ==
+                                        Key.Enter ||
+                                    event.key ==
+                                        Key.DirectionCenter
+                                    )
+                            ) {
+                                onActivate(
+                                    channel,
+                                )
+
+                                true
+                            } else {
+                                false
+                            }
+                        }
                         .focusable()
                         .padding(
-                            horizontal = 10.dp,
-                            vertical = 10.dp,
+                            horizontal =
+                                10.dp,
+                            vertical =
+                                10.dp,
                         ),
                     verticalAlignment =
                         Alignment.CenterVertically,
@@ -550,11 +984,17 @@ private fun ChannelColumn(
                         text =
                             "${index + 1}",
                         color =
-                            Color(0xFF64748B),
+                            Color(
+                                0xFF64748B,
+                            ),
                         modifier =
-                            Modifier.width(38.dp),
+                            Modifier.width(
+                                38.dp,
+                            ),
                         style =
-                            MaterialTheme.typography.labelMedium,
+                            MaterialTheme
+                                .typography
+                                .labelMedium,
                     )
 
                     Column(
@@ -570,7 +1010,8 @@ private fun ChannelColumn(
                                 FontWeight.SemiBold,
                             maxLines = 1,
                             overflow =
-                                TextOverflow.Ellipsis,
+                                TextOverflow
+                                    .Ellipsis,
                         )
 
                         Text(
@@ -584,9 +1025,13 @@ private fun ChannelColumn(
                                     "EPG mevcut"
                                 },
                             color =
-                                Color(0xFF64748B),
+                                Color(
+                                    0xFF64748B,
+                                ),
                             style =
-                                MaterialTheme.typography.labelSmall,
+                                MaterialTheme
+                                    .typography
+                                    .labelSmall,
                         )
                     }
                 }
@@ -595,72 +1040,110 @@ private fun ChannelColumn(
     }
 }
 
+@OptIn(UnstableApi::class)
 @Composable
-private fun PreviewAndEpgPanel(
-    channel: NativeLiveChannel?,
-    modifier: Modifier = Modifier,
+private fun PreviewPanel(
+    channel:
+        NativeLiveChannel?,
+    request:
+        PlaybackRequest?,
+    playerFor:
+        (PlaybackRequest) -> ExoPlayer,
+    onFullscreen:
+        () -> Unit,
+    modifier:
+        Modifier = Modifier,
 ) {
     Column(
         modifier = modifier
             .fillMaxHeight()
-            .background(Color(0xFF0B1018))
-            .padding(12.dp),
+            .background(
+                Color(0xFF0B1018),
+            )
+            .padding(
+                12.dp,
+            ),
         verticalArrangement =
-            Arrangement.spacedBy(10.dp),
+            Arrangement.spacedBy(
+                10.dp,
+            ),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(0.58f)
+                .weight(0.62f)
                 .background(
-                    color = Color.Black,
+                    color =
+                        Color.Black,
                     shape =
-                        RoundedCornerShape(10.dp),
+                        RoundedCornerShape(
+                            10.dp,
+                        ),
                 ),
             contentAlignment =
                 Alignment.Center,
         ) {
-            if (channel == null) {
-                Text(
-                    text =
-                        "Kanal seç",
-                    color =
-                        Color(0xFF64748B),
-                    fontWeight =
-                        FontWeight.SemiBold,
+            if (
+                request != null &&
+                channel != null
+            ) {
+                NativeInlinePlayerSurface(
+                    request =
+                        request,
+                    player =
+                        playerFor(
+                            request,
+                        ),
+                    modifier =
+                        Modifier.fillMaxSize(),
+                    onFullScreen =
+                        onFullscreen,
+                    onFailure = {},
                 )
             } else {
                 Column(
                     horizontalAlignment =
                         Alignment.CenterHorizontally,
                     verticalArrangement =
-                        Arrangement.spacedBy(8.dp),
+                        Arrangement.spacedBy(
+                            8.dp,
+                        ),
                     modifier =
-                        Modifier.padding(18.dp),
+                        Modifier.padding(
+                            18.dp,
+                        ),
                 ) {
                     Text(
                         text =
                             "CANLI ÖNİZLEME",
                         color =
-                            Color(0xFF60A5FA),
+                            Color(
+                                0xFF60A5FA,
+                            ),
                         fontWeight =
                             FontWeight.Bold,
                         style =
-                            MaterialTheme.typography.labelLarge,
+                            MaterialTheme
+                                .typography
+                                .labelLarge,
                     )
 
                     Text(
                         text =
-                            channel.name,
+                            channel?.name
+                                ?: "Kanal seç",
                         color =
                             Color.White,
                         fontWeight =
                             FontWeight.Bold,
                         style =
-                            MaterialTheme.typography.titleMedium,
+                            MaterialTheme
+                                .typography
+                                .titleMedium,
                         maxLines = 3,
                         overflow =
-                            TextOverflow.Ellipsis,
+                            TextOverflow
+                                .Ellipsis,
                     )
                 }
             }
@@ -669,16 +1152,24 @@ private fun PreviewAndEpgPanel(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(0.42f)
+                .weight(0.38f)
                 .background(
                     color =
-                        Color(0xFF111827),
+                        Color(
+                            0xFF111827,
+                        ),
                     shape =
-                        RoundedCornerShape(10.dp),
+                        RoundedCornerShape(
+                            10.dp,
+                        ),
                 )
-                .padding(14.dp),
+                .padding(
+                    14.dp,
+                ),
             verticalArrangement =
-                Arrangement.spacedBy(8.dp),
+                Arrangement.spacedBy(
+                    8.dp,
+                ),
         ) {
             Text(
                 text = "Şimdi",
@@ -687,7 +1178,9 @@ private fun PreviewAndEpgPanel(
                 fontWeight =
                     FontWeight.Bold,
                 style =
-                    MaterialTheme.typography.labelLarge,
+                    MaterialTheme
+                        .typography
+                        .labelLarge,
             )
 
             Text(
@@ -699,10 +1192,13 @@ private fun PreviewAndEpgPanel(
                 fontWeight =
                     FontWeight.Bold,
                 style =
-                    MaterialTheme.typography.titleMedium,
+                    MaterialTheme
+                        .typography
+                        .titleMedium,
                 maxLines = 2,
                 overflow =
-                    TextOverflow.Ellipsis,
+                    TextOverflow
+                        .Ellipsis,
             )
 
             Text(
@@ -715,13 +1211,32 @@ private fun PreviewAndEpgPanel(
                     ) {
                         "Program bilgisi bulunamadı"
                     } else {
-                        "EPG bilgisi alınabilir"
+                        "EPG bağlantısı mevcut"
                     },
                 color =
                     Color(0xFF94A3B8),
                 style =
-                    MaterialTheme.typography.bodyMedium,
+                    MaterialTheme
+                        .typography
+                        .bodyMedium,
             )
+
+            if (
+                channel != null
+            ) {
+                Text(
+                    text =
+                        "OK: Tam ekran  •  Tam ekranda ↑/↓: Kanal değiştir",
+                    color =
+                        Color(
+                            0xFF64748B,
+                        ),
+                    style =
+                        MaterialTheme
+                            .typography
+                            .labelSmall,
+                )
+            }
         }
     }
 }
