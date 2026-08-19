@@ -1,5 +1,5 @@
 package com.streamlivex.android.tv
-
+import com.streamlivex.android.tv.live.LiveTvScreen
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -59,7 +59,7 @@ fun TvRoot() {
         ) {
             when (selectedSection) {
                 TvSection.Home -> PlaceholderScreen("Ana Sayfa")
-                TvSection.Live -> PlaceholderScreen("Canlı TV")
+                TvSection.Live -> LiveTvScreen()
                 TvSection.Movies -> PlaceholderScreen("Filmler")
                 TvSection.Series -> PlaceholderScreen("Diziler")
                 TvSection.Search -> PlaceholderScreen("Ara")
