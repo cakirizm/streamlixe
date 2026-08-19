@@ -26,6 +26,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.media3.exoplayer.ExoPlayer
+import com.streamlivex.android.PlaybackRequest
 import com.streamlivex.android.tv.data.TvProviderConfig
 import com.streamlivex.android.tv.live.LiveTvScreen
 import com.streamlivex.android.tv.setup.TvProviderStorage
@@ -33,18 +35,24 @@ import com.streamlivex.android.tv.setup.TvSetupScreen
 
 enum class TvSection(
     val title: String,
+    val shortTitle: String,
 ) {
-    Home("Ana Sayfa"),
-    Live("Canlı TV"),
-    Movies("Filmler"),
-    Series("Diziler"),
-    Search("Ara"),
-    MyList("Listem"),
-    Settings("Ayarlar"),
+    Home("Ana Sayfa", "A"),
+    Live("Canlı TV", "TV"),
+    Movies("Filmler", "F"),
+    Series("Diziler", "D"),
+    Search("Ara", "⌕"),
+    MyList("Listem", "★"),
+    Settings("Ayarlar", "⚙"),
 }
 
 @Composable
-fun TvRoot() {
+fun TvRoot(
+    playerFor: (PlaybackRequest) -> ExoPlayer,
+    releasePlayer: (String) -> Unit,
+    externalPlayerKeyEvent: Triple<Int, Int, Long>?,
+    onFullscreenStateChanged: (Boolean) -> Unit,
+) {
     val context = LocalContext.current
 
     var provider by remember {
@@ -65,6 +73,10 @@ fun TvRoot() {
 
     TvMainScreen(
         provider = provider!!,
+        playerFor = playerFor,
+        releasePlayer = releasePlayer,
+        externalPlayerKeyEvent = externalPlayerKeyEvent,
+        onFullscreenStateChanged = onFullscreenStateChanged,
         onDisconnect = {
             TvProviderStorage.clear(context)
             provider = null
@@ -75,10 +87,18 @@ fun TvRoot() {
 @Composable
 private fun TvMainScreen(
     provider: TvProviderConfig,
+    playerFor: (PlaybackRequest) -> ExoPlayer,
+    releasePlayer: (String) -> Unit,
+    externalPlayerKeyEvent: Triple<Int, Int, Long>?,
+    onFullscreenStateChanged: (Boolean) -> Unit,
     onDisconnect: () -> Unit,
 ) {
     var selectedSection by remember {
         mutableStateOf(TvSection.Live)
+    }
+
+    var menuExpanded by remember {
+        mutableStateOf(true)
     }
 
     Row(
@@ -88,6 +108,10 @@ private fun TvMainScreen(
     ) {
         TvSideMenu(
             selectedSection = selectedSection,
+            expanded = menuExpanded,
+            onMenuFocused = {
+                menuExpanded = true
+            },
             onSectionSelected = {
                 selectedSection = it
             },
@@ -106,9 +130,16 @@ private fun TvMainScreen(
                 }
 
                 TvSection.Live -> {
-                   LiveTvScreen(
-    provider = provider,
-)
+                    LiveTvScreen(
+                        provider = provider,
+                        playerFor = playerFor,
+                        releasePlayer = releasePlayer,
+                        externalPlayerKeyEvent = externalPlayerKeyEvent,
+                        onFullscreenStateChanged = onFullscreenStateChanged,
+                        onContentFocused = {
+                            menuExpanded = false
+                        },
+                    )
                 }
 
                 TvSection.Movies -> {
@@ -149,26 +180,55 @@ private fun TvMainScreen(
 @Composable
 private fun TvSideMenu(
     selectedSection: TvSection,
+    expanded: Boolean,
+    onMenuFocused: () -> Unit,
     onSectionSelected: (TvSection) -> Unit,
 ) {
+    val menuWidth =
+        if (expanded) {
+            190.dp
+        } else {
+            72.dp
+        }
+
     Column(
         modifier = Modifier
-            .width(190.dp)
+            .width(menuWidth)
             .fillMaxHeight()
             .background(Color(0xFF080B12))
             .padding(
-                horizontal = 12.dp,
+                horizontal =
+                    if (expanded) {
+                        12.dp
+                    } else {
+                        8.dp
+                    },
                 vertical = 18.dp,
             ),
         verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         Text(
-            text = "StreamLiveX",
+            text =
+                if (expanded) {
+                    "StreamLiveX"
+                } else {
+                    "SLX"
+                },
             color = Color.White,
             fontWeight = FontWeight.Bold,
-            style = MaterialTheme.typography.titleLarge,
+            style =
+                if (expanded) {
+                    MaterialTheme.typography.titleLarge
+                } else {
+                    MaterialTheme.typography.labelLarge
+                },
             modifier = Modifier.padding(
-                start = 10.dp,
+                start =
+                    if (expanded) {
+                        10.dp
+                    } else {
+                        6.dp
+                    },
                 bottom = 14.dp,
             ),
         )
@@ -204,24 +264,35 @@ private fun TvSideMenu(
                         focused = it.isFocused
 
                         if (it.isFocused) {
+                            onMenuFocused()
                             onSectionSelected(section)
                         }
                     }
                     .focusable()
                     .padding(
-                        horizontal = 13.dp,
+                        horizontal =
+                            if (expanded) {
+                                13.dp
+                            } else {
+                                6.dp
+                            },
                         vertical = 12.dp,
                     ),
-                contentAlignment = Alignment.CenterStart,
+                contentAlignment =
+                    if (expanded) {
+                        Alignment.CenterStart
+                    } else {
+                        Alignment.Center
+                    },
             ) {
                 Text(
-                    text = section.title,
-                    color =
-                        if (focused) {
-                            Color.White
+                    text =
+                        if (expanded) {
+                            section.title
                         } else {
-                            Color(0xFFE2E8F0)
+                            section.shortTitle
                         },
+                    color = Color.White,
                     fontWeight =
                         if (
                             focused ||
@@ -231,6 +302,7 @@ private fun TvSideMenu(
                         } else {
                             FontWeight.Medium
                         },
+                    maxLines = 1,
                 )
             }
         }
