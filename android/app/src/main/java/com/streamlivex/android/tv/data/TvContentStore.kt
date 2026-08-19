@@ -9,13 +9,15 @@ data class TvSavedItem(
     val kind: String,
     val name: String,
     val url: String,
+    val artwork: String? = null,
     val subtitle: String? = null,
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
 )
 
 class TvContentStore(context: Context) {
-    private val prefs = context.getSharedPreferences("streamlivex_tv_content", Context.MODE_PRIVATE)
+    private val prefs =
+        context.getSharedPreferences("streamlivex_tv_content_v2", Context.MODE_PRIVATE)
 
     fun favorites(): List<TvSavedItem> = readArray("favorites")
 
@@ -25,25 +27,24 @@ class TvContentStore(context: Context) {
     fun isFavorite(id: String): Boolean = favorites().any { it.id == id }
 
     fun toggleFavorite(item: TvSavedItem) {
-        val current = favorites().toMutableList()
-        val index = current.indexOfFirst { it.id == item.id }
-        if (index >= 0) current.removeAt(index) else current.add(0, item)
-        writeArray("favorites", current.take(100))
+        val rows = favorites().toMutableList()
+        val index = rows.indexOfFirst { it.id == item.id }
+        if (index >= 0) rows.removeAt(index) else rows.add(0, item)
+        writeArray("favorites", rows.take(100))
     }
 
     fun saveProgress(item: TvSavedItem) {
-        val current = continueWatching().toMutableList()
-        current.removeAll { it.id == item.id }
+        val rows = continueWatching().toMutableList()
+        rows.removeAll { it.id == item.id }
 
         val finished =
             item.durationMs > 0L &&
                 item.positionMs >= (item.durationMs * 0.92).toLong()
 
-        if (!finished && item.positionMs > 15_000L) {
-            current.add(0, item)
+        if (!finished && item.positionMs >= 15_000L) {
+            rows.add(0, item)
         }
-
-        writeArray("continue", current.take(50))
+        writeArray("continue", rows.take(50))
     }
 
     fun progressFor(id: String): TvSavedItem? =
@@ -66,6 +67,7 @@ class TvContentStore(context: Context) {
                             kind = o.optString("kind"),
                             name = o.optString("name"),
                             url = o.optString("url"),
+                            artwork = o.optString("artwork").ifBlank { null },
                             subtitle = o.optString("subtitle").ifBlank { null },
                             positionMs = o.optLong("positionMs", 0L),
                             durationMs = o.optLong("durationMs", 0L),
@@ -76,15 +78,16 @@ class TvContentStore(context: Context) {
         }.getOrDefault(emptyList())
     }
 
-    private fun writeArray(key: String, items: List<TvSavedItem>) {
+    private fun writeArray(key: String, rows: List<TvSavedItem>) {
         val array = JSONArray()
-        items.forEach { item ->
+        rows.forEach { item ->
             array.put(
                 JSONObject()
                     .put("id", item.id)
                     .put("kind", item.kind)
                     .put("name", item.name)
                     .put("url", item.url)
+                    .put("artwork", item.artwork ?: "")
                     .put("subtitle", item.subtitle ?: "")
                     .put("positionMs", item.positionMs)
                     .put("durationMs", item.durationMs),
