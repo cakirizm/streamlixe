@@ -218,7 +218,7 @@ fun TvSetupScreen(
                 )
 
                 Text(
-                    text = "Xtream Codes hesabını ekle. StreamLiveX hesabı doğrular, kanal ve kategori verilerini kontrol eder ve başarılı bağlantıyı bu TV'de saklar.",
+                    text = "Xtream Codes hesabını ekle. StreamLiveX hesabı doğrular, gerçek kanal ve kategori verilerini yükler ve başarılı bağlantıyı bu TV'de saklar.",
                     color = Color(0xFF94A3B8),
                     style = MaterialTheme.typography.bodyLarge,
                 )
@@ -308,7 +308,8 @@ fun TvSetupScreen(
                 if (busy) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalArrangement =
+                            Arrangement.spacedBy(12.dp),
                     ) {
                         CircularProgressIndicator()
 
@@ -325,6 +326,18 @@ fun TvSetupScreen(
                     Text(
                         text = error,
                         color = Color(0xFFF87171),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+
+                if (
+                    !busy &&
+                    error.isBlank() &&
+                    status.isNotBlank()
+                ) {
+                    Text(
+                        text = status,
+                        color = Color(0xFF4ADE80),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
@@ -379,26 +392,29 @@ fun TvSetupScreen(
                                 busy = true
                                 error = ""
                                 status =
-                                    "Hesap doğrulanıyor ve canlı kanallar alınıyor..."
+                                    "Hesap doğrulanıyor ve canlı kanallar yükleniyor..."
 
                                 Thread {
                                     val result =
-                                        xtreamClient.loadLiveLibrary(
-                                            provider,
-                                        )
+                                        xtreamClient
+                                            .loadLiveLibrary(
+                                                provider,
+                                            )
 
                                     Handler(
                                         Looper.getMainLooper(),
                                     ).post {
-                                        busy = false
-
                                         result
                                             .onSuccess { library ->
+
                                                 if (
-                                                    library.channels.isEmpty()
+                                                    library.channels
+                                                        .isEmpty()
                                                 ) {
+                                                    busy = false
                                                     error =
                                                         "Hesap doğrulandı ancak canlı kanal bulunamadı."
+
                                                     return@onSuccess
                                                 }
 
@@ -410,11 +426,15 @@ fun TvSetupScreen(
                                                 status =
                                                     "${library.categories.size} kategori ve ${library.channels.size} canlı kanal bulundu."
 
+                                                busy = false
+
                                                 onConnected(
                                                     provider,
                                                 )
                                             }
                                             .onFailure { throwable ->
+                                                busy = false
+
                                                 error =
                                                     throwable.message
                                                         ?: "Xtream hesabına bağlanılamadı."
@@ -430,10 +450,11 @@ fun TvSetupScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(54.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor =
-                            Color(0xFF2563EB),
-                    ),
+                    colors =
+                        ButtonDefaults.buttonColors(
+                            containerColor =
+                                Color(0xFF2563EB),
+                        ),
                 ) {
                     Text(
                         text =
@@ -458,9 +479,10 @@ fun TvSetupScreen(
                         status = ""
                     },
                     enabled = !busy,
-                    modifier = Modifier.align(
-                        Alignment.CenterHorizontally,
-                    ),
+                    modifier =
+                        Modifier.align(
+                            Alignment.CenterHorizontally,
+                        ),
                 ) {
                     Text(
                         text = "Alanları temizle",
