@@ -115,6 +115,7 @@ fun LiveTvScreen() {
             onSelected = {
                 selectedCategory = it
             },
+            modifier = Modifier.weight(0.28f),
         )
 
         ChannelColumn(
@@ -123,11 +124,12 @@ fun LiveTvScreen() {
             onSelected = {
                 selectedChannel = it
             },
+            modifier = Modifier.weight(0.42f),
         )
 
         PreviewAndEpgPanel(
             channel = selectedChannel,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(0.50f),
         )
     }
 }
@@ -137,21 +139,24 @@ private fun CategoryColumn(
     categories: List<TvCategory>,
     selectedCategory: TvCategory,
     onSelected: (TvCategory) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = Modifier
-            .width(250.dp)
+        modifier = modifier
             .fillMaxHeight()
             .background(Color(0xFF101722))
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(
             text = "Kategoriler",
             color = Color.White,
             fontWeight = FontWeight.Bold,
             style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(bottom = 8.dp),
+            modifier = Modifier.padding(
+                start = 4.dp,
+                bottom = 6.dp,
+            ),
         )
 
         categories.forEach { category ->
@@ -181,8 +186,8 @@ private fun CategoryColumn(
                     }
                     .focusable()
                     .padding(
-                        horizontal = 12.dp,
-                        vertical = 11.dp,
+                        horizontal = 10.dp,
+                        vertical = 10.dp,
                     ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -191,6 +196,7 @@ private fun CategoryColumn(
                     color = Color.White,
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
 
                 Text(
@@ -212,21 +218,24 @@ private fun ChannelColumn(
     channels: List<TvChannel>,
     selectedChannel: TvChannel,
     onSelected: (TvChannel) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = Modifier
-            .width(420.dp)
+        modifier = modifier
             .fillMaxHeight()
             .background(Color(0xFF0F141E))
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(
             text = "Kanallar",
             color = Color.White,
             fontWeight = FontWeight.Bold,
             style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(bottom = 8.dp),
+            modifier = Modifier.padding(
+                start = 4.dp,
+                bottom = 6.dp,
+            ),
         )
 
         channels.forEachIndexed { index, channel ->
@@ -256,15 +265,15 @@ private fun ChannelColumn(
                     }
                     .focusable()
                     .padding(
-                        horizontal = 12.dp,
-                        vertical = 10.dp,
+                        horizontal = 10.dp,
+                        vertical = 9.dp,
                     ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     text = "${index + 1}",
                     color = Color(0xFF94A3B8),
-                    modifier = Modifier.width(34.dp),
+                    modifier = Modifier.width(30.dp),
                 )
 
                 Column(
@@ -300,34 +309,37 @@ private fun PreviewAndEpgPanel(
         modifier = modifier
             .fillMaxHeight()
             .background(Color(0xFF0B1018))
-            .padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(0.52f)
+                .weight(0.55f)
                 .background(
                     color = Color.Black,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(10.dp),
                 ),
             contentAlignment = Alignment.Center,
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Text(
                     text = "CANLI ÖNİZLEME",
                     color = Color(0xFF64748B),
                     fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.labelLarge,
                 )
 
                 Text(
                     text = channel.name,
                     color = Color.White,
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -335,13 +347,13 @@ private fun PreviewAndEpgPanel(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(0.48f)
+                .weight(0.45f)
                 .background(
                     color = Color(0xFF111827),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(10.dp),
                 )
-                .padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
                 text = "Şimdi",
@@ -354,7 +366,9 @@ private fun PreviewAndEpgPanel(
                 text = channel.nowPlaying,
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
 
             Text(
@@ -370,7 +384,7 @@ private fun PreviewAndEpgPanel(
                         color = Color(0xFF1F2937),
                         shape = RoundedCornerShape(4.dp),
                     )
-                    .padding(vertical = 4.dp),
+                    .padding(vertical = 3.dp),
             )
         }
     }
