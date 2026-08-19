@@ -35,6 +35,14 @@ data class XtreamLiveLibrary(
     val channels: List<NativeLiveChannel>,
 )
 
+object TvLiveLibraryCache {
+    var library: XtreamLiveLibrary? = null
+
+    fun clear() {
+        library = null
+    }
+}
+
 class XtreamClient {
 
     fun loadLiveLibrary(
@@ -176,10 +184,16 @@ class XtreamClient {
                         totalChannelCount = channels.size,
                     )
 
-                XtreamLiveLibrary(
-                    categories = categories,
-                    channels = channels,
-                )
+                val library =
+                    XtreamLiveLibrary(
+                        categories = categories,
+                        channels = channels,
+                    )
+
+                TvLiveLibraryCache.library =
+                    library
+
+                library
             } finally {
                 connection.disconnect()
             }
@@ -219,13 +233,17 @@ class XtreamClient {
                 item
                     .optString("category_name")
                     .trim()
-                    .ifBlank { "Diğer" }
+                    .ifBlank {
+                        "Diğer"
+                    }
 
             result +=
                 NativeLiveCategory(
                     id = categoryId,
                     name = categoryName,
-                    count = categoryCounts[categoryId] ?: 0,
+                    count =
+                        categoryCounts[categoryId]
+                            ?: 0,
                 )
         }
 
@@ -259,7 +277,9 @@ class XtreamClient {
                 item
                     .optString("name")
                     .trim()
-                    .ifBlank { "İsimsiz Kanal" }
+                    .ifBlank {
+                        "İsimsiz Kanal"
+                    }
 
             val categoryId =
                 item
@@ -270,19 +290,25 @@ class XtreamClient {
                 item
                     .optString("container_extension")
                     .trim()
-                    .ifBlank { "ts" }
+                    .ifBlank {
+                        "ts"
+                    }
 
             val logo =
                 item
                     .optString("stream_icon")
                     .trim()
-                    .takeIf { it.isNotEmpty() }
+                    .takeIf {
+                        it.isNotEmpty()
+                    }
 
             val epgId =
                 item
                     .optString("epg_channel_id")
                     .trim()
-                    .takeIf { it.isNotEmpty() }
+                    .takeIf {
+                        it.isNotEmpty()
+                    }
 
             val streamUrl =
                 "$server/live/$username/$password/$streamId.$extension"
@@ -310,10 +336,12 @@ class XtreamClient {
             URI(configured)
 
         val scheme =
-            uri.scheme ?: "https"
+            uri.scheme
+                ?: "https"
 
         val host =
-            uri.host ?: "streamlivex.com"
+            uri.host
+                ?: "streamlivex.com"
 
         val port =
             if (uri.port == -1) {
