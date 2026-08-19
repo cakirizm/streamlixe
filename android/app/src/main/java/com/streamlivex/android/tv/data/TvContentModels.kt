@@ -3,7 +3,6 @@ package com.streamlivex.android.tv.data
 data class NativeVodCategory(
     val id: String,
     val name: String,
-    val count: Int,
 )
 
 data class NativeVodItem(
@@ -20,15 +19,9 @@ data class NativeVodItem(
     val streamUrl: String,
 )
 
-data class XtreamVodLibrary(
-    val categories: List<NativeVodCategory>,
-    val items: List<NativeVodItem>,
-)
-
 data class NativeSeriesCategory(
     val id: String,
     val name: String,
-    val count: Int,
 )
 
 data class NativeSeriesItem(
@@ -57,22 +50,3 @@ data class NativeSeriesInfo(
     val series: NativeSeriesItem,
     val episodes: List<NativeSeriesEpisode>,
 )
-
-data class XtreamSeriesLibrary(
-    val categories: List<NativeSeriesCategory>,
-    val items: List<NativeSeriesItem>,
-)
-
-object TvVodLibraryCache {
-    var library: XtreamVodLibrary? = null
-    fun clear() { library = null }
-}
-
-object TvSeriesLibraryCache {
-    var library: XtreamSeriesLibrary? = null
-    val details = mutableMapOf<String, NativeSeriesInfo>()
-    fun clear() {
-        library = null
-        details.clear()
-    }
-}
