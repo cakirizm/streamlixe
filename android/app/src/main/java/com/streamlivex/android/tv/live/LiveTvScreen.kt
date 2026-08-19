@@ -31,6 +31,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -57,6 +60,12 @@ import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.delay
 
+private object TvLiveUiStateCache {
+    var selectedCategoryId: String = "all"
+    var focusedChannelId: String? = null
+    var playbackChannelId: String? = null
+}
+
 @OptIn(UnstableApi::class)
 @Composable
 fun LiveTvScreen(
@@ -66,6 +75,7 @@ fun LiveTvScreen(
     externalPlayerKeyEvent: Triple<Int, Int, Long>?,
     onFullscreenStateChanged: (Boolean) -> Unit,
     onContentFocused: () -> Unit,
+    menuFocusRequester: FocusRequester,
 ) {
     val client = remember { XtreamClient() }
 
@@ -82,11 +92,26 @@ fun LiveTvScreen(
     }
 
     var error by remember { mutableStateOf("") }
-    var selectedCategoryId by remember { mutableStateOf("all") }
-    var selectedChannelId by remember { mutableStateOf<String?>(null) }
-    var playbackChannelId by remember { mutableStateOf<String?>(null) }
+    var selectedCategoryId by remember {
+        mutableStateOf(TvLiveUiStateCache.selectedCategoryId)
+    }
+    var selectedChannelId by remember {
+        mutableStateOf(TvLiveUiStateCache.focusedChannelId)
+    }
+    var playbackChannelId by remember {
+        mutableStateOf(TvLiveUiStateCache.playbackChannelId)
+    }
     var fullscreen by remember { mutableStateOf(false) }
     var channelOverlayVisible by remember { mutableStateOf(false) }
+
+    val categoryReturnFocusRequester = remember { FocusRequester() }
+    val channelReturnFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(selectedCategoryId, selectedChannelId, playbackChannelId) {
+        TvLiveUiStateCache.selectedCategoryId = selectedCategoryId
+        TvLiveUiStateCache.focusedChannelId = selectedChannelId
+        TvLiveUiStateCache.playbackChannelId = playbackChannelId
+    }
 
     fun requestFor(channel: NativeLiveChannel): PlaybackRequest {
         return PlaybackRequest(
@@ -179,69 +204,71 @@ fun LiveTvScreen(
         visibleChannels.firstOrNull { it.id == selectedChannelId }
             ?: visibleChannels.firstOrNull()
 
-    val initialChannel = selectedChannel ?: currentLibrary.channels.firstOrNull()
-    if (initialChannel == null) {
-        LiveErrorScreen(message = "Canlı TV kanalı bulunamadı.")
-        return
-    }
-
-    // Tek bir ExoPlayer kullanıyoruz. Kanal geçişinde yeni player oluşturmuyoruz.
-    val livePlayer = remember(sessionId) {
-        playerFor(requestFor(initialChannel))
-    }
-
     val playbackChannel =
-        visibleChannels.firstOrNull { it.id == playbackChannelId }
-            ?: currentLibrary.channels.firstOrNull { it.id == playbackChannelId }
-            ?: selectedChannel
+        currentLibrary.channels.firstOrNull { it.id == playbackChannelId }
+
+    var livePlayer by remember(sessionId) {
+        mutableStateOf<ExoPlayer?>(null)
+    }
 
     fun moveChannel(direction: Int) {
         if (visibleChannels.isEmpty()) return
 
-        val currentIndex = visibleChannels.indexOfFirst { it.id == selectedChannel?.id }
+        val baseChannelId =
+            playbackChannelId ?: selectedChannelId ?: visibleChannels.firstOrNull()?.id
+
+        val currentIndex = visibleChannels.indexOfFirst { it.id == baseChannelId }
             .let { if (it >= 0) it else 0 }
 
         val nextIndex =
             (currentIndex + direction + visibleChannels.size) % visibleChannels.size
 
-        selectedChannelId = visibleChannels[nextIndex].id
-        playbackChannelId = visibleChannels[nextIndex].id
+        val nextChannel = visibleChannels[nextIndex]
+        selectedChannelId = nextChannel.id
+        playbackChannelId = nextChannel.id
     }
 
-    // Liste içinde hızlı gezinirken her satırda stream açma:
-    // 180 ms debounce ile sadece kısa süre durulan kanalı küçük ön izlemede aç.
-    LaunchedEffect(selectedChannel?.id, fullscreen) {
-        val channel = selectedChannel ?: return@LaunchedEffect
-
-        if (!fullscreen) {
-            delay(180)
-        }
-
-        playbackChannelId = channel.id
-    }
-
-    // Aynı ExoPlayer'a yeni kanal URL'sini ver; player yeniden yaratılmaz.
+    // Focus yalnızca seçim vurgusunu değiştirir; yayın BAŞLATMAZ.
+    // İlk OK: küçük preview. Aynı kanalda ikinci OK: fullscreen.
     LaunchedEffect(playbackChannel?.id) {
         val channel = playbackChannel ?: return@LaunchedEffect
 
-        livePlayer.setMediaItem(MediaItem.fromUri(channel.streamUrl))
-        livePlayer.prepare()
-        livePlayer.playWhenReady = true
+        val player = livePlayer
+        if (player == null) {
+            livePlayer = playerFor(requestFor(channel))
+        } else {
+            player.setMediaItem(MediaItem.fromUri(channel.streamUrl))
+            player.prepare()
+            player.playWhenReady = true
+        }
     }
 
     // Live yayın asla pause durumda kalmasın.
-    DisposableEffect(livePlayer) {
-        val listener = object : Player.Listener {
-            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-                if (!playWhenReady && fullscreen) {
-                    livePlayer.playWhenReady = true
+    DisposableEffect(livePlayer, fullscreen) {
+        val player = livePlayer
+        if (player == null) {
+            onDispose { }
+        } else {
+            val listener = object : Player.Listener {
+                override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                    if (!playWhenReady) {
+                        player.playWhenReady = true
+                    }
                 }
             }
-        }
 
-        livePlayer.addListener(listener)
-        onDispose {
-            livePlayer.removeListener(listener)
+            player.addListener(listener)
+            onDispose {
+                player.removeListener(listener)
+            }
+        }
+    }
+
+    // Fullscreen'den çıkınca aynı kanal satırına odak dönsün.
+    LaunchedEffect(fullscreen) {
+        if (!fullscreen && selectedChannelId != null) {
+            delay(80)
+            runCatching { channelReturnFocusRequester.requestFocus() }
         }
     }
 
@@ -297,10 +324,11 @@ fun LiveTvScreen(
                 CategoryColumn(
                     categories = currentLibrary.categories,
                     selectedCategory = selectedCategory,
+                    selectedCategoryFocusRequester = categoryReturnFocusRequester,
+                    menuFocusRequester = menuFocusRequester,
                     onSelected = { category ->
                         onContentFocused()
                         selectedCategoryId = category.id
-                        selectedChannelId = null
                     },
                     modifier = Modifier.weight(0.30f),
                 )
@@ -312,26 +340,34 @@ fun LiveTvScreen(
                         onContentFocused()
                         selectedChannelId = channel.id
                     },
+                    categoryFocusRequester = categoryReturnFocusRequester,
+                    selectedChannelFocusRequester = channelReturnFocusRequester,
                     onActivate = { channel ->
                         onContentFocused()
                         selectedChannelId = channel.id
-                        playbackChannelId = channel.id
-                        fullscreen = true
+                        if (playbackChannelId == channel.id) {
+                            fullscreen = true
+                        } else {
+                            playbackChannelId = channel.id
+                        }
                     },
                     modifier = Modifier.weight(0.42f),
                 )
 
                 ChannelPreviewPanel(
-                    channel = selectedChannel,
+                    channel = playbackChannel,
                     player = livePlayer,
                     modifier = Modifier.weight(0.58f),
                 )
             }
         } else {
-            LiveVideoSurface(
-                player = livePlayer,
-                modifier = Modifier.fillMaxSize(),
-            )
+            val player = livePlayer
+            if (player != null) {
+                LiveVideoSurface(
+                    player = player,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
 
             if (channelOverlayVisible && selectedChannel != null) {
                 ChannelOverlay(
@@ -414,6 +450,8 @@ private fun LiveErrorScreen(message: String) {
 private fun CategoryColumn(
     categories: List<NativeLiveCategory>,
     selectedCategory: NativeLiveCategory,
+    selectedCategoryFocusRequester: FocusRequester,
+    menuFocusRequester: FocusRequester,
     onSelected: (NativeLiveCategory) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -463,6 +501,16 @@ private fun CategoryColumn(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(background, RoundedCornerShape(8.dp))
+                        .then(
+                            if (category.id == selectedCategory.id) {
+                                Modifier.focusRequester(selectedCategoryFocusRequester)
+                            } else {
+                                Modifier
+                            },
+                        )
+                        .focusProperties {
+                            left = menuFocusRequester
+                        }
                         .onFocusChanged {
                             focused = it.isFocused
                             if (it.isFocused) {
@@ -495,6 +543,8 @@ private fun CategoryColumn(
 private fun ChannelColumn(
     channels: List<NativeLiveChannel>,
     selectedChannel: NativeLiveChannel?,
+    categoryFocusRequester: FocusRequester,
+    selectedChannelFocusRequester: FocusRequester,
     onFocused: (NativeLiveChannel) -> Unit,
     onActivate: (NativeLiveChannel) -> Unit,
     modifier: Modifier = Modifier,
@@ -558,6 +608,16 @@ private fun ChannelColumn(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(background, RoundedCornerShape(8.dp))
+                        .then(
+                            if (channel.id == selectedChannel?.id) {
+                                Modifier.focusRequester(selectedChannelFocusRequester)
+                            } else {
+                                Modifier
+                            },
+                        )
+                        .focusProperties {
+                            left = categoryFocusRequester
+                        }
                         .onFocusChanged {
                             focused = it.isFocused
                             if (it.isFocused) {
@@ -607,7 +667,7 @@ private fun ChannelColumn(
 @Composable
 private fun ChannelPreviewPanel(
     channel: NativeLiveChannel?,
-    player: ExoPlayer,
+    player: ExoPlayer?,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -626,10 +686,23 @@ private fun ChannelPreviewPanel(
                     shape = RoundedCornerShape(10.dp),
                 ),
         ) {
-            LiveVideoSurface(
-                player = player,
-                modifier = Modifier.fillMaxSize(),
-            )
+            if (player != null) {
+                LiveVideoSurface(
+                    player = player,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "Kanalı açmak için OK",
+                        color = Color(0xFF94A3B8),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
+            }
 
             Text(
                 text = "CANLI",
@@ -668,9 +741,9 @@ private fun ChannelPreviewPanel(
             )
             Text(
                 text = if (channel == null) {
-                    "Kanal seçildiğinde burada ön izleme açılır"
+                    "Kanal üzerinde OK ile ön izleme açılır"
                 } else {
-                    "OK ile tam ekran"
+                    "Aynı kanalda tekrar OK ile tam ekran"
                 },
                 color = Color(0xFF60A5FA),
                 style = MaterialTheme.typography.bodyMedium,
