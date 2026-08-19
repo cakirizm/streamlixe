@@ -1,9 +1,6 @@
 package com.streamlivex.android.tv.data
 
-data class NativeVodCategory(
-    val id: String,
-    val name: String,
-)
+data class NativeVodCategory(val id: String, val name: String)
 
 data class NativeVodItem(
     val id: String,
@@ -19,10 +16,7 @@ data class NativeVodItem(
     val streamUrl: String,
 )
 
-data class NativeSeriesCategory(
-    val id: String,
-    val name: String,
-)
+data class NativeSeriesCategory(val id: String, val name: String)
 
 data class NativeSeriesItem(
     val id: String,
@@ -49,4 +43,14 @@ data class NativeSeriesEpisode(
 data class NativeSeriesInfo(
     val series: NativeSeriesItem,
     val episodes: List<NativeSeriesEpisode>,
+)
+
+data class TvIndexedMedia(
+    val kind: String,
+    val localId: String,
+    val name: String,
+    val streamUrl: String,
+    val artwork: String?,
+    val seriesId: String?,
+    val categoryId: String?,
 )
