@@ -1,6 +1,7 @@
 package com.streamlivex.android.tv.data
 
 import android.content.Context
+import com.streamlivex.android.tv.profile.TvActiveScope
 
 data class TvPlaybackSettings(
     val fitMode: String = "fit",
@@ -15,7 +16,7 @@ class TvPlaybackSettingsStore(
 ) {
     private val prefs =
         context.applicationContext.getSharedPreferences(
-            "streamlivex_tv_playback",
+            "streamlivex_tv_playback_${TvActiveScope.storageKey()}",
             Context.MODE_PRIVATE,
         )
 
