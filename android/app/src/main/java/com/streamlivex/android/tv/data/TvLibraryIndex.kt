@@ -13,7 +13,7 @@ class TvLibraryIndex(
     context.applicationContext,
     "streamlivex_tv_library_v3.db",
     null,
-    2,
+    3,
 ) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -48,6 +48,18 @@ class TvLibraryIndex(
             )
             """.trimIndent(),
         )
+        db.execSQL(
+            """
+            CREATE TABLE categories (
+                provider_key TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                category_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY(provider_key, kind, category_id)
+            )
+            """.trimIndent(),
+        )
     }
 
     override fun onUpgrade(
@@ -57,6 +69,7 @@ class TvLibraryIndex(
     ) {
         db.execSQL("DROP TABLE IF EXISTS media")
         db.execSQL("DROP TABLE IF EXISTS library_meta")
+        db.execSQL("DROP TABLE IF EXISTS categories")
         onCreate(db)
     }
 
@@ -98,6 +111,7 @@ class TvLibraryIndex(
             val key = providerKey(provider)
             db.delete("media", "provider_key=?", arrayOf(key))
             db.delete("library_meta", "provider_key=?", arrayOf(key))
+            db.delete("categories", "provider_key=?", arrayOf(key))
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
@@ -244,6 +258,152 @@ class TvLibraryIndex(
                 while (it.moveToNext()) {
                     add(it.toIndexed())
                 }
+            }
+        }
+    }
+
+    fun saveVodCategories(
+        provider: TvProviderConfig,
+        rows: List<NativeVodCategory>,
+    ) {
+        saveCategories(
+            provider = provider,
+            kind = "movie",
+            rows = rows.map { it.id to it.name },
+        )
+    }
+
+    fun saveSeriesCategories(
+        provider: TvProviderConfig,
+        rows: List<NativeSeriesCategory>,
+    ) {
+        saveCategories(
+            provider = provider,
+            kind = "series",
+            rows = rows.map { it.id to it.name },
+        )
+    }
+
+    fun loadVodCategories(
+        provider: TvProviderConfig,
+    ): List<NativeVodCategory> =
+        loadCategories(provider, "movie")
+            .map { NativeVodCategory(it.first, it.second) }
+
+    fun loadSeriesCategories(
+        provider: TvProviderConfig,
+    ): List<NativeSeriesCategory> =
+        loadCategories(provider, "series")
+            .map { NativeSeriesCategory(it.first, it.second) }
+
+    private fun saveCategories(
+        provider: TvProviderConfig,
+        kind: String,
+        rows: List<Pair<String, String>>,
+    ) {
+        val db = writableDatabase
+        val key = providerKey(provider)
+        db.beginTransaction()
+        try {
+            db.delete(
+                "categories",
+                "provider_key=? AND kind=?",
+                arrayOf(key, kind),
+            )
+            rows.forEachIndexed { index, row ->
+                val values = ContentValues().apply {
+                    put("provider_key", key)
+                    put("kind", kind)
+                    put("category_id", row.first)
+                    put("name", row.second)
+                    put("sort_order", index)
+                }
+                db.insertWithOnConflict(
+                    "categories",
+                    null,
+                    values,
+                    SQLiteDatabase.CONFLICT_REPLACE,
+                )
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    private fun loadCategories(
+        provider: TvProviderConfig,
+        kind: String,
+    ): List<Pair<String, String>> {
+        val cursor = readableDatabase.query(
+            "categories",
+            arrayOf("category_id", "name"),
+            "provider_key=? AND kind=?",
+            arrayOf(providerKey(provider), kind),
+            null,
+            null,
+            "sort_order ASC",
+        )
+        return buildList {
+            cursor.use {
+                while (it.moveToNext()) {
+                    add(it.getString(0) to it.getString(1))
+                }
+            }
+        }
+    }
+
+    fun search(
+        provider: TvProviderConfig,
+        query: String,
+        kind: String? = null,
+        limit: Int = 60,
+    ): List<TvIndexedMedia> {
+        val key = titleKey(query)
+        if (key.length < 2) return emptyList()
+
+        val sql =
+            if (kind.isNullOrBlank()) {
+                """
+                SELECT kind,local_id,name,stream_url,artwork,series_id,category_id
+                FROM media
+                WHERE provider_key=? AND title_key LIKE ?
+                ORDER BY
+                  CASE
+                    WHEN title_key=? THEN 0
+                    WHEN title_key LIKE ? THEN 1
+                    ELSE 2
+                  END,
+                  name COLLATE NOCASE ASC
+                LIMIT ?
+                """.trimIndent()
+            } else {
+                """
+                SELECT kind,local_id,name,stream_url,artwork,series_id,category_id
+                FROM media
+                WHERE provider_key=? AND kind=? AND title_key LIKE ?
+                ORDER BY
+                  CASE
+                    WHEN title_key=? THEN 0
+                    WHEN title_key LIKE ? THEN 1
+                    ELSE 2
+                  END,
+                  name COLLATE NOCASE ASC
+                LIMIT ?
+                """.trimIndent()
+            }
+
+        val args =
+            if (kind.isNullOrBlank()) {
+                arrayOf(providerKey(provider), "%$key%", key, "$key%", limit.toString())
+            } else {
+                arrayOf(providerKey(provider), kind, "%$key%", key, "$key%", limit.toString())
+            }
+
+        val cursor = readableDatabase.rawQuery(sql, args)
+        return buildList {
+            cursor.use {
+                while (it.moveToNext()) add(it.toIndexed())
             }
         }
     }
