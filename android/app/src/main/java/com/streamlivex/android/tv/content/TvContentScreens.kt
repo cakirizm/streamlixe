@@ -10,6 +10,7 @@ import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -2148,6 +2149,7 @@ private fun EpisodeCard(
                     focused =
                         it.isFocused
                 }
+                .focusable()
                 .clickable(
                     onClick = onClick,
                 )
@@ -3844,6 +3846,7 @@ private fun MediaCard(
                 focused = it.isFocused
                 if (it.isFocused) onFocus()
             }
+            .focusable()
             .clickable(onClick = onClick)
             .padding(7.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -3890,6 +3893,7 @@ private fun FocusRow(
                 focused = it.isFocused
                 if (it.isFocused) onFocus()
             }
+            .focusable()
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 11.dp),
     ) {
@@ -3922,6 +3926,7 @@ private fun ActionButton(
                 RoundedCornerShape(9.dp),
             )
             .onFocusChanged { focused = it.isFocused }
+            .focusable()
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 11.dp),
     ) {
