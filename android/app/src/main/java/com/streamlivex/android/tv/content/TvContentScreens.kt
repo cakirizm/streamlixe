@@ -10,7 +10,6 @@ import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -723,9 +722,6 @@ fun TvMoviesScreen(
                             selectedCategoryId,
                     onFocus = {
                         onContentFocused()
-                    },
-                    onClick = {
-                        onContentFocused()
                         if (
                             category.id !=
                             selectedCategoryId
@@ -734,6 +730,9 @@ fun TvMoviesScreen(
                                 category.id,
                             )
                         }
+                    },
+                    onClick = {
+                        onContentFocused()
                     },
                 )
             }
@@ -1121,9 +1120,6 @@ fun TvSeriesScreen(
                             selectedCategoryId,
                     onFocus = {
                         onContentFocused()
-                    },
-                    onClick = {
-                        onContentFocused()
 
                         if (
                             category.id !=
@@ -1133,6 +1129,9 @@ fun TvSeriesScreen(
                                 category.id,
                             )
                         }
+                    },
+                    onClick = {
+                        onContentFocused()
                     },
                 )
             }
@@ -1271,6 +1270,10 @@ private fun GenericDetailScreen(
     }
 
     LaunchedEffect(target.name, target.local?.localId) {
+        detailListState.scrollToItem(
+            0,
+            0,
+        )
         delay(180)
         runCatching {
             primaryFocusRequester.requestFocus()
@@ -1449,11 +1452,11 @@ private fun GenericDetailScreen(
 
     fun openEpisodes() {
         scope.launch {
-            detailListState
-                .animateScrollToItem(
-                    1,
-                )
-            delay(120)
+            detailListState.scrollToItem(
+                1,
+                0,
+            )
+            delay(180)
             runCatching {
                 episodesFocusRequester
                     .requestFocus()
@@ -1496,6 +1499,22 @@ private fun GenericDetailScreen(
                                 .aspectRatio(
                                     2f / 3f,
                                 ),
+                    )
+
+                    Text(
+                        media?.name
+                            ?: target.name,
+                        color =
+                            Color.White,
+                        fontWeight =
+                            FontWeight.Bold,
+                        maxLines = 2,
+                        overflow =
+                            TextOverflow.Ellipsis,
+                        style =
+                            MaterialTheme
+                                .typography
+                                .titleLarge,
                     )
 
                     if (
@@ -2148,22 +2167,6 @@ private fun EpisodeCard(
                 .onFocusChanged {
                     focused =
                         it.isFocused
-                }
-                .focusable()
-                .onKeyEvent { event ->
-                    if (
-                        event.type == KeyEventType.KeyUp &&
-                        (
-                            event.key == Key.DirectionCenter ||
-                            event.key == Key.Enter ||
-                            event.key == Key.NumPadEnter
-                        )
-                    ) {
-                        onClick()
-                        true
-                    } else {
-                        false
-                    }
                 }
                 .clickable(
                     onClick = onClick,
@@ -3861,22 +3864,6 @@ private fun MediaCard(
                 focused = it.isFocused
                 if (it.isFocused) onFocus()
             }
-            .focusable()
-            .onKeyEvent { event ->
-                if (
-                    event.type == KeyEventType.KeyUp &&
-                    (
-                        event.key == Key.DirectionCenter ||
-                        event.key == Key.Enter ||
-                        event.key == Key.NumPadEnter
-                    )
-                ) {
-                    onClick()
-                    true
-                } else {
-                    false
-                }
-            }
             .clickable(onClick = onClick)
             .padding(7.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -3923,22 +3910,6 @@ private fun FocusRow(
                 focused = it.isFocused
                 if (it.isFocused) onFocus()
             }
-            .focusable()
-            .onKeyEvent { event ->
-                if (
-                    event.type == KeyEventType.KeyUp &&
-                    (
-                        event.key == Key.DirectionCenter ||
-                        event.key == Key.Enter ||
-                        event.key == Key.NumPadEnter
-                    )
-                ) {
-                    onClick()
-                    true
-                } else {
-                    false
-                }
-            }
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 11.dp),
     ) {
@@ -3971,22 +3942,6 @@ private fun ActionButton(
                 RoundedCornerShape(9.dp),
             )
             .onFocusChanged { focused = it.isFocused }
-            .focusable()
-            .onKeyEvent { event ->
-                if (
-                    event.type == KeyEventType.KeyUp &&
-                    (
-                        event.key == Key.DirectionCenter ||
-                        event.key == Key.Enter ||
-                        event.key == Key.NumPadEnter
-                    )
-                ) {
-                    onClick()
-                    true
-                } else {
-                    false
-                }
-            }
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 11.dp),
     ) {
