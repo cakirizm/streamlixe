@@ -159,7 +159,8 @@ class XtreamClient {
     fun scanVod(
         provider: TvProviderConfig,
         onItem: (NativeVodItem) -> Unit,
-    ): Result<Unit> = runCatching {
+    ): Result<Int> = runCatching {
+        var scannedCount = 0
         val p =
             normalized(provider)
 
@@ -282,8 +283,10 @@ class XtreamClient {
                             "${p.server}/movie/${p.username}/${p.password}/$streamId.$extension",
                     ),
                 )
+                scannedCount += 1
             }
         }
+        scannedCount
     }
 
     /**
@@ -293,7 +296,8 @@ class XtreamClient {
     fun scanSeries(
         provider: TvProviderConfig,
         onItem: (NativeSeriesItem) -> Unit,
-    ): Result<Unit> = runCatching {
+    ): Result<Int> = runCatching {
+        var scannedCount = 0
         val p =
             normalized(provider)
 
@@ -407,8 +411,10 @@ class XtreamClient {
                             genre,
                     ),
                 )
+                scannedCount += 1
             }
         }
+        scannedCount
     }
 
     fun loadVodCategories(provider: TvProviderConfig): Result<List<NativeVodCategory>> =
