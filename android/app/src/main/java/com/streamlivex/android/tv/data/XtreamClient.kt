@@ -150,6 +150,267 @@ class XtreamClient {
         }
     }
 
+    /**
+     * Full VOD scan used by the disk indexer.
+     *
+     * Important: this streams one JSON object at a time and invokes [onItem].
+     * It does NOT materialize the provider's entire VOD catalogue in RAM.
+     */
+    fun scanVod(
+        provider: TvProviderConfig,
+        onItem: (NativeVodItem) -> Unit,
+    ) {
+        val p =
+            normalized(provider)
+
+        val url =
+            buildApiUrl(
+                p,
+                "get_vod_streams",
+            )
+
+        scanArrayStream(
+            url,
+        ) {
+            reader ->
+
+            var streamId = ""
+            var categoryId = ""
+            var name = ""
+            var icon: String? = null
+            var plot: String? = null
+            var rating: Double? = null
+            var year: String? = null
+            var genre: String? = null
+            var extension = "mp4"
+
+            reader.beginObject()
+
+            while (reader.hasNext()) {
+                when (reader.nextName()) {
+                    "stream_id" ->
+                        streamId =
+                            reader.nextStringSafe()
+
+                    "category_id" ->
+                        categoryId =
+                            reader.nextStringSafe()
+
+                    "name" ->
+                        name =
+                            reader.nextStringSafe()
+
+                    "stream_icon" ->
+                        icon =
+                            reader
+                                .nextStringSafe()
+                                .takeIf {
+                                    it.isNotBlank()
+                                }
+
+                    "plot" ->
+                        plot =
+                            reader
+                                .nextStringSafe()
+                                .takeIf {
+                                    it.isNotBlank()
+                                }
+
+                    "rating" ->
+                        rating =
+                            reader
+                                .nextStringSafe()
+                                .toDoubleOrNull()
+
+                    "year" ->
+                        year =
+                            reader
+                                .nextStringSafe()
+                                .takeIf {
+                                    it.isNotBlank()
+                                }
+
+                    "genre" ->
+                        genre =
+                            reader
+                                .nextStringSafe()
+                                .takeIf {
+                                    it.isNotBlank()
+                                }
+
+                    "container_extension" ->
+                        extension =
+                            reader
+                                .nextStringSafe()
+                                .ifBlank {
+                                    "mp4"
+                                }
+
+                    else ->
+                        reader.skipValue()
+                }
+            }
+
+            reader.endObject()
+
+            if (streamId.isNotBlank()) {
+                onItem(
+                    NativeVodItem(
+                        id =
+                            "m$streamId",
+                        streamId =
+                            streamId,
+                        categoryId =
+                            categoryId,
+                        name =
+                            name.ifBlank {
+                                "İsimsiz Film"
+                            },
+                        poster =
+                            icon,
+                        plot =
+                            plot,
+                        rating =
+                            rating,
+                        year =
+                            year,
+                        genre =
+                            genre,
+                        extension =
+                            extension,
+                        streamUrl =
+                            "${p.server}/movie/${p.username}/${p.password}/$streamId.$extension",
+                    ),
+                )
+            }
+        }
+    }
+
+    /**
+     * Full Series scan used by the disk indexer.
+     * Streams rows directly into [onItem] without holding the whole catalogue.
+     */
+    fun scanSeries(
+        provider: TvProviderConfig,
+        onItem: (NativeSeriesItem) -> Unit,
+    ) {
+        val p =
+            normalized(provider)
+
+        val url =
+            buildApiUrl(
+                p,
+                "get_series",
+            )
+
+        scanArrayStream(
+            url,
+        ) {
+            reader ->
+
+            var seriesId = ""
+            var categoryId = ""
+            var name = ""
+            var cover: String? = null
+            var plot: String? = null
+            var rating: Double? = null
+            var year: String? = null
+            var genre: String? = null
+
+            reader.beginObject()
+
+            while (reader.hasNext()) {
+                when (reader.nextName()) {
+                    "series_id" ->
+                        seriesId =
+                            reader.nextStringSafe()
+
+                    "category_id" ->
+                        categoryId =
+                            reader.nextStringSafe()
+
+                    "name" ->
+                        name =
+                            reader.nextStringSafe()
+
+                    "cover" ->
+                        cover =
+                            reader
+                                .nextStringSafe()
+                                .takeIf {
+                                    it.isNotBlank()
+                                }
+
+                    "plot" ->
+                        plot =
+                            reader
+                                .nextStringSafe()
+                                .takeIf {
+                                    it.isNotBlank()
+                                }
+
+                    "rating" ->
+                        rating =
+                            reader
+                                .nextStringSafe()
+                                .toDoubleOrNull()
+
+                    "releaseDate",
+                    "release_date",
+                    "year",
+                    ->
+                        year =
+                            reader
+                                .nextStringSafe()
+                                .takeIf {
+                                    it.isNotBlank()
+                                }
+                                ?.take(4)
+
+                    "genre" ->
+                        genre =
+                            reader
+                                .nextStringSafe()
+                                .takeIf {
+                                    it.isNotBlank()
+                                }
+
+                    else ->
+                        reader.skipValue()
+                }
+            }
+
+            reader.endObject()
+
+            if (seriesId.isNotBlank()) {
+                onItem(
+                    NativeSeriesItem(
+                        id =
+                            "s$seriesId",
+                        seriesId =
+                            seriesId,
+                        categoryId =
+                            categoryId,
+                        name =
+                            name.ifBlank {
+                                "İsimsiz Dizi"
+                            },
+                        cover =
+                            cover,
+                        plot =
+                            plot,
+                        rating =
+                            rating,
+                        year =
+                            year,
+                        genre =
+                            genre,
+                    ),
+                )
+            }
+        }
+    }
+
     fun loadVodCategories(provider: TvProviderConfig): Result<List<NativeVodCategory>> =
         runCatching {
             TvContentCache.vodCategories?.let { return@runCatching it }
@@ -471,6 +732,36 @@ class XtreamClient {
             append(URLEncoder.encode(key, "UTF-8"))
             append("=")
             append(URLEncoder.encode(value, "UTF-8"))
+        }
+    }
+
+    private fun scanArrayStream(
+        url: String,
+        onObject: (JsonReader) -> Unit,
+    ) {
+        val connection =
+            open(url)
+
+        try {
+            val reader =
+                JsonReader(
+                    InputStreamReader(
+                        connection.inputStream,
+                        Charsets.UTF_8,
+                    ),
+                )
+
+            reader.use {
+                it.beginArray()
+
+                while (it.hasNext()) {
+                    onObject(it)
+                }
+
+                it.endArray()
+            }
+        } finally {
+            connection.disconnect()
         }
     }
 
