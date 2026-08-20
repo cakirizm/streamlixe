@@ -2228,6 +2228,12 @@ fun TvSearchScreen(
         mutableStateOf<com.streamlivex.android.tv.data.NativeLiveChannel?>(null)
     }
     var loading by remember { mutableStateOf(false) }
+    var recentRefresh by remember { mutableIntStateOf(0) }
+
+    val recentSearches =
+        remember(recentRefresh) {
+            store.recentSearches()
+        }
 
     LaunchedEffect(
         selectedType,
@@ -2483,6 +2489,39 @@ fun TvSearchScreen(
             }
         }
 
+        if (
+            query.isBlank() &&
+            recentSearches.isNotEmpty()
+        ) {
+            Row(
+                horizontalArrangement =
+                    Arrangement.spacedBy(
+                        8.dp,
+                    ),
+            ) {
+                recentSearches
+                    .take(6)
+                    .forEach {
+                        recent ->
+
+                        ActionButton(
+                            text = recent,
+                        ) {
+                            query = recent
+                            onContentFocused()
+                        }
+                    }
+
+                ActionButton(
+                    text =
+                        "Son Aramaları Temizle",
+                ) {
+                    store.clearRecentSearches()
+                    recentRefresh += 1
+                }
+            }
+        }
+
         OutlinedTextField(
             value = query,
             onValueChange = {
@@ -2524,6 +2563,10 @@ fun TvSearchScreen(
                         artwork =
                             channel.logo,
                     ) {
+                        store.addRecentSearch(
+                            query,
+                        )
+                        recentRefresh += 1
                         liveChannel =
                             channel
                     }
@@ -2570,6 +2613,10 @@ fun TvSearchScreen(
                         artwork =
                             item.artwork,
                     ) {
+                        store.addRecentSearch(
+                            query,
+                        )
+                        recentRefresh += 1
                         target =
                             ContentTarget(
                                 kind =
@@ -3152,6 +3199,391 @@ fun TvMyListScreen(
                                         1f,
                                     ),
                             )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TvHistoryScreen(
+    provider: TvProviderConfig,
+    locale: TvLocale,
+    playerFor: (PlaybackRequest) -> ExoPlayer,
+    releasePlayer: (String) -> Unit,
+    onFullscreenStateChanged: (Boolean) -> Unit,
+    onContentFocused: () -> Unit,
+) {
+    val context =
+        LocalContext.current
+    val strings =
+        remember(locale) {
+            TvStrings(locale)
+        }
+    val store =
+        remember {
+            TvContentStore(
+                context,
+            )
+        }
+    val index =
+        remember {
+            TvLibraryIndex(
+                context,
+            )
+        }
+
+    var filter by
+        remember {
+            mutableStateOf(
+                "all",
+            )
+        }
+    var refresh by
+        remember {
+            mutableIntStateOf(
+                0,
+            )
+        }
+    var target by
+        remember {
+            mutableStateOf<ContentTarget?>(
+                null,
+            )
+        }
+    var playing by
+        remember {
+            mutableStateOf<TvSavedItem?>(
+                null,
+            )
+        }
+
+    val rows =
+        remember(
+            filter,
+            refresh,
+        ) {
+            store.viewingHistory()
+                .filter {
+                    item ->
+
+                    when (filter) {
+                        "movie" ->
+                            item.kind ==
+                                "movie"
+
+                        "series" ->
+                            item.kind ==
+                                "series" ||
+                                item.kind ==
+                                "episode"
+
+                        "watched" ->
+                            store.isWatched(
+                                item.id,
+                            )
+
+                        else ->
+                            true
+                    }
+                }
+        }
+
+    if (playing != null) {
+        val saved =
+            playing!!
+
+        TvNativePlayer(
+            saved = saved,
+            request =
+                PlaybackRequest(
+                    sessionId =
+                        "tv-history-${saved.id}",
+                    item =
+                        PlaybackItem(
+                            saved.name,
+                            saved.url,
+                            saved.kind,
+                        ),
+                    resumeTimeMs =
+                        store
+                            .progressFor(
+                                saved.id,
+                            )
+                            ?.positionMs
+                            ?: saved.positionMs,
+                    preferences =
+                        PlaybackPreferences(
+                            showInfo = true,
+                        ),
+                ),
+            playerFor =
+                playerFor,
+            releasePlayer =
+                releasePlayer,
+            store =
+                store,
+            locale =
+                locale,
+            onFullscreenStateChanged =
+                onFullscreenStateChanged,
+            onClose = {
+                playing = null
+                refresh += 1
+            },
+        )
+        return
+    }
+
+    if (target != null) {
+        GenericDetailScreen(
+            provider = provider,
+            locale = locale,
+            target = target!!,
+            store = store,
+            index = index,
+            onPlay = {
+                playing = it
+            },
+            onOpen = {
+                target = it
+            },
+            onBack = {
+                target = null
+                refresh += 1
+            },
+            onFullscreenStateChanged =
+                onFullscreenStateChanged,
+        )
+        return
+    }
+
+    Column(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Color(
+                        0xFF0D111B,
+                    ),
+                )
+                .padding(24.dp),
+        verticalArrangement =
+            Arrangement.spacedBy(
+                14.dp,
+            ),
+    ) {
+        Text(
+            "İzleme Geçmişi",
+            color = Color.White,
+            fontWeight =
+                FontWeight.Bold,
+            style =
+                MaterialTheme
+                    .typography
+                    .headlineMedium,
+        )
+
+        Row(
+            horizontalArrangement =
+                Arrangement.spacedBy(
+                    10.dp,
+                ),
+        ) {
+            ActionButton(
+                text = "Tümü",
+                selected =
+                    filter == "all",
+            ) {
+                filter = "all"
+                onContentFocused()
+            }
+
+            ActionButton(
+                text =
+                    strings["movies"],
+                selected =
+                    filter ==
+                        "movie",
+            ) {
+                filter = "movie"
+                onContentFocused()
+            }
+
+            ActionButton(
+                text =
+                    strings["series"],
+                selected =
+                    filter ==
+                        "series",
+            ) {
+                filter = "series"
+                onContentFocused()
+            }
+
+            ActionButton(
+                text = "İzlenenler",
+                selected =
+                    filter ==
+                        "watched",
+            ) {
+                filter = "watched"
+                onContentFocused()
+            }
+
+            ActionButton(
+                text =
+                    "Geçmişi Temizle",
+            ) {
+                store.clearViewingHistory()
+                refresh += 1
+            }
+        }
+
+        if (rows.isEmpty()) {
+            Text(
+                "İzleme geçmişi boş.",
+                color =
+                    Color(
+                        0xFF94A3B8,
+                    ),
+            )
+        } else {
+            LazyColumn(
+                verticalArrangement =
+                    Arrangement.spacedBy(
+                        10.dp,
+                    ),
+            ) {
+                items(
+                    rows,
+                    key = {
+                        it.id
+                    },
+                ) {
+                    item ->
+
+                    val local =
+                        index.findByTitle(
+                            provider,
+                            if (
+                                item.kind ==
+                                "episode"
+                            ) {
+                                "series"
+                            } else {
+                                item.kind
+                            },
+                            item.name,
+                        )
+
+                    Row(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    Color(
+                                        0xFF151C28,
+                                    ),
+                                    RoundedCornerShape(
+                                        10.dp,
+                                    ),
+                                )
+                                .padding(
+                                    10.dp,
+                                ),
+                        verticalAlignment =
+                            Alignment.CenterVertically,
+                        horizontalArrangement =
+                            Arrangement.spacedBy(
+                                10.dp,
+                            ),
+                    ) {
+                        MediaCard(
+                            title =
+                                item.name,
+                            artwork =
+                                item.artwork
+                                    ?: local
+                                        ?.artwork,
+                            subtitle =
+                                when {
+                                    store.isWatched(
+                                        item.id,
+                                    ) ->
+                                        "✓ İzlendi"
+
+                                    item.positionMs >
+                                        0L ->
+                                        "Kaldığın yerden devam"
+
+                                    else ->
+                                        item.kind
+                                },
+                            modifier =
+                                Modifier.width(
+                                    190.dp,
+                                ),
+                            onFocus = {
+                                onContentFocused()
+                            },
+                        ) {
+                            if (
+                                item.kind ==
+                                "episode" ||
+                                local == null
+                            ) {
+                                playing =
+                                    item
+                            } else {
+                                target =
+                                    ContentTarget(
+                                        kind =
+                                            item.kind,
+                                        name =
+                                            item.name,
+                                        poster =
+                                            item.artwork
+                                                ?: local
+                                                    .artwork,
+                                        local =
+                                            local,
+                                    )
+                            }
+                        }
+
+                        ActionButton(
+                            text = "Devam Et",
+                        ) {
+                            playing =
+                                item
+                        }
+
+                        ActionButton(
+                            text =
+                                "Baştan Başlat",
+                        ) {
+                            store.restart(
+                                item.id,
+                            )
+                            playing =
+                                item.copy(
+                                    positionMs =
+                                        0L,
+                                )
+                            refresh += 1
+                        }
+
+                        ActionButton(
+                            text =
+                                "Geçmişten Kaldır",
+                        ) {
+                            store.removeFromHistory(
+                                item.id,
+                            )
+                            refresh += 1
                         }
                     }
                 }
