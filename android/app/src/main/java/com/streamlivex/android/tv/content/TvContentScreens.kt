@@ -73,6 +73,8 @@ import com.streamlivex.android.tv.data.TvTmdbDetail
 import com.streamlivex.android.tv.data.TvTmdbEpisode
 import com.streamlivex.android.tv.data.TvTmdbMedia
 import com.streamlivex.android.tv.data.TvTmdbPerson
+import com.streamlivex.android.tv.data.TvUnifiedResult
+import com.streamlivex.android.tv.data.TvUnifiedLibrary
 import com.streamlivex.android.tv.data.XtreamClient
 import com.streamlivex.android.tv.i18n.TvLocale
 import com.streamlivex.android.tv.i18n.TvStrings
@@ -89,6 +91,7 @@ private data class ContentTarget(
     val local: TvIndexedMedia? = null,
     val vod: NativeVodItem? = null,
     val series: NativeSeriesItem? = null,
+    val sourceProvider: TvProviderConfig? = null,
 )
 
 private data class HomeCard(
@@ -116,6 +119,8 @@ fun TvHomeScreen(
     var trendingMovies by remember(locale) { mutableStateOf<List<TvTmdbMedia>>(emptyList()) }
     var trendingSeries by remember(locale) { mutableStateOf<List<TvTmdbMedia>>(emptyList()) }
     var forYou by remember { mutableStateOf<List<TvIndexedMedia>>(emptyList()) }
+    var newMovies by remember { mutableStateOf<List<TvIndexedMedia>>(emptyList()) }
+    var newSeries by remember { mutableStateOf<List<TvIndexedMedia>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var target by remember { mutableStateOf<ContentTarget?>(null) }
     var playing by remember { mutableStateOf<TvSavedItem?>(null) }
@@ -129,11 +134,25 @@ fun TvHomeScreen(
             val movies = tmdb.trending("movie", locale).getOrDefault(emptyList()).take(14)
             val series = tmdb.trending("series", locale).getOrDefault(emptyList()).take(14)
             val suggestions = index.suggestions(provider, limit = 14)
+            val addedMovies =
+                index.newItems(
+                    provider = provider,
+                    kind = "movie",
+                    limit = 14,
+                )
+            val addedSeries =
+                index.newItems(
+                    provider = provider,
+                    kind = "series",
+                    limit = 14,
+                )
 
             Handler(Looper.getMainLooper()).post {
                 trendingMovies = movies
                 trendingSeries = series
                 forYou = suggestions
+                newMovies = addedMovies
+                newSeries = addedSeries
                 loading = false
             }
         }.start()
@@ -174,7 +193,10 @@ fun TvHomeScreen(
 
     if (target != null) {
         GenericDetailScreen(
-            provider = provider,
+            provider =
+                target!!
+                    .sourceProvider
+                    ?: provider,
             locale = locale,
             target = target!!,
             store = store,
@@ -229,6 +251,102 @@ fun TvHomeScreen(
                     },
                     onClick = { card ->
                         continueRows.firstOrNull { it.id == card.id }?.let { playing = it }
+                    },
+                )
+            }
+        }
+
+        if (newMovies.isNotEmpty()) {
+            item {
+                HomeRail(
+                    title = "Yeni Eklenen Filmler",
+                    cards =
+                        newMovies
+                            .filter {
+                                TvProfilePolicy.allow(
+                                    it.name,
+                                )
+                            }
+                            .map {
+                                media ->
+
+                                HomeCard(
+                                    id =
+                                        "new-m-${media.localId}",
+                                    title =
+                                        media.name,
+                                    artwork =
+                                        media.artwork,
+                                    subtitle =
+                                        strings[
+                                            "movies"
+                                        ],
+                                    target =
+                                        ContentTarget(
+                                            kind =
+                                                "movie",
+                                            name =
+                                                media.name,
+                                            poster =
+                                                media.artwork,
+                                            local =
+                                                media,
+                                        ),
+                                )
+                            },
+                    onClick = {
+                        card ->
+                        card.target?.let {
+                            target = it
+                        }
+                    },
+                )
+            }
+        }
+
+        if (newSeries.isNotEmpty()) {
+            item {
+                HomeRail(
+                    title = "Yeni Eklenen Diziler",
+                    cards =
+                        newSeries
+                            .filter {
+                                TvProfilePolicy.allow(
+                                    it.name,
+                                )
+                            }
+                            .map {
+                                media ->
+
+                                HomeCard(
+                                    id =
+                                        "new-s-${media.localId}",
+                                    title =
+                                        media.name,
+                                    artwork =
+                                        media.artwork,
+                                    subtitle =
+                                        strings[
+                                            "series"
+                                        ],
+                                    target =
+                                        ContentTarget(
+                                            kind =
+                                                "series",
+                                            name =
+                                                media.name,
+                                            poster =
+                                                media.artwork,
+                                            local =
+                                                media,
+                                        ),
+                                )
+                            },
+                    onClick = {
+                        card ->
+                        card.target?.let {
+                            target = it
+                        }
                     },
                 )
             }
@@ -2089,10 +2207,16 @@ fun TvSearchScreen(
     val strings = remember(locale) { TvStrings(locale) }
     val index = remember { TvLibraryIndex(context) }
     val store = remember { TvContentStore(context) }
+    val unified =
+        remember {
+            TvUnifiedLibrary(
+                context,
+            )
+        }
 
     var query by remember { mutableStateOf("") }
     var selectedType by remember { mutableStateOf("movie") }
-    var results by remember { mutableStateOf<List<TvIndexedMedia>>(emptyList()) }
+    var results by remember { mutableStateOf<List<TvUnifiedResult>>(emptyList()) }
     var channelResults by remember {
         mutableStateOf(
             emptyList<com.streamlivex.android.tv.data.NativeLiveChannel>(),
@@ -2197,11 +2321,11 @@ fun TvSearchScreen(
         } else {
             Thread {
                 val rows =
-                    index.search(
-                        provider = provider,
+                    unified.search(
                         query = q,
                         kind = selectedType,
-                        limit = 60,
+                        limitPerProvider = 40,
+                        totalLimit = 60,
                     )
 
                 Handler(
@@ -2210,7 +2334,7 @@ fun TvSearchScreen(
                     results =
                         rows.filter {
                             TvProfilePolicy.allow(
-                                it.name,
+                                it.media.name,
                             )
                         }
                     channelResults =
@@ -2277,7 +2401,10 @@ fun TvSearchScreen(
 
     if (target != null) {
         GenericDetailScreen(
-            provider = provider,
+            provider =
+                target!!
+                    .sourceProvider
+                    ?: provider,
             locale = locale,
             target = target!!,
             store = store,
@@ -2405,24 +2532,40 @@ fun TvSearchScreen(
                 items(
                     results,
                     key = {
-                        "${it.kind}-${it.localId}"
+                        "${it.media.kind}-${it.media.localId}-${it.provider.username}"
                     },
-                ) { item ->
+                ) { result ->
+                    val item =
+                        result.media
+
                     SearchResultRow(
                         title =
                             item.name,
                         subtitle =
-                            if (
-                                item.kind ==
-                                "movie"
-                            ) {
-                                strings[
-                                    "movies"
-                                ]
-                            } else {
-                                strings[
-                                    "series"
-                                ]
+                            buildString {
+                                append(
+                                    if (
+                                        item.kind ==
+                                        "movie"
+                                    ) {
+                                        strings[
+                                            "movies"
+                                        ]
+                                    } else {
+                                        strings[
+                                            "series"
+                                        ]
+                                    },
+                                )
+
+                                if (
+                                    result.sourceCount >
+                                    1
+                                ) {
+                                    append(
+                                        " · ${result.sourceCount} kaynak",
+                                    )
+                                }
                             },
                         artwork =
                             item.artwork,
@@ -2437,6 +2580,8 @@ fun TvSearchScreen(
                                     item.artwork,
                                 local =
                                     item,
+                                sourceProvider =
+                                    result.provider,
                             )
                     }
                 }
