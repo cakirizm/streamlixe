@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -45,6 +46,8 @@ import com.streamlivex.android.tv.data.TvContentCache
 import com.streamlivex.android.tv.data.TvContentStore
 import com.streamlivex.android.tv.data.TvLibraryIndex
 import com.streamlivex.android.tv.data.TvLiveLibraryCache
+import com.streamlivex.android.tv.data.TvPlaybackSettings
+import com.streamlivex.android.tv.data.TvPlaybackSettingsStore
 import com.streamlivex.android.tv.data.TvProviderConfig
 import com.streamlivex.android.tv.data.XtreamClient
 import com.streamlivex.android.tv.i18n.TvLocale
@@ -249,11 +252,25 @@ fun TvRoot(
             TvLocaleStore.set(context, it)
             locale = it
         },
+        onRefreshLibrary = {
+            TvContentCache.clear()
+            libraryIndex.clearProvider(
+                activeProvider,
+            )
+            libraryReady = false
+            preparationPercent = 0
+            preparationCount = 0
+            preparationRetry += 1
+        },
+        onClearMemoryCache = {
+            TvContentCache.clear()
+        },
         onDisconnect = {
             TvProviderStorage.clear(context)
             TvLiveLibraryCache.clear()
             TvContentCache.clear()
             TvContentStore(context).clear()
+            TvPlaybackSettingsStore(context).clear()
             libraryIndex.clearProvider(activeProvider)
             provider = null
         },
@@ -363,6 +380,8 @@ private fun TvMainScreen(
     externalPlayerKeyEvent: Triple<Int, Int, Long>?,
     onFullscreenStateChanged: (Boolean) -> Unit,
     onLocaleChanged: (TvLocale) -> Unit,
+    onRefreshLibrary: () -> Unit,
+    onClearMemoryCache: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
     val strings = remember(locale) {
@@ -494,7 +513,17 @@ private fun TvMainScreen(
 
                 TvSection.MyList ->
                     TvMyListScreen(
+                        provider = provider,
                         locale = locale,
+                        playerFor = playerFor,
+                        releasePlayer = releasePlayer,
+                        onFullscreenStateChanged =
+                            fullscreenCallback,
+                        onContentFocused = {
+                            if (!anyFullscreen) {
+                                menuExpanded = false
+                            }
+                        },
                     )
 
                 TvSection.Settings ->
@@ -504,6 +533,10 @@ private fun TvMainScreen(
                         strings = strings,
                         onLocaleChanged =
                             onLocaleChanged,
+                        onRefreshLibrary =
+                            onRefreshLibrary,
+                        onClearMemoryCache =
+                            onClearMemoryCache,
                         onDisconnect =
                             onDisconnect,
                     )
@@ -690,83 +723,387 @@ private fun TvSettingsScreen(
     locale: TvLocale,
     strings: TvStrings,
     onLocaleChanged: (TvLocale) -> Unit,
+    onRefreshLibrary: () -> Unit,
+    onClearMemoryCache: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
-    Column(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .background(Color(0xFF0D111B))
-                .padding(36.dp),
-        verticalArrangement =
-            Arrangement.spacedBy(18.dp),
-    ) {
-        Text(
-            strings["settings"],
-            color = Color.White,
-            fontWeight = FontWeight.Bold,
-            style =
-                MaterialTheme
-                    .typography
-                    .headlineLarge,
-        )
-
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .background(
-                        Color(0xFF111827),
-                        RoundedCornerShape(14.dp),
-                    )
-                    .padding(20.dp),
-            verticalArrangement =
-                Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                provider.name,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
+    val context =
+        LocalContext.current
+    val playbackStore =
+        remember {
+            TvPlaybackSettingsStore(
+                context,
             )
-            Text(
-                provider.server,
-                color = Color(0xFF94A3B8),
+        }
+    val contentStore =
+        remember {
+            TvContentStore(
+                context,
             )
         }
 
-        Text(
-            strings["language"],
-            color = Color.White,
-            fontWeight = FontWeight.Bold,
-            style =
-                MaterialTheme
-                    .typography
-                    .titleLarge,
-        )
+    var playbackSettings by
+        remember {
+            mutableStateOf(
+                playbackStore.load(),
+            )
+        }
 
-        Row(
-            horizontalArrangement =
-                Arrangement.spacedBy(10.dp),
-        ) {
-            TvLocale.entries.forEach { row ->
-                SettingsButton(
-                    text = row.displayName,
-                    selected =
-                        row == locale,
-                ) {
-                    onLocaleChanged(row)
+    fun savePlayback(
+        next: TvPlaybackSettings,
+    ) {
+        playbackSettings = next
+        playbackStore.save(next)
+    }
+
+    LazyColumn(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Color(0xFF0D111B),
+                )
+                .padding(30.dp),
+        verticalArrangement =
+            Arrangement.spacedBy(
+                18.dp,
+            ),
+    ) {
+        item {
+            Text(
+                strings["settings"],
+                color = Color.White,
+                fontWeight =
+                    FontWeight.Bold,
+                style =
+                    MaterialTheme
+                        .typography
+                        .headlineLarge,
+            )
+        }
+
+        item {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Color(
+                                0xFF111827,
+                            ),
+                            RoundedCornerShape(
+                                14.dp,
+                            ),
+                        )
+                        .padding(20.dp),
+                verticalArrangement =
+                    Arrangement.spacedBy(
+                        8.dp,
+                    ),
+            ) {
+                Text(
+                    provider.name,
+                    color = Color.White,
+                    fontWeight =
+                        FontWeight.Bold,
+                )
+                Text(
+                    provider.server,
+                    color =
+                        Color(
+                            0xFF94A3B8,
+                        ),
+                )
+            }
+        }
+
+        item {
+            SettingsSectionTitle(
+                strings["language"],
+            )
+        }
+
+        item {
+            Row(
+                horizontalArrangement =
+                    Arrangement.spacedBy(
+                        10.dp,
+                    ),
+            ) {
+                TvLocale.entries.forEach {
+                    row ->
+
+                    SettingsButton(
+                        text =
+                            row.displayName,
+                        selected =
+                            row == locale,
+                    ) {
+                        onLocaleChanged(
+                            row,
+                        )
+                    }
                 }
             }
         }
 
-        SettingsButton(
-            text =
-                strings["remove_playlist"],
-            destructive = true,
-        ) {
-            onDisconnect()
+        item {
+            SettingsSectionTitle(
+                "Player Görüntüsü",
+            )
+        }
+
+        item {
+            Row(
+                horizontalArrangement =
+                    Arrangement.spacedBy(
+                        10.dp,
+                    ),
+            ) {
+                SettingsButton(
+                    text = "Fit",
+                    selected =
+                        playbackSettings
+                            .fitMode ==
+                            "fit",
+                ) {
+                    savePlayback(
+                        playbackSettings
+                            .copy(
+                                fitMode =
+                                    "fit",
+                            ),
+                    )
+                }
+
+                SettingsButton(
+                    text = "Fill",
+                    selected =
+                        playbackSettings
+                            .fitMode ==
+                            "fill",
+                ) {
+                    savePlayback(
+                        playbackSettings
+                            .copy(
+                                fitMode =
+                                    "fill",
+                            ),
+                    )
+                }
+            }
+        }
+
+        item {
+            SettingsSectionTitle(
+                "Varsayılan Ses Dili",
+            )
+        }
+
+        item {
+            Row(
+                horizontalArrangement =
+                    Arrangement.spacedBy(
+                        8.dp,
+                    ),
+            ) {
+                listOf(
+                    "auto" to "Otomatik",
+                    "tr" to "TR",
+                    "en" to "EN",
+                    "ar" to "AR",
+                    "de" to "DE",
+                    "fr" to "FR",
+                    "es" to "ES",
+                ).forEach {
+                    option ->
+
+                    SettingsButton(
+                        text =
+                            option.second,
+                        selected =
+                            playbackSettings
+                                .audioLanguage ==
+                                option.first,
+                    ) {
+                        savePlayback(
+                            playbackSettings
+                                .copy(
+                                    audioLanguage =
+                                        option.first,
+                                ),
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            SettingsSectionTitle(
+                "Altyazı",
+            )
+        }
+
+        item {
+            Row(
+                horizontalArrangement =
+                    Arrangement.spacedBy(
+                        8.dp,
+                    ),
+            ) {
+                SettingsButton(
+                    text =
+                        if (
+                            playbackSettings
+                                .subtitlesEnabled
+                        ) {
+                            "Açık"
+                        } else {
+                            "Kapalı"
+                        },
+                    selected =
+                        playbackSettings
+                            .subtitlesEnabled,
+                ) {
+                    savePlayback(
+                        playbackSettings
+                            .copy(
+                                subtitlesEnabled =
+                                    !playbackSettings
+                                        .subtitlesEnabled,
+                            ),
+                    )
+                }
+
+                listOf(
+                    "tr" to "TR",
+                    "en" to "EN",
+                    "ar" to "AR",
+                    "de" to "DE",
+                    "fr" to "FR",
+                    "es" to "ES",
+                ).forEach {
+                    option ->
+
+                    SettingsButton(
+                        text =
+                            option.second,
+                        selected =
+                            playbackSettings
+                                .subtitleLanguage ==
+                                option.first,
+                    ) {
+                        savePlayback(
+                            playbackSettings
+                                .copy(
+                                    subtitlesEnabled =
+                                        true,
+                                    subtitleLanguage =
+                                        option.first,
+                                ),
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            SettingsSectionTitle(
+                "Dizi Oynatma",
+            )
+        }
+
+        item {
+            SettingsButton(
+                text =
+                    if (
+                        playbackSettings
+                            .autoNextEpisode
+                    ) {
+                        "Sonraki Bölüm: Otomatik"
+                    } else {
+                        "Sonraki Bölüm: Kapalı"
+                    },
+                selected =
+                    playbackSettings
+                        .autoNextEpisode,
+            ) {
+                savePlayback(
+                    playbackSettings
+                        .copy(
+                            autoNextEpisode =
+                                !playbackSettings
+                                    .autoNextEpisode,
+                        ),
+                )
+            }
+        }
+
+        item {
+            SettingsSectionTitle(
+                "Kütüphane ve Önbellek",
+            )
+        }
+
+        item {
+            Row(
+                horizontalArrangement =
+                    Arrangement.spacedBy(
+                        10.dp,
+                    ),
+            ) {
+                SettingsButton(
+                    text =
+                        "Oynatma Listesini Yenile",
+                ) {
+                    onRefreshLibrary()
+                }
+
+                SettingsButton(
+                    text =
+                        "Bellek Önbelleğini Temizle",
+                ) {
+                    onClearMemoryCache()
+                }
+
+                SettingsButton(
+                    text =
+                        "İzleme Geçmişini Temizle",
+                ) {
+                    contentStore
+                        .clearViewingHistory()
+                }
+            }
+        }
+
+        item {
+            SettingsButton(
+                text =
+                    strings[
+                        "remove_playlist"
+                    ],
+                destructive = true,
+            ) {
+                onDisconnect()
+            }
         }
     }
+}
+
+@Composable
+private fun SettingsSectionTitle(
+    text: String,
+) {
+    Text(
+        text,
+        color = Color.White,
+        fontWeight =
+            FontWeight.Bold,
+        style =
+            MaterialTheme
+                .typography
+                .titleLarge,
+    )
 }
 
 @Composable
