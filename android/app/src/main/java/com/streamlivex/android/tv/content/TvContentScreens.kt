@@ -77,6 +77,7 @@ import com.streamlivex.android.tv.data.XtreamClient
 import com.streamlivex.android.tv.i18n.TvLocale
 import com.streamlivex.android.tv.i18n.TvStrings
 import com.streamlivex.android.tv.player.TvNativePlayer
+import com.streamlivex.android.tv.profile.TvProfilePolicy
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -235,6 +236,10 @@ fun TvHomeScreen(
 
         val localTrendingMovies =
             trendingMovies.mapNotNull { media ->
+                if (!TvProfilePolicy.allow(media.name)) {
+                    return@mapNotNull null
+                }
+
                 val local =
                     index.findByTitle(
                         provider,
@@ -274,6 +279,10 @@ fun TvHomeScreen(
 
         val localTrendingSeries =
             trendingSeries.mapNotNull { media ->
+                if (!TvProfilePolicy.allow(media.name)) {
+                    return@mapNotNull null
+                }
+
                 val local =
                     index.findByTitle(
                         provider,
@@ -432,6 +441,12 @@ fun TvMoviesScreen(
         if (categories.isEmpty()) {
             val diskCategories =
                 index.loadVodCategories(provider)
+                    .filter {
+                        TvProfilePolicy.allow(
+                            title = null,
+                            category = it.name,
+                        )
+                    }
             if (diskCategories.isNotEmpty()) {
                 categories = diskCategories
                 TvContentCache.vodCategories =
@@ -456,11 +471,18 @@ fun TvMoviesScreen(
             Handler(Looper.getMainLooper()).post {
                 result
                     .onSuccess { rows ->
-                        categories = rows
+                        val allowedRows =
+                            rows.filter {
+                                TvProfilePolicy.allow(
+                                    title = null,
+                                    category = it.name,
+                                )
+                            }
+                        categories = allowedRows
                         loadingCategories = false
                         val targetId =
                             TvContentCache.movieCategoryId
-                                ?: rows.firstOrNull()?.id
+                                ?: allowedRows.firstOrNull()?.id
                         if (targetId != null) {
                             selectCategory(targetId)
                         }
@@ -766,7 +788,12 @@ fun TvSeriesScreen(
             val diskCategories =
                 index.loadSeriesCategories(
                     provider,
-                )
+                ).filter {
+                    TvProfilePolicy.allow(
+                        title = null,
+                        category = it.name,
+                    )
+                }
             if (diskCategories.isNotEmpty()) {
                 categories =
                     diskCategories
@@ -800,13 +827,20 @@ fun TvSeriesScreen(
             Handler(Looper.getMainLooper()).post {
                 result
                     .onSuccess { rows ->
-                        categories = rows
+                        val allowedRows =
+                            rows.filter {
+                                TvProfilePolicy.allow(
+                                    title = null,
+                                    category = it.name,
+                                )
+                            }
+                        categories = allowedRows
                         loadingCategories = false
 
                         val targetId =
                             TvContentCache
                                 .seriesCategoryId
-                                ?: rows
+                                ?: allowedRows
                                     .firstOrNull()
                                     ?.id
 
@@ -2107,7 +2141,10 @@ fun TvSearchScreen(
                                     it.name.contains(
                                         q,
                                         ignoreCase = true,
-                                    )
+                                    ) &&
+                                        TvProfilePolicy.allow(
+                                            it.name,
+                                        )
                                 }
                                 .take(60)
                                 .toList()
@@ -2147,7 +2184,10 @@ fun TvSearchScreen(
                         it.name.contains(
                             q,
                             ignoreCase = true,
-                        )
+                        ) &&
+                            TvProfilePolicy.allow(
+                                it.name,
+                            )
                     }
                     .take(60)
                     .toList()
@@ -2167,7 +2207,12 @@ fun TvSearchScreen(
                 Handler(
                     Looper.getMainLooper(),
                 ).post {
-                    results = rows
+                    results =
+                        rows.filter {
+                            TvProfilePolicy.allow(
+                                it.name,
+                            )
+                        }
                     channelResults =
                         emptyList()
                     loading = false
