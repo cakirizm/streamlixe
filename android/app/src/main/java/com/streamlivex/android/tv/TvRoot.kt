@@ -49,6 +49,7 @@ import com.streamlivex.android.tv.data.TvLiveLibraryCache
 import com.streamlivex.android.tv.data.TvPlaybackSettings
 import com.streamlivex.android.tv.data.TvPlaybackSettingsStore
 import com.streamlivex.android.tv.data.TvProviderConfig
+import com.streamlivex.android.tv.data.TvDiagnosticsStore
 import com.streamlivex.android.tv.data.XtreamClient
 import com.streamlivex.android.tv.i18n.TvLocale
 import com.streamlivex.android.tv.i18n.TvLocaleStore
@@ -56,6 +57,7 @@ import com.streamlivex.android.tv.i18n.TvStrings
 import com.streamlivex.android.tv.live.LiveTvScreen
 import com.streamlivex.android.tv.setup.TvProviderStorage
 import com.streamlivex.android.tv.setup.TvSetupScreen
+import com.streamlivex.android.tv.diagnostics.TvDiagnosticsScreen
 import kotlinx.coroutines.delay
 import com.streamlivex.android.tv.setup.TvPlaylistManagerScreen
 import com.streamlivex.android.tv.profile.TvProfileStore
@@ -82,6 +84,13 @@ fun TvRoot(
     onFullscreenStateChanged: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
+
+    val diagnostics =
+        remember {
+            TvDiagnosticsStore(
+                context,
+            )
+        }
 
     var provider by remember {
         mutableStateOf<TvProviderConfig?>(TvProviderStorage.load(context))
@@ -114,7 +123,15 @@ fun TvRoot(
     }
 
     var libraryReady by remember(activeProvider.server, activeProvider.username) {
-        mutableStateOf(libraryIndex.isReady(activeProvider))
+        mutableStateOf(
+            libraryIndex.isReady(
+                activeProvider,
+            ) &&
+                !libraryIndex.needsRefresh(
+                    activeProvider,
+                    24,
+                ),
+        )
     }
     var preparationStage by remember { mutableStateOf("Kütüphane hazırlanıyor…") }
     var preparationCount by remember { mutableIntStateOf(libraryIndex.count(activeProvider)) }
@@ -127,16 +144,36 @@ fun TvRoot(
         activeProvider.username,
         preparationRetry,
     ) {
-        if (libraryIndex.isReady(activeProvider)) {
+        if (
+            libraryIndex.isReady(
+                activeProvider,
+            ) &&
+            !libraryIndex.needsRefresh(
+                activeProvider,
+                24,
+            )
+        ) {
             libraryReady = true
-            preparationCount = libraryIndex.count(activeProvider)
+            preparationCount =
+                libraryIndex.count(
+                    activeProvider,
+                )
             preparationPercent = 100
             return@LaunchedEffect
         }
 
         libraryReady = false
         preparationError = ""
-        preparationStage = "Oynatma listesi sayılıyor…"
+        preparationStage =
+            if (
+                libraryIndex.isReady(
+                    activeProvider,
+                )
+            ) {
+                "Kütüphane güncelleniyor…"
+            } else {
+                "Oynatma listesi sayılıyor…"
+            }
         preparationCount = 0
         preparationPercent = 0
 
@@ -239,6 +276,10 @@ fun TvRoot(
                         preparationError =
                             it.message
                                 ?: "Kütüphane hazırlanamadı."
+                        diagnostics.log(
+                            "library",
+                            preparationError,
+                        )
                     }
             }
         }.start()
@@ -324,7 +365,7 @@ fun TvRoot(
         },
         onRefreshLibrary = {
             TvContentCache.clear()
-            libraryIndex.clearProvider(
+            libraryIndex.markNotReady(
                 activeProvider,
             )
             libraryReady = false
@@ -707,6 +748,16 @@ private fun TvMainScreen(
                                 },
                             )
 
+                        "diagnostics" ->
+                            TvDiagnosticsScreen(
+                                provider =
+                                    provider,
+                                onBack = {
+                                    settingsRoute =
+                                        null
+                                },
+                            )
+
                         else ->
                             TvSettingsScreen(
                                 provider = provider,
@@ -725,6 +776,10 @@ private fun TvMainScreen(
                                 onManageProfiles = {
                                     settingsRoute =
                                         "profiles"
+                                },
+                                onDiagnostics = {
+                                    settingsRoute =
+                                        "diagnostics"
                                 },
                                 onChooseProfile =
                                     onChooseProfile,
@@ -920,6 +975,7 @@ private fun TvSettingsScreen(
     onClearMemoryCache: () -> Unit,
     onManagePlaylists: () -> Unit,
     onManageProfiles: () -> Unit,
+    onDiagnostics: () -> Unit,
     onChooseProfile: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
@@ -1010,6 +1066,13 @@ private fun TvSettingsScreen(
                         "Profil Değiştir",
                 ) {
                     onChooseProfile()
+                }
+
+                SettingsButton(
+                    text =
+                        "Tanılama",
+                ) {
+                    onDiagnostics()
                 }
             }
         }
