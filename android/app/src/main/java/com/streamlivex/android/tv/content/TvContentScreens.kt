@@ -1451,12 +1451,19 @@ private fun GenericDetailScreen(
         }
 
     fun openEpisodes() {
+        if (
+            target.kind !=
+            "series"
+        ) {
+            return
+        }
+
         scope.launch {
             detailListState.scrollToItem(
                 1,
                 0,
             )
-            delay(180)
+            delay(160)
             runCatching {
                 episodesFocusRequester
                     .requestFocus()
@@ -1464,43 +1471,115 @@ private fun GenericDetailScreen(
         }
     }
 
+    val playMovie: () -> Unit = {
+        if (
+            target.kind ==
+                "movie" &&
+            local
+                ?.streamUrl
+                ?.isNotBlank() ==
+                true
+        ) {
+            onPlay(
+                TvSavedItem(
+                    id =
+                        local.localId,
+                    kind =
+                        "movie",
+                    name =
+                        local.name,
+                    url =
+                        local.streamUrl,
+                    artwork =
+                        displayPoster,
+                    subtitle =
+                        media?.year,
+                ),
+            )
+        }
+    }
+
+    val toggleFavorite: () -> Unit = {
+        store.toggleFavorite(
+            TvSavedItem(
+                id =
+                    favoriteId,
+                kind =
+                    target.kind,
+                name =
+                    media?.name
+                        ?: target.name,
+                url =
+                    local
+                        ?.streamUrl
+                        .orEmpty(),
+                artwork =
+                    displayPoster,
+                subtitle =
+                    media?.year,
+            ),
+        )
+        favoriteRefresh +=
+            1
+    }
+
     LazyColumn(
-        state = detailListState,
+        state =
+            detailListState,
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(Color(0xFF0D111B))
-                .padding(26.dp),
+                .background(
+                    Color(
+                        0xFF0D111B,
+                    ),
+                )
+                .padding(
+                    horizontal = 28.dp,
+                    vertical = 22.dp,
+                ),
         verticalArrangement =
-            Arrangement.spacedBy(22.dp),
+            Arrangement.spacedBy(
+                22.dp,
+            ),
     ) {
         item(
-            key = "detail-main",
+            key =
+                "detail-main",
         ) {
             Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth(),
                 horizontalArrangement =
-                    Arrangement.spacedBy(26.dp),
+                    Arrangement.spacedBy(
+                        28.dp,
+                    ),
+                verticalAlignment =
+                    Alignment.Top,
             ) {
+                TvPosterImage(
+                    displayPoster,
+                    modifier =
+                        Modifier
+                            .width(
+                                220.dp,
+                            )
+                            .aspectRatio(
+                                2f / 3f,
+                            ),
+                )
+
                 Column(
                     modifier =
-                        Modifier.width(
-                            250.dp,
+                        Modifier.weight(
+                            1f,
                         ),
                     verticalArrangement =
                         Arrangement.spacedBy(
                             12.dp,
                         ),
                 ) {
-                    TvPosterImage(
-                        displayPoster,
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(
-                                    2f / 3f,
-                                ),
-                    )
-
                     Text(
                         media?.name
                             ?: target.name,
@@ -1508,120 +1587,22 @@ private fun GenericDetailScreen(
                             Color.White,
                         fontWeight =
                             FontWeight.Bold,
-                        maxLines = 2,
-                        overflow =
-                            TextOverflow.Ellipsis,
-                        style =
-                            MaterialTheme
-                                .typography
-                                .titleLarge,
-                    )
-
-                    if (
-                        target.kind ==
-                        "movie"
-                    ) {
-                        if (
-                            local
-                                ?.streamUrl
-                                ?.isNotBlank()
-                                == true
-                        ) {
-                            ActionButton(
-                                text =
-                                    "▶ ${strings["play"]}",
-                                modifier =
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .focusRequester(
-                                            primaryFocusRequester,
-                                        ),
-                            ) {
-                                onPlay(
-                                    TvSavedItem(
-                                        id =
-                                            local.localId,
-                                        kind =
-                                            "movie",
-                                        name =
-                                            local.name,
-                                        url =
-                                            local.streamUrl,
-                                        artwork =
-                                            displayPoster,
-                                        subtitle =
-                                            media?.year,
-                                    ),
-                                )
-                            }
-                        } else {
-                            ActionButton(
-                                text =
-                                    strings[
-                                        "not_in_playlist"
-                                    ],
-                                modifier =
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .focusRequester(
-                                            primaryFocusRequester,
-                                        ),
-                            ) {}
-                        }
-                    } else {
-                        ActionButton(
-                            text =
-                                "↓ Bölümlere Git",
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .focusRequester(
-                                        primaryFocusRequester,
-                                    )
-                                    .onKeyEvent {
-                                        event ->
-
-                                        if (
-                                            event.type ==
-                                            KeyEventType.KeyDown &&
-                                            event.key ==
-                                            Key.DirectionDown
-                                        ) {
-                                            openEpisodes()
-                                            true
-                                        } else {
-                                            false
-                                        }
-                                    },
-                        ) {
-                            openEpisodes()
-                        }
-                    }
-                }
-
-                Column(
-                    modifier =
-                        Modifier.weight(1f),
-                    verticalArrangement =
-                        Arrangement.spacedBy(12.dp),
-                ) {
-                    Text(
-                        media?.name
-                            ?: target.name,
-                        color = Color.White,
-                        fontWeight =
-                            FontWeight.Bold,
                         style =
                             MaterialTheme
                                 .typography
                                 .headlineLarge,
+                        maxLines = 2,
+                        overflow =
+                            TextOverflow.Ellipsis,
                     )
 
                     Text(
                         listOfNotNull(
                             media?.year
-                                ?: target.vod?.year
-                                ?: target.series?.year,
+                                ?: target.vod
+                                    ?.year
+                                ?: target.series
+                                    ?.year,
                             media
                                 ?.rating
                                 ?.let {
@@ -1633,63 +1614,116 @@ private fun GenericDetailScreen(
                                 strings,
                                 local != null,
                             ),
-                        ).joinToString(" • "),
+                        ).joinToString(
+                            " • ",
+                        ),
                         color =
-                            Color(0xFF94A3B8),
+                            Color(
+                                0xFF94A3B8,
+                            ),
                     )
 
                     Text(
                         description,
                         color =
-                            Color(0xFFCBD5E1),
+                            Color(
+                                0xFFCBD5E1,
+                            ),
                         style =
                             MaterialTheme
                                 .typography
                                 .bodyLarge,
-                        maxLines = 7,
+                        maxLines = 5,
                         overflow =
                             TextOverflow.Ellipsis,
                     )
 
                     Row(
                         horizontalArrangement =
-                            Arrangement.spacedBy(10.dp),
+                            Arrangement.spacedBy(
+                                10.dp,
+                            ),
+                        verticalAlignment =
+                            Alignment.CenterVertically,
                     ) {
+                        if (
+                            target.kind ==
+                            "movie"
+                        ) {
+                            ActionButton(
+                                text =
+                                    if (
+                                        local
+                                            ?.streamUrl
+                                            ?.isNotBlank() ==
+                                        true
+                                    ) {
+                                        "▶ ${strings["play"]}"
+                                    } else {
+                                        strings[
+                                            "not_in_playlist"
+                                        ]
+                                    },
+                                modifier =
+                                    Modifier
+                                        .focusRequester(
+                                            primaryFocusRequester,
+                                        ),
+                            ) {
+                                playMovie()
+                            }
+                        } else {
+                            ActionButton(
+                                text =
+                                    "↓ Bölümler",
+                                modifier =
+                                    Modifier
+                                        .focusRequester(
+                                            primaryFocusRequester,
+                                        )
+                                        .onKeyEvent {
+                                            event ->
+
+                                            if (
+                                                event.type ==
+                                                KeyEventType.KeyDown &&
+                                                event.key ==
+                                                Key.DirectionDown
+                                            ) {
+                                                openEpisodes()
+                                                true
+                                            } else {
+                                                false
+                                            }
+                                        },
+                            ) {
+                                openEpisodes()
+                            }
+                        }
+
                         ActionButton(
                             text =
-                                if (favorite) {
+                                if (
+                                    favorite
+                                ) {
                                     "★ ${strings["remove_list"]}"
                                 } else {
                                     "☆ ${strings["add_list"]}"
                                 },
-                            selected = favorite,
+                            selected =
+                                favorite,
                         ) {
-                            store.toggleFavorite(
-                                TvSavedItem(
-                                    id = favoriteId,
-                                    kind =
-                                        target.kind,
-                                    name =
-                                        media?.name
-                                            ?: target.name,
-                                    url =
-                                        local
-                                            ?.streamUrl
-                                            .orEmpty(),
-                                    artwork =
-                                        displayPoster,
-                                    subtitle =
-                                        media?.year,
-                                ),
-                            )
-                            favoriteRefresh += 1
+                            toggleFavorite()
                         }
 
                         detail
                             ?.trailerUrl
-                            ?.let { trailerUrl ->
+                            ?.let {
+                                trailerUrl ->
+
                                 ActionButton(
-                                    text = "▶ Fragman",
+                                    text =
+                                        "▶ Fragman",
                                 ) {
                                     runCatching {
                                         val intent =
@@ -1703,6 +1737,7 @@ private fun GenericDetailScreen(
                                                     Intent.FLAG_ACTIVITY_NEW_TASK,
                                                 )
                                             }
+
                                         context.startActivity(
                                             intent,
                                         )
@@ -1713,12 +1748,16 @@ private fun GenericDetailScreen(
 
                     PeopleLine(
                         title =
-                            strings["director"],
+                            strings[
+                                "director"
+                            ],
                         rows =
                             detail
                                 ?.directors
                                 .orEmpty(),
-                        onClick = { selected ->
+                        onClick = {
+                            selected ->
+
                             Thread {
                                 val rows =
                                     tmdb
@@ -1735,7 +1774,8 @@ private fun GenericDetailScreen(
                                         .getMainLooper(),
                                 ).post {
                                     person =
-                                        selected to rows
+                                        selected to
+                                        rows
                                 }
                             }.start()
                         },
@@ -1743,12 +1783,16 @@ private fun GenericDetailScreen(
 
                     PeopleLine(
                         title =
-                            strings["cast"],
+                            strings[
+                                "cast"
+                            ],
                         rows =
                             detail
                                 ?.cast
                                 .orEmpty(),
-                        onClick = { selected ->
+                        onClick = {
+                            selected ->
+
                             Thread {
                                 val rows =
                                     tmdb
@@ -1765,7 +1809,8 @@ private fun GenericDetailScreen(
                                         .getMainLooper(),
                                 ).post {
                                     person =
-                                        selected to rows
+                                        selected to
+                                        rows
                                 }
                             }.start()
                         },
@@ -1778,18 +1823,26 @@ private fun GenericDetailScreen(
             }
         }
 
-        if (target.kind == "series") {
+        if (
+            target.kind ==
+            "series"
+        ) {
             item(
-                key = "episodes",
+                key =
+                    "episodes",
             ) {
                 SeriesEpisodesBlock(
-                    locale = locale,
-                    store = store,
-                    series = seriesInfo,
+                    locale =
+                        locale,
+                    store =
+                        store,
+                    series =
+                        seriesInfo,
                     selectedSeason =
                         selectedSeason,
                     onSeason = {
-                        selectedSeason = it
+                        selectedSeason =
+                            it
                     },
                     firstFocusRequester =
                         episodesFocusRequester,
@@ -1862,12 +1915,17 @@ private fun GenericDetailScreen(
                 ?.recommendations
                 .orEmpty()
 
-        if (recommendations.isNotEmpty()) {
+        if (
+            recommendations
+                .isNotEmpty()
+        ) {
             item(
-                key = "recommendations",
+                key =
+                    "recommendations",
             ) {
                 TmdbRail(
-                    locale = locale,
+                    locale =
+                        locale,
                     title =
                         if (
                             target.kind ==
@@ -1893,6 +1951,7 @@ private fun GenericDetailScreen(
             }
         }
     }
+
 }
 
 @Composable
@@ -2217,17 +2276,31 @@ private fun EpisodeCard(
                     TextOverflow.Ellipsis,
             )
 
-            ActionButton(
-                text =
-                    if (watched) {
-                        "✓ İzlendi"
-                    } else {
-                        "İzlendi olarak işaretle"
-                    },
-                selected =
-                    watched,
+            Row(
+                horizontalArrangement =
+                    Arrangement.spacedBy(
+                        10.dp,
+                    ),
             ) {
-                onToggleWatched()
+                ActionButton(
+                    text =
+                        "▶ Oynat",
+                ) {
+                    onClick()
+                }
+
+                ActionButton(
+                    text =
+                        if (watched) {
+                            "✓ İzlendi"
+                        } else {
+                            "İzlendi olarak işaretle"
+                        },
+                    selected =
+                        watched,
+                ) {
+                    onToggleWatched()
+                }
             }
         }
     }
@@ -3930,22 +4003,68 @@ private fun ActionButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    var focused by remember { mutableStateOf(false) }
-    Box(
-        modifier = modifier
-            .background(
-                when {
-                    focused -> Color(0xFF2563EB)
-                    selected -> Color(0xFF1D4ED8)
-                    else -> Color(0xFF1E293B)
-                },
-                RoundedCornerShape(9.dp),
+    var focused by
+        remember {
+            mutableStateOf(
+                false,
             )
-            .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 11.dp),
+        }
+
+    androidx.compose.material3.Button(
+        onClick =
+            onClick,
+        modifier =
+            modifier
+                .onFocusChanged {
+                    focused =
+                        it.isFocused
+                },
+        shape =
+            RoundedCornerShape(
+                9.dp,
+            ),
+        colors =
+            androidx.compose.material3.ButtonDefaults
+                .buttonColors(
+                    containerColor =
+                        when {
+                            focused ->
+                                Color(
+                                    0xFF2563EB,
+                                )
+
+                            selected ->
+                                Color(
+                                    0xFF1D4ED8,
+                                )
+
+                            else ->
+                                Color(
+                                    0xFF1E293B,
+                                )
+                        },
+                    contentColor =
+                        Color.White,
+                ),
+        contentPadding =
+            androidx.compose.foundation.layout.PaddingValues(
+                horizontal =
+                    16.dp,
+                vertical =
+                    11.dp,
+            ),
     ) {
-        Text(text, color = Color.White, fontWeight = FontWeight.Bold)
+        Text(
+            text =
+                text,
+            color =
+                Color.White,
+            fontWeight =
+                FontWeight.Bold,
+            maxLines = 1,
+            overflow =
+                TextOverflow.Ellipsis,
+        )
     }
 }
 
