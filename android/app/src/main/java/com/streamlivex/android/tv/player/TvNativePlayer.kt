@@ -5,13 +5,14 @@ package com.streamlivex.android.tv.player
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,6 +33,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -95,6 +101,17 @@ fun TvNativePlayer(
         remember {
             FocusRequester()
         }
+    val playerRootFocusRequester =
+        remember {
+            FocusRequester()
+        }
+
+    var controlsVisible by remember {
+        mutableStateOf(true)
+    }
+    var controlsActivity by remember {
+        mutableIntStateOf(0)
+    }
 
     var playing by remember {
         mutableStateOf(false)
@@ -419,10 +436,35 @@ fun TvNativePlayer(
         player.prepare()
         player.playWhenReady = true
 
+        controlsVisible = true
+        controlsActivity += 1
+
         delay(250)
         runCatching {
             pauseFocusRequester
                 .requestFocus()
+        }
+    }
+
+    LaunchedEffect(
+        controlsVisible,
+        controlsActivity,
+    ) {
+        if (!controlsVisible) {
+            return@LaunchedEffect
+        }
+
+        delay(3_500)
+
+        if (
+            panel ==
+            TrackPanel.None
+        ) {
+            controlsVisible = false
+            runCatching {
+                playerRootFocusRequester
+                    .requestFocus()
+            }
         }
     }
 
@@ -456,21 +498,73 @@ fun TvNativePlayer(
         ) {
             panel =
                 TrackPanel.None
+            controlsVisible =
+                true
+            controlsActivity +=
+                1
+
+            runCatching {
+                pauseFocusRequester
+                    .requestFocus()
+            }
         } else {
             onClose()
         }
+    }
+
+    fun revealControls() {
+        controlsVisible =
+            true
+        controlsActivity +=
+            1
     }
 
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(Color.Black),
+                .background(
+                    Color.Black,
+                )
+                .focusRequester(
+                    playerRootFocusRequester,
+                )
+                .onKeyEvent {
+                    event ->
+
+                    if (
+                        !controlsVisible &&
+                        event.type ==
+                        KeyEventType.KeyUp &&
+                        (
+                            event.key ==
+                            Key.DirectionCenter ||
+                            event.key ==
+                            Key.Enter ||
+                            event.key ==
+                            Key.NumPadEnter
+                        )
+                    ) {
+                        revealControls()
+
+                        runCatching {
+                            pauseFocusRequester
+                                .requestFocus()
+                        }
+
+                        true
+                    } else {
+                        false
+                    }
+                }
+                .focusable(),
     ) {
         AndroidView(
             modifier =
                 Modifier.fillMaxSize(),
-            factory = { playerContext ->
+            factory = {
+                playerContext ->
+
                 PlayerView(
                     playerContext,
                 ).apply {
@@ -483,6 +577,7 @@ fun TvNativePlayer(
                                 .LayoutParams
                                 .MATCH_PARENT,
                         )
+
                     this.player =
                         player
                     useController =
@@ -498,11 +593,22 @@ fun TvNativePlayer(
                             AspectRatioFrameLayout
                                 .RESIZE_MODE_FIT
                         }
-                    keepScreenOn = true
+                    keepScreenOn =
+                        true
+
+                    // Keep subtitles above the TV safe-area and
+                    // away from the temporary control strip.
+                    subtitleView
+                        ?.setBottomPaddingFraction(
+                            0.12f,
+                        )
                 }
             },
-            update = { view ->
-                view.player = player
+            update = {
+                view ->
+
+                view.player =
+                    player
                 view.useController =
                     false
                 view.resizeMode =
@@ -518,214 +624,358 @@ fun TvNativePlayer(
                     }
                 view.keepScreenOn =
                     true
+                view.subtitleView
+                    ?.setBottomPaddingFraction(
+                        0.12f,
+                    )
             },
         )
 
-        TvPlayerButton(
-            text =
-                "← ${strings["back"]}",
-            modifier =
-                Modifier
-                    .align(
-                        Alignment.TopStart,
-                    )
-                    .padding(22.dp),
-            onClick = onClose,
-        )
-
-        Column(
-            modifier =
-                Modifier
-                    .align(
-                        Alignment.BottomCenter,
-                    )
-                    .fillMaxWidth()
-                    .background(
-                        Color(
-                            0xD9101118,
-                        ),
-                    )
-                    .padding(
-                        horizontal = 28.dp,
-                        vertical = 18.dp,
-                    ),
-            verticalArrangement =
-                Arrangement.spacedBy(
-                    12.dp,
-                ),
+        if (
+            controlsVisible
         ) {
-            Text(
-                currentSaved().name,
-                color = Color.White,
-                style =
-                    MaterialTheme
-                        .typography
-                        .titleMedium,
-            )
-
-            LinearProgressIndicator(
-                progress = {
-                    if (
-                        durationMs > 0L
-                    ) {
-                        (
-                            currentMs.toFloat() /
-                                durationMs.toFloat()
-                        ).coerceIn(
-                            0f,
-                            1f,
+            // Small, TV-safe top row. It disappears with
+            // the rest of the controls after inactivity.
+            Row(
+                modifier =
+                    Modifier
+                        .align(
+                            Alignment.TopStart,
                         )
-                    } else {
-                        0f
-                    }
-                },
-                modifier =
-                    Modifier.fillMaxWidth(),
-            )
-
-            Row(
-                modifier =
-                    Modifier.fillMaxWidth(),
-                horizontalArrangement =
-                    Arrangement.SpaceBetween,
-            ) {
-                Text(
-                    formatTime(currentMs),
-                    color =
-                        Color(0xFFCBD5E1),
-                )
-                Text(
-                    formatTime(durationMs),
-                    color =
-                        Color(0xFFCBD5E1),
-                )
-            }
-
-            Row(
-                modifier =
-                    Modifier.fillMaxWidth(),
+                        .padding(
+                            24.dp,
+                        ),
                 horizontalArrangement =
                     Arrangement.spacedBy(
                         10.dp,
                     ),
-                verticalAlignment =
-                    Alignment.CenterVertically,
             ) {
-                TvPlayerButton(
-                    "« 10s",
-                ) {
-                    player.seekTo(
-                        (
-                            player.currentPosition -
-                                10_000L
-                        ).coerceAtLeast(
-                            0L,
-                        ),
-                    )
-                }
+                TvPlayerIconButton(
+                    icon =
+                        "←",
+                    contentDescription =
+                        strings["back"],
+                    onActivity = {
+                        revealControls()
+                    },
+                    onClick =
+                        onClose,
+                )
+            }
 
-                TvPlayerButton(
-                    text =
-                        if (playing) {
-                            "Ⅱ ${strings["pause"]}"
-                        } else {
-                            "▶ ${strings["resume"]}"
-                        },
-                    modifier =
-                        Modifier
-                            .focusRequester(
-                                pauseFocusRequester,
+            Column(
+                modifier =
+                    Modifier
+                        .align(
+                            Alignment.BottomCenter,
+                        )
+                        .fillMaxWidth()
+                        .background(
+                            Color(
+                                0xB30B0F17,
                             ),
-                ) {
-                    if (player.isPlaying) {
-                        player.pause()
-                    } else {
-                        player.play()
-                    }
-                }
+                        )
+                        .padding(
+                            horizontal =
+                                34.dp,
+                            vertical =
+                                16.dp,
+                        ),
+                verticalArrangement =
+                    Arrangement.spacedBy(
+                        10.dp,
+                    ),
+            ) {
+                Text(
+                    currentSaved().name,
+                    color =
+                        Color.White,
+                    style =
+                        MaterialTheme
+                            .typography
+                            .titleMedium,
+                )
 
-                TvPlayerButton(
-                    "10s »",
-                ) {
-                    val target =
-                        player.currentPosition +
-                            10_000L
-                    val duration =
-                        player.duration
-
-                    player.seekTo(
+                LinearProgressIndicator(
+                    progress = {
                         if (
-                            duration > 0L
+                            durationMs >
+                            0L
                         ) {
-                            target.coerceAtMost(
-                                duration,
+                            (
+                                currentMs
+                                    .toFloat() /
+                                    durationMs
+                                        .toFloat()
+                            ).coerceIn(
+                                0f,
+                                1f,
                             )
                         } else {
-                            target
-                        },
-                    )
-                }
-
-                val rows =
-                    effectivePlaylist()
-
-                if (
-                    rows.isNotEmpty() &&
-                    player.hasNextMediaItem()
-                ) {
-                    TvPlayerButton(
-                        "Sonraki ▶",
-                    ) {
-                        saveProgress()
-                        player.seekToNextMediaItem()
-                        player.play()
-                    }
-                }
-
-                TvPlayerButton(
-                    "♫ ${strings["audio"]}",
-                ) {
-                    refreshTracks()
-                    panel =
-                        TrackPanel.Audio
-                }
-
-                TvPlayerButton(
-                    "CC ${strings["subtitles"]}",
-                ) {
-                    refreshTracks()
-                    panel =
-                        TrackPanel.Subtitle
-                }
-
-                TvPlayerButton(
-                    if (
-                        fitMode ==
-                        "fill"
-                    ) {
-                        "Ekran: Fill"
-                    } else {
-                        "Ekran: Fit"
-                    },
-                ) {
-                    fitMode =
-                        if (
-                            fitMode ==
-                            "fill"
-                        ) {
-                            "fit"
-                        } else {
-                            "fill"
+                            0f
                         }
+                    },
+                    modifier =
+                        Modifier
+                            .fillMaxWidth(),
+                )
 
-                    settingsStore.save(
-                        settingsStore
-                            .load()
-                            .copy(
-                                fitMode =
-                                    fitMode,
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth(),
+                    horizontalArrangement =
+                        Arrangement
+                            .SpaceBetween,
+                ) {
+                    Text(
+                        formatTime(
+                            currentMs,
+                        ),
+                        color =
+                            Color(
+                                0xFFCBD5E1,
                             ),
                     )
+
+                    Text(
+                        formatTime(
+                            durationMs,
+                        ),
+                        color =
+                            Color(
+                                0xFFCBD5E1,
+                            ),
+                    )
+                }
+
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth(),
+                    horizontalArrangement =
+                        Arrangement
+                            .SpaceBetween,
+                    verticalAlignment =
+                        Alignment
+                            .CenterVertically,
+                ) {
+                    // Playback group: left side.
+                    Row(
+                        horizontalArrangement =
+                            Arrangement.spacedBy(
+                                8.dp,
+                            ),
+                        verticalAlignment =
+                            Alignment
+                                .CenterVertically,
+                    ) {
+                        TvPlayerIconButton(
+                            icon =
+                                "↶10",
+                            contentDescription =
+                                "10 saniye geri",
+                            onActivity = {
+                                revealControls()
+                            },
+                        ) {
+                            player.seekTo(
+                                (
+                                    player
+                                        .currentPosition -
+                                        10_000L
+                                ).coerceAtLeast(
+                                    0L,
+                                ),
+                            )
+                        }
+
+                        TvPlayerIconButton(
+                            icon =
+                                if (
+                                    playing
+                                ) {
+                                    "Ⅱ"
+                                } else {
+                                    "▶"
+                                },
+                            contentDescription =
+                                if (
+                                    playing
+                                ) {
+                                    strings[
+                                        "pause"
+                                    ]
+                                } else {
+                                    strings[
+                                        "resume"
+                                    ]
+                                },
+                            modifier =
+                                Modifier
+                                    .focusRequester(
+                                        pauseFocusRequester,
+                                    ),
+                            prominent =
+                                true,
+                            onActivity = {
+                                revealControls()
+                            },
+                        ) {
+                            if (
+                                player.isPlaying
+                            ) {
+                                player.pause()
+                            } else {
+                                player.play()
+                            }
+                        }
+
+                        TvPlayerIconButton(
+                            icon =
+                                "10↷",
+                            contentDescription =
+                                "10 saniye ileri",
+                            onActivity = {
+                                revealControls()
+                            },
+                        ) {
+                            val target =
+                                player
+                                    .currentPosition +
+                                    10_000L
+                            val duration =
+                                player.duration
+
+                            player.seekTo(
+                                if (
+                                    duration >
+                                    0L
+                                ) {
+                                    target
+                                        .coerceAtMost(
+                                            duration,
+                                        )
+                                } else {
+                                    target
+                                },
+                            )
+                        }
+
+                        val rows =
+                            effectivePlaylist()
+
+                        if (
+                            rows.isNotEmpty() &&
+                            player
+                                .hasNextMediaItem()
+                        ) {
+                            TvPlayerIconButton(
+                                icon =
+                                    "⏭",
+                                contentDescription =
+                                    "Sonraki bölüm",
+                                onActivity = {
+                                    revealControls()
+                                },
+                            ) {
+                                saveProgress()
+                                player
+                                    .seekToNextMediaItem()
+                                player.play()
+                            }
+                        }
+                    }
+
+                    // Utility group: right side.
+                    Row(
+                        horizontalArrangement =
+                            Arrangement.spacedBy(
+                                8.dp,
+                            ),
+                        verticalAlignment =
+                            Alignment
+                                .CenterVertically,
+                    ) {
+                        TvPlayerIconButton(
+                            icon =
+                                "♪",
+                            contentDescription =
+                                strings[
+                                    "audio"
+                                ],
+                            onActivity = {
+                                revealControls()
+                            },
+                        ) {
+                            refreshTracks()
+                            panel =
+                                TrackPanel.Audio
+                            controlsActivity +=
+                                1
+                        }
+
+                        TvPlayerIconButton(
+                            icon =
+                                "CC",
+                            contentDescription =
+                                strings[
+                                    "subtitles"
+                                ],
+                            onActivity = {
+                                revealControls()
+                            },
+                        ) {
+                            refreshTracks()
+                            panel =
+                                TrackPanel.Subtitle
+                            controlsActivity +=
+                                1
+                        }
+
+                        TvPlayerIconButton(
+                            icon =
+                                if (
+                                    fitMode ==
+                                    "fill"
+                                ) {
+                                    "⛶"
+                                } else {
+                                    "▣"
+                                },
+                            contentDescription =
+                                if (
+                                    fitMode ==
+                                    "fill"
+                                ) {
+                                    "Ekranı sığdır"
+                                } else {
+                                    "Ekranı doldur"
+                                },
+                            onActivity = {
+                                revealControls()
+                            },
+                        ) {
+                            fitMode =
+                                if (
+                                    fitMode ==
+                                    "fill"
+                                ) {
+                                    "fit"
+                                } else {
+                                    "fill"
+                                }
+
+                            settingsStore.save(
+                                settingsStore
+                                    .load()
+                                    .copy(
+                                        fitMode =
+                                            fitMode,
+                                    ),
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -740,9 +990,13 @@ fun TvNativePlayer(
                         panel ==
                         TrackPanel.Audio
                     ) {
-                        strings["audio"]
+                        strings[
+                            "audio"
+                        ]
                     } else {
-                        strings["subtitles"]
+                        strings[
+                            "subtitles"
+                        ]
                     },
                 choices =
                     if (
@@ -755,11 +1009,14 @@ fun TvNativePlayer(
                     },
                 showOff =
                     panel ==
-                        TrackPanel.Subtitle,
+                    TrackPanel.Subtitle,
                 offLabel =
-                    strings["off"],
+                    strings[
+                        "off"
+                    ],
                 onOff = {
-                    player.trackSelectionParameters =
+                    player
+                        .trackSelectionParameters =
                         player
                             .trackSelectionParameters
                             .buildUpon()
@@ -780,8 +1037,11 @@ fun TvNativePlayer(
 
                     panel =
                         TrackPanel.None
+                    revealControls()
                 },
-                onChoice = { choice ->
+                onChoice = {
+                    choice ->
+
                     val builder =
                         player
                             .trackSelectionParameters
@@ -791,7 +1051,8 @@ fun TvNativePlayer(
                         panel ==
                         TrackPanel.Audio
                     ) {
-                        player.trackSelectionParameters =
+                        player
+                            .trackSelectionParameters =
                             builder
                                 .setPreferredAudioLanguage(
                                     choice.language,
@@ -807,7 +1068,8 @@ fun TvNativePlayer(
                                 ),
                         )
                     } else {
-                        player.trackSelectionParameters =
+                        player
+                            .trackSelectionParameters =
                             builder
                                 .setTrackTypeDisabled(
                                     C.TRACK_TYPE_TEXT,
@@ -832,10 +1094,12 @@ fun TvNativePlayer(
 
                     panel =
                         TrackPanel.None
+                    revealControls()
                 },
                 onClose = {
                     panel =
                         TrackPanel.None
+                    revealControls()
                 },
             )
         }
@@ -852,13 +1116,31 @@ private fun TrackPanelOverlay(
     onChoice: (TrackChoice) -> Unit,
     onClose: () -> Unit,
 ) {
+    val firstFocusRequester =
+        remember {
+            FocusRequester()
+        }
+
+    LaunchedEffect(
+        title,
+        choices.size,
+        showOff,
+    ) {
+        delay(120)
+
+        runCatching {
+            firstFocusRequester
+                .requestFocus()
+        }
+    }
+
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
                 .background(
                     Color(
-                        0x99000000,
+                        0x73000000,
                     ),
                 ),
         contentAlignment =
@@ -867,17 +1149,23 @@ private fun TrackPanelOverlay(
         Column(
             modifier =
                 Modifier
-                    .width(390.dp)
+                    .width(
+                        390.dp,
+                    )
                     .padding(
-                        end = 24.dp,
+                        end = 26.dp,
                     )
                     .background(
-                        Color(0xFF111827),
+                        Color(
+                            0xF2111827,
+                        ),
                         RoundedCornerShape(
-                            14.dp,
+                            18.dp,
                         ),
                     )
-                    .padding(18.dp),
+                    .padding(
+                        18.dp,
+                    ),
             verticalArrangement =
                 Arrangement.spacedBy(
                     9.dp,
@@ -885,31 +1173,69 @@ private fun TrackPanelOverlay(
         ) {
             Text(
                 title,
-                color = Color.White,
+                color =
+                    Color.White,
                 style =
                     MaterialTheme
                         .typography
                         .headlineSmall,
             )
 
+            var firstAssigned =
+                false
+
             if (showOff) {
-                TvPlayerButton(
-                    offLabel,
-                    onClick = onOff,
+                TvPlayerTextButton(
+                    text =
+                        offLabel,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .focusRequester(
+                                firstFocusRequester,
+                            ),
+                    onClick =
+                        onOff,
                 )
+                firstAssigned =
+                    true
             }
 
-            if (choices.isEmpty()) {
+            if (
+                choices.isEmpty()
+            ) {
                 Text(
                     "Track bulunamadı",
                     color =
-                        Color(0xFF94A3B8),
+                        Color(
+                            0xFF94A3B8,
+                        ),
                 )
+
+                if (
+                    !firstAssigned
+                ) {
+                    TvPlayerTextButton(
+                        text =
+                            "✕",
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .focusRequester(
+                                    firstFocusRequester,
+                                ),
+                        onClick =
+                            onClose,
+                    )
+                    firstAssigned =
+                        true
+                }
             } else {
-                choices.forEach {
+                choices.forEachIndexed {
+                    index,
                     choice ->
 
-                    TvPlayerButton(
+                    TvPlayerTextButton(
                         text =
                             if (
                                 choice.language ==
@@ -920,61 +1246,219 @@ private fun TrackPanelOverlay(
                                 "${choice.label} · ${choice.language.uppercase(Locale.ROOT)}"
                             },
                         modifier =
-                            Modifier.fillMaxWidth(),
+                            Modifier
+                                .fillMaxWidth()
+                                .then(
+                                    if (
+                                        !firstAssigned &&
+                                        index ==
+                                        0
+                                    ) {
+                                        Modifier
+                                            .focusRequester(
+                                                firstFocusRequester,
+                                            )
+                                    } else {
+                                        Modifier
+                                    },
+                                ),
                     ) {
-                        onChoice(choice)
+                        onChoice(
+                            choice,
+                        )
                     }
                 }
+
+                firstAssigned =
+                    true
             }
 
-            TvPlayerButton(
-                "✕",
-                onClick = onClose,
-            )
+            if (
+                firstAssigned
+            ) {
+                TvPlayerTextButton(
+                    text =
+                        "✕",
+                    modifier =
+                        Modifier
+                            .fillMaxWidth(),
+                    onClick =
+                        onClose,
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun TvPlayerButton(
+private fun TvPlayerIconButton(
+    icon: String,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+    prominent: Boolean = false,
+    onActivity: () -> Unit = {},
+    onClick: () -> Unit,
+) {
+    var focused by
+        remember {
+            mutableStateOf(
+                false,
+            )
+        }
+
+    Box(
+        modifier =
+            modifier
+                .size(
+                    if (
+                        prominent
+                    ) {
+                        58.dp
+                    } else {
+                        50.dp
+                    },
+                )
+                .background(
+                    if (focused) {
+                        Color(
+                            0x663B82F6,
+                        )
+                    } else {
+                        Color.Transparent
+                    },
+                    RoundedCornerShape(
+                        50.dp,
+                    ),
+                )
+                .onFocusChanged {
+                    state ->
+
+                    focused =
+                        state.isFocused
+
+                    if (
+                        state.isFocused
+                    ) {
+                        onActivity()
+                    }
+                }
+                .onKeyEvent {
+                    event ->
+
+                    if (
+                        event.type ==
+                        KeyEventType.KeyUp &&
+                        (
+                            event.key ==
+                            Key.DirectionCenter ||
+                            event.key ==
+                            Key.Enter ||
+                            event.key ==
+                            Key.NumPadEnter
+                        )
+                    ) {
+                        onActivity()
+                        onClick()
+                        true
+                    } else {
+                        false
+                    }
+                }
+                .focusable(),
+        contentAlignment =
+            Alignment.Center,
+    ) {
+        Text(
+            text =
+                icon,
+            color =
+                Color.White,
+            style =
+                if (
+                    prominent
+                ) {
+                    MaterialTheme
+                        .typography
+                        .headlineMedium
+                } else {
+                    MaterialTheme
+                        .typography
+                        .titleLarge
+                },
+        )
+    }
+}
+
+@Composable
+private fun TvPlayerTextButton(
     text: String,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    var focused by remember {
-        mutableStateOf(false)
-    }
+    var focused by
+        remember {
+            mutableStateOf(
+                false,
+            )
+        }
 
     Box(
         modifier =
             modifier
                 .background(
                     if (focused) {
-                        Color(0xFF2563EB)
+                        Color(
+                            0xFF2563EB,
+                        )
                     } else {
-                        Color(0xFF273449)
+                        Color(
+                            0xFF202A3A,
+                        )
                     },
                     RoundedCornerShape(
-                        9.dp,
+                        10.dp,
                     ),
                 )
                 .onFocusChanged {
                     focused =
                         it.isFocused
                 }
-                .clickable(
-                    onClick = onClick,
-                )
+                .onKeyEvent {
+                    event ->
+
+                    if (
+                        event.type ==
+                        KeyEventType.KeyUp &&
+                        (
+                            event.key ==
+                            Key.DirectionCenter ||
+                            event.key ==
+                            Key.Enter ||
+                            event.key ==
+                            Key.NumPadEnter
+                        )
+                    ) {
+                        onClick()
+                        true
+                    } else {
+                        false
+                    }
+                }
+                .focusable()
                 .padding(
-                    horizontal = 15.dp,
-                    vertical = 11.dp,
+                    horizontal =
+                        15.dp,
+                    vertical =
+                        12.dp,
                 ),
         contentAlignment =
-            Alignment.Center,
+            Alignment.CenterStart,
     ) {
         Text(
-            text,
-            color = Color.White,
+            text =
+                text,
+            color =
+                Color.White,
         )
     }
 }
