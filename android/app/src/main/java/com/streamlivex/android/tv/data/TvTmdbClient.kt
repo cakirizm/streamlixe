@@ -29,6 +29,7 @@ data class TvTmdbDetail(
     val directors: List<TvTmdbPerson>,
     val cast: List<TvTmdbPerson>,
     val recommendations: List<TvTmdbMedia>,
+    val trailerUrl: String? = null,
 )
 
 data class TvTmdbEpisode(
@@ -65,11 +66,30 @@ class TvTmdbClient {
         )
         val row = root.optJSONObject("result") ?: return@runCatching null
 
+        var trailerUrl =
+            parseTrailerUrl(row)
+
+        if (trailerUrl == null) {
+            runCatching {
+                val richer =
+                    request(
+                        "$base?$locator&kind=${enc(kind)}&detail=4&language=${enc(locale.tmdbLanguage)}",
+                    )
+                trailerUrl =
+                    richer
+                        .optJSONObject("result")
+                        ?.let {
+                            parseTrailerUrl(it)
+                        }
+            }
+        }
+
         TvTmdbDetail(
             media = parseMedia(row, kind),
             directors = parsePeople(row.optJSONArray("directors")),
             cast = parsePeople(row.optJSONArray("cast")).take(16),
             recommendations = parseMediaArray(row.optJSONArray("recommendations"), kind).take(16),
+            trailerUrl = trailerUrl,
         )
     }
 
@@ -143,6 +163,36 @@ class TvTmdbClient {
         } finally {
             connection.disconnect()
         }
+    }
+
+    private fun parseTrailerUrl(row: JSONObject): String? {
+        row.optString("trailer_url")
+            .takeIf { it.startsWith("http") }
+            ?.let { return it }
+
+        val videos =
+            row.optJSONObject("videos")?.optJSONArray("results")
+                ?: row.optJSONArray("videos")
+
+        if (videos != null) {
+            for (i in 0 until videos.length()) {
+                val video = videos.optJSONObject(i) ?: continue
+                val site = video.optString("site")
+                val type = video.optString("type")
+                val key = video.optString("key").trim()
+                if (
+                    site.equals("YouTube", ignoreCase = true) &&
+                    key.isNotBlank() &&
+                    (
+                        type.equals("Trailer", ignoreCase = true) ||
+                            type.equals("Teaser", ignoreCase = true)
+                    )
+                ) {
+                    return "https://www.youtube.com/watch?v=$key"
+                }
+            }
+        }
+        return null
     }
 
     private fun parseMediaArray(array: JSONArray?, fallbackKind: String): List<TvTmdbMedia> {
