@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.media3.exoplayer.ExoPlayer
 import com.streamlivex.android.PlaybackRequest
 import com.streamlivex.android.tv.content.TvHomeScreen
+import com.streamlivex.android.tv.content.TvHistoryScreen
 import com.streamlivex.android.tv.content.TvMoviesScreen
 import com.streamlivex.android.tv.content.TvMyListScreen
 import com.streamlivex.android.tv.content.TvSearchScreen
@@ -73,6 +74,7 @@ enum class TvSection {
     Series,
     Search,
     MyList,
+    History,
     Settings,
 }
 
@@ -724,6 +726,21 @@ private fun TvMainScreen(
                         },
                     )
 
+                TvSection.History ->
+                    TvHistoryScreen(
+                        provider = provider,
+                        locale = locale,
+                        playerFor = playerFor,
+                        releasePlayer = releasePlayer,
+                        onFullscreenStateChanged =
+                            fullscreenCallback,
+                        onContentFocused = {
+                            if (!anyFullscreen) {
+                                menuExpanded = false
+                            }
+                        },
+                    )
+
                 TvSection.Settings -> {
                     when (settingsRoute) {
                         "playlists" ->
@@ -821,6 +838,7 @@ private fun TvSideMenu(
             TvSection.Series -> strings["series"]
             TvSection.Search -> strings["search"]
             TvSection.MyList -> strings["my_list"]
+            TvSection.History -> "İzleme Geçmişi"
             TvSection.Settings -> strings["settings"]
         }
 
@@ -834,6 +852,7 @@ private fun TvSideMenu(
             TvSection.Series -> "D"
             TvSection.Search -> "⌕"
             TvSection.MyList -> "★"
+            TvSection.History -> "↺"
             TvSection.Settings -> "⚙"
         }
 
