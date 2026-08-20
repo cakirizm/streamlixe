@@ -2150,6 +2150,21 @@ private fun EpisodeCard(
                         it.isFocused
                 }
                 .focusable()
+                .onKeyEvent { event ->
+                    if (
+                        event.type == KeyEventType.KeyUp &&
+                        (
+                            event.key == Key.DirectionCenter ||
+                            event.key == Key.Enter ||
+                            event.key == Key.NumPadEnter
+                        )
+                    ) {
+                        onClick()
+                        true
+                    } else {
+                        false
+                    }
+                }
                 .clickable(
                     onClick = onClick,
                 )
@@ -3847,6 +3862,21 @@ private fun MediaCard(
                 if (it.isFocused) onFocus()
             }
             .focusable()
+            .onKeyEvent { event ->
+                if (
+                    event.type == KeyEventType.KeyUp &&
+                    (
+                        event.key == Key.DirectionCenter ||
+                        event.key == Key.Enter ||
+                        event.key == Key.NumPadEnter
+                    )
+                ) {
+                    onClick()
+                    true
+                } else {
+                    false
+                }
+            }
             .clickable(onClick = onClick)
             .padding(7.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -3894,6 +3924,21 @@ private fun FocusRow(
                 if (it.isFocused) onFocus()
             }
             .focusable()
+            .onKeyEvent { event ->
+                if (
+                    event.type == KeyEventType.KeyUp &&
+                    (
+                        event.key == Key.DirectionCenter ||
+                        event.key == Key.Enter ||
+                        event.key == Key.NumPadEnter
+                    )
+                ) {
+                    onClick()
+                    true
+                } else {
+                    false
+                }
+            }
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 11.dp),
     ) {
@@ -3927,6 +3972,21 @@ private fun ActionButton(
             )
             .onFocusChanged { focused = it.isFocused }
             .focusable()
+            .onKeyEvent { event ->
+                if (
+                    event.type == KeyEventType.KeyUp &&
+                    (
+                        event.key == Key.DirectionCenter ||
+                        event.key == Key.Enter ||
+                        event.key == Key.NumPadEnter
+                    )
+                ) {
+                    onClick()
+                    true
+                } else {
+                    false
+                }
+            }
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 11.dp),
     ) {
