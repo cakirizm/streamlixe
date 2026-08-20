@@ -1273,6 +1273,16 @@ private fun GenericDetailScreen(
         mutableIntStateOf(0)
     }
 
+    DisposableEffect(Unit) {
+        // Detail is a full-screen content surface: hide the root chrome
+        // while keeping its own DPAD graph active.
+        onFullscreenStateChanged(true)
+
+        onDispose {
+            onFullscreenStateChanged(false)
+        }
+    }
+
     BackHandler {
         if (person != null) {
             person = null
