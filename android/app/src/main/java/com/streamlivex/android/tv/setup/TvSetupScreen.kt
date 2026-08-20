@@ -24,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -147,6 +148,12 @@ fun TvSetupScreen(
                 }
         }
 
+    DisposableEffect(Unit) {
+        onDispose {
+            pairingClient.close()
+        }
+    }
+
     LaunchedEffect(
         mode,
         pairRetry,
@@ -171,7 +178,7 @@ fun TvSetupScreen(
 
         pairSession = session
         pairBusy = false
-        pairStatus = "Telefonunla QR kodu okut"
+        pairStatus = "Telefonunla QR kodu okut · Aynı Wi‑Fi ağına bağlı ol"
 
         while (mode == SetupMode.Qr) {
             delay(2_500)
@@ -193,7 +200,7 @@ fun TvSetupScreen(
             when (status) {
                 TvPairStatus.Waiting -> {
                     pairStatus =
-                        "Telefondan bağlantı bekleniyor…"
+                        "Telefondan yerel ağ bağlantısı bekleniyor…"
                 }
 
                 TvPairStatus.Expired -> {
@@ -297,7 +304,7 @@ fun TvSetupScreen(
 
                 Text(
                     if (mode == SetupMode.Qr) {
-                        "QR kodu telefonunla okut. Xtream bilgilerin StreamLiveX üzerinden TV'ye aktarılır."
+                        "QR kodu telefonunla okut. Telefon ve TV aynı Wi‑Fi / yerel ağda olmalı. Bilgiler doğrudan TV'ye aktarılır."
                     } else {
                         "Xtream Codes bilgilerini kumandayla manuel olarak gir."
                     },
@@ -700,7 +707,7 @@ private fun QrPanel(
             )
 
             Text(
-                "streamlivex.com/pair/${session.code}",
+                session.pairUrl,
                 color = Color(0xFF60A5FA),
                 textAlign = TextAlign.Center,
             )
