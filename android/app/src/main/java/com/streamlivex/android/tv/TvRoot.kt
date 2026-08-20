@@ -56,6 +56,13 @@ import com.streamlivex.android.tv.i18n.TvStrings
 import com.streamlivex.android.tv.live.LiveTvScreen
 import com.streamlivex.android.tv.setup.TvProviderStorage
 import com.streamlivex.android.tv.setup.TvSetupScreen
+import kotlinx.coroutines.delay
+import com.streamlivex.android.tv.setup.TvPlaylistManagerScreen
+import com.streamlivex.android.tv.profile.TvProfileStore
+import com.streamlivex.android.tv.profile.TvProfileSelectScreen
+import com.streamlivex.android.tv.profile.TvProfileManagerScreen
+import com.streamlivex.android.tv.profile.TvProfile
+import com.streamlivex.android.tv.profile.TvActiveScope
 
 enum class TvSection {
     Home,
@@ -83,10 +90,19 @@ fun TvRoot(
         mutableStateOf(TvLocaleStore.get(context))
     }
 
+    var selectedProfile by remember {
+        mutableStateOf<TvProfile?>(null)
+    }
+    var bootstrapComplete by remember {
+        mutableStateOf(false)
+    }
+
     if (provider == null) {
         TvSetupScreen(
             onConnected = {
                 provider = it
+                selectedProfile = null
+                bootstrapComplete = false
             },
         )
         return
@@ -228,6 +244,21 @@ fun TvRoot(
         }.start()
     }
 
+    LaunchedEffect(
+        activeProvider.server,
+        activeProvider.username,
+        libraryReady,
+    ) {
+        if (!libraryReady) {
+            bootstrapComplete = false
+            return@LaunchedEffect
+        }
+
+        bootstrapComplete = false
+        delay(5_000)
+        bootstrapComplete = true
+    }
+
     if (!libraryReady) {
         LibraryPreparationScreen(
             stage = preparationStage,
@@ -240,6 +271,45 @@ fun TvRoot(
         )
         return
     }
+
+    if (!bootstrapComplete) {
+        LibraryWarmupScreen(
+            providerName = activeProvider.name,
+        )
+        return
+    }
+
+    val profileStore =
+        remember {
+            TvProfileStore(context)
+        }
+    profileStore.all()
+
+    if (selectedProfile == null) {
+        TvProfileSelectScreen(
+            onSelected = {
+                profile ->
+                TvActiveScope.activate(
+                    playlistId =
+                        TvProviderStorage
+                            .activeId(context),
+                    profile =
+                        profile,
+                )
+                selectedProfile =
+                    profile
+            },
+        )
+        return
+    }
+
+    TvActiveScope.activate(
+        playlistId =
+            TvProviderStorage
+                .activeId(context),
+        profile =
+            selectedProfile!!,
+    )
 
     TvMainScreen(
         provider = activeProvider,
@@ -265,16 +335,94 @@ fun TvRoot(
         onClearMemoryCache = {
             TvContentCache.clear()
         },
+        onProviderSelected = {
+            next ->
+            TvLiveLibraryCache.clear()
+            TvContentCache.clear()
+            provider = next
+            selectedProfile = null
+            bootstrapComplete = false
+        },
+        onChooseProfile = {
+            selectedProfile = null
+        },
         onDisconnect = {
-            TvProviderStorage.clear(context)
             TvLiveLibraryCache.clear()
             TvContentCache.clear()
             TvContentStore(context).clear()
             TvPlaybackSettingsStore(context).clear()
             libraryIndex.clearProvider(activeProvider)
-            provider = null
+
+            val next =
+                TvProviderStorage
+                    .removeActive(context)
+
+            provider = next
+            selectedProfile = null
+            bootstrapComplete = false
         },
     )
+}
+
+@Composable
+private fun LibraryWarmupScreen(
+    providerName: String,
+) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Color(0xFF080B12),
+                ),
+        contentAlignment =
+            Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment =
+                Alignment.CenterHorizontally,
+            verticalArrangement =
+                Arrangement.spacedBy(
+                    16.dp,
+                ),
+        ) {
+            Text(
+                "StreamLiveX",
+                color = Color.White,
+                fontWeight =
+                    FontWeight.Bold,
+                style =
+                    MaterialTheme
+                        .typography
+                        .displaySmall,
+            )
+
+            CircularProgressIndicator()
+
+            Text(
+                "Kütüphaneniz yükleniyor",
+                color = Color.White,
+                fontWeight =
+                    FontWeight.SemiBold,
+                style =
+                    MaterialTheme
+                        .typography
+                        .headlineSmall,
+            )
+
+            Text(
+                providerName,
+                color =
+                    Color(0xFF60A5FA),
+            )
+
+            Text(
+                "Profil ve yerel kütüphane hazırlanıyor…",
+                color =
+                    Color(0xFF94A3B8),
+            )
+        }
+    }
 }
 
 @Composable
@@ -382,6 +530,8 @@ private fun TvMainScreen(
     onLocaleChanged: (TvLocale) -> Unit,
     onRefreshLibrary: () -> Unit,
     onClearMemoryCache: () -> Unit,
+    onProviderSelected: (TvProviderConfig) -> Unit,
+    onChooseProfile: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
     val strings = remember(locale) {
@@ -396,6 +546,10 @@ private fun TvMainScreen(
     }
     var anyFullscreen by remember {
         mutableStateOf(false)
+    }
+
+    var settingsRoute by remember {
+        mutableStateOf<String?>(null)
     }
 
     val liveMenuFocusRequester =
@@ -419,6 +573,9 @@ private fun TvMainScreen(
                 },
                 onSectionSelected = {
                     selectedSection = it
+                    if (it != TvSection.Settings) {
+                        settingsRoute = null
+                    }
                 },
                 liveMenuFocusRequester =
                     liveMenuFocusRequester,
@@ -526,20 +683,56 @@ private fun TvMainScreen(
                         },
                     )
 
-                TvSection.Settings ->
-                    TvSettingsScreen(
-                        provider = provider,
-                        locale = locale,
-                        strings = strings,
-                        onLocaleChanged =
-                            onLocaleChanged,
-                        onRefreshLibrary =
-                            onRefreshLibrary,
-                        onClearMemoryCache =
-                            onClearMemoryCache,
-                        onDisconnect =
-                            onDisconnect,
-                    )
+                TvSection.Settings -> {
+                    when (settingsRoute) {
+                        "playlists" ->
+                            TvPlaylistManagerScreen(
+                                onBack = {
+                                    settingsRoute =
+                                        null
+                                },
+                                onSelected = {
+                                    next ->
+                                    onProviderSelected(
+                                        next,
+                                    )
+                                },
+                            )
+
+                        "profiles" ->
+                            TvProfileManagerScreen(
+                                onBack = {
+                                    settingsRoute =
+                                        null
+                                },
+                            )
+
+                        else ->
+                            TvSettingsScreen(
+                                provider = provider,
+                                locale = locale,
+                                strings = strings,
+                                onLocaleChanged =
+                                    onLocaleChanged,
+                                onRefreshLibrary =
+                                    onRefreshLibrary,
+                                onClearMemoryCache =
+                                    onClearMemoryCache,
+                                onManagePlaylists = {
+                                    settingsRoute =
+                                        "playlists"
+                                },
+                                onManageProfiles = {
+                                    settingsRoute =
+                                        "profiles"
+                                },
+                                onChooseProfile =
+                                    onChooseProfile,
+                                onDisconnect =
+                                    onDisconnect,
+                            )
+                    }
+                }
             }
         }
     }
@@ -725,6 +918,9 @@ private fun TvSettingsScreen(
     onLocaleChanged: (TvLocale) -> Unit,
     onRefreshLibrary: () -> Unit,
     onClearMemoryCache: () -> Unit,
+    onManagePlaylists: () -> Unit,
+    onManageProfiles: () -> Unit,
+    onChooseProfile: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
     val context =
@@ -780,6 +976,42 @@ private fun TvSettingsScreen(
                         .typography
                         .headlineLarge,
             )
+        }
+
+        item {
+            SettingsSectionTitle(
+                "Hesap ve Profiller",
+            )
+        }
+
+        item {
+            Row(
+                horizontalArrangement =
+                    Arrangement.spacedBy(
+                        10.dp,
+                    ),
+            ) {
+                SettingsButton(
+                    text =
+                        "Oynatma Listeleri",
+                ) {
+                    onManagePlaylists()
+                }
+
+                SettingsButton(
+                    text =
+                        "Profilleri Yönet",
+                ) {
+                    onManageProfiles()
+                }
+
+                SettingsButton(
+                    text =
+                        "Profil Değiştir",
+                ) {
+                    onChooseProfile()
+                }
+            }
         }
 
         item {
