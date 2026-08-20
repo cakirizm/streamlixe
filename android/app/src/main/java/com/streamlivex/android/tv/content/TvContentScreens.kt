@@ -489,6 +489,7 @@ fun TvMoviesScreen(
     val client = remember { XtreamClient() }
     val index = remember { TvLibraryIndex(context) }
     val restoreRequester = remember { FocusRequester() }
+    val movieGridEntryRequester = remember { FocusRequester() }
     val movieGridState = rememberLazyListState()
 
     var categories by remember { mutableStateOf(TvContentCache.vodCategories.orEmpty()) }
@@ -735,6 +736,12 @@ fun TvMoviesScreen(
                     onClick = {
                         onContentFocused()
                     },
+                    onRight = {
+                        runCatching {
+                            movieGridEntryRequester
+                                .requestFocus()
+                        }
+                    },
                 )
             }
         }
@@ -760,6 +767,8 @@ fun TvMoviesScreen(
                         rows = movies,
                         restoreRequester =
                             restoreRequester,
+                        entryFocusRequester =
+                            movieGridEntryRequester,
                         restoreId =
                             TvContentCache
                                 .movieFocusedId,
@@ -821,6 +830,7 @@ fun TvSeriesScreen(
     val client = remember { XtreamClient() }
     val index = remember { TvLibraryIndex(context) }
     val restoreRequester = remember { FocusRequester() }
+    val seriesGridEntryRequester = remember { FocusRequester() }
     val seriesGridState = rememberLazyListState()
 
     var categories by remember { mutableStateOf(TvContentCache.seriesCategories.orEmpty()) }
@@ -1134,6 +1144,12 @@ fun TvSeriesScreen(
                     onClick = {
                         onContentFocused()
                     },
+                    onRight = {
+                        runCatching {
+                            seriesGridEntryRequester
+                                .requestFocus()
+                        }
+                    },
                 )
             }
         }
@@ -1159,6 +1175,8 @@ fun TvSeriesScreen(
                         rows = shows,
                         restoreRequester =
                             restoreRequester,
+                        entryFocusRequester =
+                            seriesGridEntryRequester,
                         restoreId =
                             TvContentCache
                                 .seriesFocusedId,
@@ -1253,13 +1271,6 @@ private fun GenericDetailScreen(
     }
     var favoriteRefresh by remember {
         mutableIntStateOf(0)
-    }
-
-    DisposableEffect(Unit) {
-        onFullscreenStateChanged(true)
-        onDispose {
-            onFullscreenStateChanged(false)
-        }
     }
 
     BackHandler {
@@ -3783,6 +3794,7 @@ private fun HomeRail(
 private fun IndexedPosterGrid(
     rows: List<TvIndexedMedia>,
     restoreRequester: FocusRequester,
+    entryFocusRequester: FocusRequester,
     restoreId: String?,
     listState: LazyListState,
     totalCount: Int,
@@ -3796,23 +3808,88 @@ private fun IndexedPosterGrid(
             rows.chunked(5)
         }
 
+    val scope =
+        androidx.compose.runtime
+            .rememberCoroutineScope()
+
+    val requesters =
+        remember {
+            mutableMapOf<
+                String,
+                FocusRequester,
+            >()
+        }
+
+    fun requesterFor(
+        media: TvIndexedMedia,
+    ): FocusRequester =
+        requesters.getOrPut(
+            media.localId,
+        ) {
+            FocusRequester()
+        }
+
+    fun moveTo(
+        targetIndex: Int,
+    ): Boolean {
+        if (
+            targetIndex !in
+            rows.indices
+        ) {
+            return false
+        }
+
+        val target =
+            rows[targetIndex]
+        val requester =
+            requesterFor(target)
+        val targetRow =
+            targetIndex / 5
+
+        scope.launch {
+            runCatching {
+                listState.scrollToItem(
+                    targetRow,
+                )
+            }
+
+            delay(60)
+
+            runCatching {
+                requester.requestFocus()
+            }
+        }
+
+        return true
+    }
+
     LazyColumn(
-        state = listState,
+        state =
+            listState,
         modifier =
             Modifier
                 .fillMaxSize()
                 .padding(16.dp),
         verticalArrangement =
-            Arrangement.spacedBy(14.dp),
+            Arrangement.spacedBy(
+                14.dp,
+            ),
     ) {
         itemsIndexed(
-            items = chunks,
-        ) { rowIndex, row ->
+            items =
+                chunks,
+        ) {
+            rowIndex,
+            row ->
+
             Row(
                 modifier =
-                    Modifier.fillMaxWidth(),
+                    Modifier
+                        .fillMaxWidth(),
                 horizontalArrangement =
-                    Arrangement.spacedBy(14.dp),
+                    Arrangement.spacedBy(
+                        14.dp,
+                    ),
             ) {
                 row.forEachIndexed {
                     itemIndex,
@@ -3821,6 +3898,11 @@ private fun IndexedPosterGrid(
                     val globalIndex =
                         rowIndex * 5 +
                             itemIndex
+
+                    val ownRequester =
+                        requesterFor(
+                            media,
+                        )
 
                     MediaCard(
                         title =
@@ -3839,16 +3921,26 @@ private fun IndexedPosterGrid(
                             Modifier
                                 .weight(1f)
                                 .then(
-                                    if (
+                                    when {
                                         media.localId ==
-                                        restoreId
-                                    ) {
-                                        Modifier
-                                            .focusRequester(
-                                                restoreRequester,
-                                            )
-                                    } else {
-                                        Modifier
+                                            restoreId ->
+                                            Modifier
+                                                .focusRequester(
+                                                    restoreRequester,
+                                                )
+
+                                        globalIndex ==
+                                            0 ->
+                                            Modifier
+                                                .focusRequester(
+                                                    entryFocusRequester,
+                                                )
+
+                                        else ->
+                                            Modifier
+                                                .focusRequester(
+                                                    ownRequester,
+                                                )
                                     },
                                 ),
                         onFocus = {
@@ -3857,11 +3949,93 @@ private fun IndexedPosterGrid(
                             if (
                                 !loadingMore &&
                                 rows.size <
-                                totalCount &&
+                                    totalCount &&
                                 globalIndex >=
-                                rows.size - 20
+                                    rows.size - 20
                             ) {
                                 onNeedMore()
+                            }
+                        },
+                        onDirection = {
+                            key ->
+
+                            when (key) {
+                                Key.DirectionRight -> {
+                                    if (
+                                        itemIndex <
+                                        row.size - 1
+                                    ) {
+                                        moveTo(
+                                            globalIndex +
+                                                1,
+                                        )
+                                    } else {
+                                        false
+                                    }
+                                }
+
+                                Key.DirectionLeft -> {
+                                    if (
+                                        itemIndex >
+                                        0
+                                    ) {
+                                        moveTo(
+                                            globalIndex -
+                                                1,
+                                        )
+                                    } else {
+                                        // Let Compose leave the grid
+                                        // and return to categories.
+                                        false
+                                    }
+                                }
+
+                                Key.DirectionDown -> {
+                                    val nextRowStart =
+                                        (rowIndex + 1) *
+                                            5
+
+                                    if (
+                                        nextRowStart >=
+                                        rows.size
+                                    ) {
+                                        false
+                                    } else {
+                                        val target =
+                                            minOf(
+                                                nextRowStart +
+                                                    itemIndex,
+                                                rows.size -
+                                                    1,
+                                            )
+
+                                        moveTo(target)
+                                    }
+                                }
+
+                                Key.DirectionUp -> {
+                                    if (
+                                        rowIndex <=
+                                        0
+                                    ) {
+                                        false
+                                    } else {
+                                        val target =
+                                            (rowIndex - 1) *
+                                                5 +
+                                                itemIndex
+
+                                        moveTo(
+                                            target.coerceAtMost(
+                                                rows.size -
+                                                    1,
+                                            ),
+                                        )
+                                    }
+                                }
+
+                                else ->
+                                    false
                             }
                         },
                     ) {
@@ -3873,7 +4047,9 @@ private fun IndexedPosterGrid(
                     5 - row.size,
                 ) {
                     Box(
-                        Modifier.weight(1f),
+                        Modifier.weight(
+                            1f,
+                        ),
                     )
                 }
             }
@@ -3884,7 +4060,8 @@ private fun IndexedPosterGrid(
             rows.isNotEmpty()
         ) {
             item(
-                key = "loading-more",
+                key =
+                    "loading-more",
             ) {
                 Box(
                     modifier =
@@ -3908,6 +4085,7 @@ private fun MediaCard(
     subtitle: String,
     modifier: Modifier = Modifier,
     onFocus: () -> Unit = {},
+    onDirection: (Key) -> Boolean = { false },
     onClick: () -> Unit,
 ) {
     var focused by
@@ -3936,22 +4114,39 @@ private fun MediaCard(
                     }
                 }
                 .onKeyEvent { event ->
-                    if (
+                    when {
                         event.type ==
-                        KeyEventType.KeyUp &&
-                        (
-                            event.key ==
-                            Key.DirectionCenter ||
-                            event.key ==
-                            Key.Enter ||
-                            event.key ==
-                            Key.NumPadEnter
-                        )
-                    ) {
-                        onClick()
-                        true
-                    } else {
-                        false
+                            KeyEventType.KeyUp &&
+                            (
+                                event.key ==
+                                Key.DirectionCenter ||
+                                event.key ==
+                                Key.Enter ||
+                                event.key ==
+                                Key.NumPadEnter
+                            ) -> {
+                            onClick()
+                            true
+                        }
+
+                        event.type ==
+                            KeyEventType.KeyDown &&
+                            (
+                                event.key ==
+                                Key.DirectionLeft ||
+                                event.key ==
+                                Key.DirectionRight ||
+                                event.key ==
+                                Key.DirectionUp ||
+                                event.key ==
+                                Key.DirectionDown
+                            ) ->
+                            onDirection(
+                                event.key,
+                            )
+
+                        else ->
+                            false
                     }
                 }
                 .focusable()
@@ -4009,6 +4204,7 @@ private fun FocusRow(
     selected: Boolean,
     onFocus: () -> Unit,
     onClick: () -> Unit,
+    onRight: (() -> Unit)? = null,
 ) {
     var focused by
         remember(title) {
@@ -4050,22 +4246,33 @@ private fun FocusRow(
                     }
                 }
                 .onKeyEvent { event ->
-                    if (
+                    when {
                         event.type ==
-                        KeyEventType.KeyUp &&
-                        (
+                            KeyEventType.KeyUp &&
+                            (
+                                event.key ==
+                                Key.DirectionCenter ||
+                                event.key ==
+                                Key.Enter ||
+                                event.key ==
+                                Key.NumPadEnter
+                            ) -> {
+                            onClick()
+                            true
+                        }
+
+                        event.type ==
+                            KeyEventType.KeyDown &&
                             event.key ==
-                            Key.DirectionCenter ||
-                            event.key ==
-                            Key.Enter ||
-                            event.key ==
-                            Key.NumPadEnter
-                        )
-                    ) {
-                        onClick()
-                        true
-                    } else {
-                        false
+                            Key.DirectionRight &&
+                            onRight !=
+                            null -> {
+                            onRight()
+                            true
+                        }
+
+                        else ->
+                            false
                     }
                 }
                 .focusable()
