@@ -31,11 +31,19 @@ class TvContentStore(context: Context) {
 
     fun isFavorite(id: String): Boolean = favorites().any { it.id == id }
 
-    fun toggleFavorite(item: TvSavedItem) {
+    fun toggleFavorite(item: TvSavedItem): Boolean {
         val rows = favorites().toMutableList()
         val index = rows.indexOfFirst { it.id == item.id }
-        if (index >= 0) rows.removeAt(index) else rows.add(0, item)
-        writeArray("favorites", rows.take(100))
+        val nowFavorite =
+            if (index >= 0) {
+                rows.removeAt(index)
+                false
+            } else {
+                rows.add(0, item)
+                true
+            }
+        writeArray("favorites", rows.take(100), synchronous = true)
+        return nowFavorite
     }
 
     fun saveProgress(item: TvSavedItem) {
@@ -83,7 +91,11 @@ class TvContentStore(context: Context) {
         }.getOrDefault(emptyList())
     }
 
-    private fun writeArray(key: String, rows: List<TvSavedItem>) {
+    private fun writeArray(
+        key: String,
+        rows: List<TvSavedItem>,
+        synchronous: Boolean = false,
+    ) {
         val array = JSONArray()
         rows.forEach { item ->
             array.put(
@@ -98,6 +110,7 @@ class TvContentStore(context: Context) {
                     .put("durationMs", item.durationMs),
             )
         }
-        prefs.edit().putString(key, array.toString()).apply()
+        val editor = prefs.edit().putString(key, array.toString())
+        if (synchronous) editor.commit() else editor.apply()
     }
 }
