@@ -36,6 +36,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -52,19 +53,15 @@ import com.streamlivex.android.PlaybackRequest
 import com.streamlivex.android.tv.data.NativeLiveCategory
 import com.streamlivex.android.tv.data.NativeLiveChannel
 import com.streamlivex.android.tv.data.TvLiveLibraryCache
+import com.streamlivex.android.tv.data.TvLiveProfileStore
 import com.streamlivex.android.tv.data.TvProviderConfig
 import com.streamlivex.android.tv.data.XtreamClient
 import com.streamlivex.android.tv.data.XtreamLiveLibrary
+import com.streamlivex.android.tv.profile.TvActiveScope
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.delay
-
-private object TvLiveUiStateCache {
-    var selectedCategoryId: String = "all"
-    var focusedChannelId: String? = null
-    var playbackChannelId: String? = null
-}
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -78,6 +75,15 @@ fun LiveTvScreen(
     menuFocusRequester: FocusRequester,
 ) {
     val client = remember { XtreamClient() }
+    val context = LocalContext.current
+    val liveStore =
+        remember(
+            TvActiveScope.storageKey(),
+        ) {
+            TvLiveProfileStore(
+                context,
+            )
+        }
 
     val sessionId = remember(provider.server, provider.username) {
         "tv-live-${provider.server.hashCode()}-${provider.username.hashCode()}"
@@ -92,14 +98,34 @@ fun LiveTvScreen(
     }
 
     var error by remember { mutableStateOf("") }
-    var selectedCategoryId by remember {
-        mutableStateOf(TvLiveUiStateCache.selectedCategoryId)
+    var selectedCategoryId by remember(
+        TvActiveScope.storageKey(),
+    ) {
+        mutableStateOf(
+            liveStore.selectedCategoryId(),
+        )
     }
-    var selectedChannelId by remember {
-        mutableStateOf(TvLiveUiStateCache.focusedChannelId)
+    var selectedChannelId by remember(
+        TvActiveScope.storageKey(),
+    ) {
+        mutableStateOf(
+            liveStore.focusedChannelId()
+                ?: liveStore.lastChannelId(),
+        )
     }
-    var playbackChannelId by remember {
-        mutableStateOf(TvLiveUiStateCache.playbackChannelId)
+    var playbackChannelId by remember(
+        TvActiveScope.storageKey(),
+    ) {
+        mutableStateOf(
+            liveStore.playbackChannelId(),
+        )
+    }
+    var favoriteChannelIds by remember(
+        TvActiveScope.storageKey(),
+    ) {
+        mutableStateOf(
+            liveStore.favoriteChannelIds(),
+        )
     }
     var fullscreen by remember { mutableStateOf(false) }
     var channelOverlayVisible by remember { mutableStateOf(false) }
@@ -107,10 +133,30 @@ fun LiveTvScreen(
     val categoryReturnFocusRequester = remember { FocusRequester() }
     val channelReturnFocusRequester = remember { FocusRequester() }
 
-    LaunchedEffect(selectedCategoryId, selectedChannelId, playbackChannelId) {
-        TvLiveUiStateCache.selectedCategoryId = selectedCategoryId
-        TvLiveUiStateCache.focusedChannelId = selectedChannelId
-        TvLiveUiStateCache.playbackChannelId = playbackChannelId
+    LaunchedEffect(
+        selectedCategoryId,
+        selectedChannelId,
+        playbackChannelId,
+    ) {
+        liveStore.saveUiState(
+            selectedCategoryId =
+                selectedCategoryId,
+            focusedChannelId =
+                selectedChannelId,
+            playbackChannelId =
+                playbackChannelId,
+        )
+    }
+
+    LaunchedEffect(
+        playbackChannelId,
+    ) {
+        playbackChannelId
+            ?.let {
+                liveStore.setLastChannel(
+                    it,
+                )
+            }
     }
 
     fun requestFor(channel: NativeLiveChannel): PlaybackRequest {
@@ -336,6 +382,8 @@ fun LiveTvScreen(
                 ChannelColumn(
                     channels = visibleChannels,
                     selectedChannel = selectedChannel,
+                    favoriteChannelIds =
+                        favoriteChannelIds,
                     onFocused = { channel ->
                         onContentFocused()
                         selectedChannelId = channel.id
@@ -357,6 +405,26 @@ fun LiveTvScreen(
                 ChannelPreviewPanel(
                     channel = playbackChannel,
                     player = livePlayer,
+                    isFavorite =
+                        playbackChannel
+                            ?.id
+                            ?.let {
+                                favoriteChannelIds
+                                    .contains(
+                                        it,
+                                    )
+                            }
+                            ?: false,
+                    onToggleFavorite = {
+                        channel ->
+
+                        liveStore.toggleFavorite(
+                            channel.id,
+                        )
+                        favoriteChannelIds =
+                            liveStore
+                                .favoriteChannelIds()
+                    },
                     modifier = Modifier.weight(0.58f),
                 )
             }
@@ -543,6 +611,7 @@ private fun CategoryColumn(
 private fun ChannelColumn(
     channels: List<NativeLiveChannel>,
     selectedChannel: NativeLiveChannel?,
+    favoriteChannelIds: Set<String>,
     categoryFocusRequester: FocusRequester,
     selectedChannelFocusRequester: FocusRequester,
     onFocused: (NativeLiveChannel) -> Unit,
@@ -641,7 +710,17 @@ private fun ChannelColumn(
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = channel.name,
+                            text =
+                                if (
+                                    favoriteChannelIds
+                                        .contains(
+                                            channel.id,
+                                        )
+                                ) {
+                                    "★ ${channel.name}"
+                                } else {
+                                    channel.name
+                                },
                             color = Color.White,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
@@ -668,6 +747,8 @@ private fun ChannelColumn(
 private fun ChannelPreviewPanel(
     channel: NativeLiveChannel?,
     player: ExoPlayer?,
+    isFavorite: Boolean,
+    onToggleFavorite: (NativeLiveChannel) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -757,6 +838,68 @@ private fun ChannelPreviewPanel(
                 color = Color(0xFF94A3B8),
                 style = MaterialTheme.typography.bodySmall,
             )
+
+            if (channel != null) {
+                var favoriteFocused by
+                    remember(
+                        channel.id,
+                    ) {
+                        mutableStateOf(
+                            false,
+                        )
+                    }
+
+                Box(
+                    modifier =
+                        Modifier
+                            .background(
+                                if (
+                                    favoriteFocused
+                                ) {
+                                    Color(
+                                        0xFF2563EB,
+                                    )
+                                } else {
+                                    Color(
+                                        0xFF1E293B,
+                                    )
+                                },
+                                RoundedCornerShape(
+                                    8.dp,
+                                ),
+                            )
+                            .onFocusChanged {
+                                favoriteFocused =
+                                    it.isFocused
+                            }
+                            .clickable {
+                                onToggleFavorite(
+                                    channel,
+                                )
+                            }
+                            .padding(
+                                horizontal =
+                                    12.dp,
+                                vertical =
+                                    8.dp,
+                            ),
+                ) {
+                    Text(
+                        text =
+                            if (
+                                isFavorite
+                            ) {
+                                "★ Favorilerden Çıkar"
+                            } else {
+                                "☆ Favoriye Ekle"
+                            },
+                        color =
+                            Color.White,
+                        fontWeight =
+                            FontWeight.SemiBold,
+                    )
+                }
+            }
         }
     }
 }
