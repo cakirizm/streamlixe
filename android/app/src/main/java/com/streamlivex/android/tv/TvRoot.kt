@@ -99,6 +99,7 @@ fun TvRoot(
     }
     var preparationStage by remember { mutableStateOf("Kütüphane hazırlanıyor…") }
     var preparationCount by remember { mutableIntStateOf(libraryIndex.count(activeProvider)) }
+    var preparationPercent by remember { mutableIntStateOf(if (libraryReady) 100 else 0) }
     var preparationError by remember { mutableStateOf("") }
     var preparationRetry by remember { mutableIntStateOf(0) }
 
@@ -110,40 +111,107 @@ fun TvRoot(
         if (libraryIndex.isReady(activeProvider)) {
             libraryReady = true
             preparationCount = libraryIndex.count(activeProvider)
+            preparationPercent = 100
             return@LaunchedEffect
         }
 
         libraryReady = false
         preparationError = ""
-        preparationStage = "Film kütüphanesi hazırlanıyor…"
+        preparationStage = "Oynatma listesi sayılıyor…"
         preparationCount = 0
+        preparationPercent = 0
 
         Thread {
             val handler = Handler(Looper.getMainLooper())
             val client = XtreamClient()
 
-            val result =
+            val result = runCatching {
+                handler.post {
+                    preparationStage = "Kategoriler hazırlanıyor…"
+                    preparationPercent = 1
+                }
+
+                val vodCategories =
+                    client.loadVodCategories(activeProvider)
+                        .getOrThrow()
+                val seriesCategories =
+                    client.loadSeriesCategories(activeProvider)
+                        .getOrThrow()
+
+                libraryIndex.saveVodCategories(
+                    activeProvider,
+                    vodCategories,
+                )
+                libraryIndex.saveSeriesCategories(
+                    activeProvider,
+                    seriesCategories,
+                )
+
+                handler.post {
+                    preparationStage = "İçerik sayısı belirleniyor…"
+                    preparationPercent = 2
+                }
+
+                val movieTotal =
+                    client.scanVod(activeProvider) { }
+                        .getOrThrow()
+
+                handler.post {
+                    preparationStage = "Diziler sayılıyor…"
+                    preparationPercent = 6
+                }
+
+                val seriesTotal =
+                    client.scanSeries(activeProvider) { }
+                        .getOrThrow()
+
+                val totalExpected =
+                    (movieTotal + seriesTotal)
+                        .coerceAtLeast(1)
+
                 libraryIndex.rebuildProvider(
                     provider = activeProvider,
                     client = client,
                     onProgress = { stage, processed ->
+                        val exact =
+                            10 +
+                                (
+                                    processed
+                                        .toDouble() /
+                                        totalExpected
+                                            .toDouble() *
+                                        89.0
+                                ).toInt()
+
                         handler.post {
-                            preparationCount = processed
+                            preparationCount =
+                                processed
+                            preparationPercent =
+                                exact.coerceIn(
+                                    10,
+                                    99,
+                                )
                             preparationStage =
                                 when (stage) {
-                                    "movies" -> "Filmler hazırlanıyor…"
-                                    "series" -> "Diziler hazırlanıyor…"
-                                    "done" -> "Kütüphane hazır."
-                                    else -> "Kütüphane hazırlanıyor…"
+                                    "movies" ->
+                                        "Filmler hazırlanıyor…"
+                                    "series" ->
+                                        "Diziler hazırlanıyor…"
+                                    "done" ->
+                                        "Kütüphane tamamlanıyor…"
+                                    else ->
+                                        "Kütüphane hazırlanıyor…"
                                 }
                         }
                     },
-                )
+                ).getOrThrow()
+            }
 
             handler.post {
                 result
                     .onSuccess {
                         preparationCount = it
+                        preparationPercent = 100
                         preparationStage = "Kütüphane hazır."
                         libraryReady = true
                     }
@@ -161,6 +229,7 @@ fun TvRoot(
         LibraryPreparationScreen(
             stage = preparationStage,
             processed = preparationCount,
+            percent = preparationPercent,
             error = preparationError,
             onRetry = {
                 preparationRetry += 1
@@ -195,6 +264,7 @@ fun TvRoot(
 private fun LibraryPreparationScreen(
     stage: String,
     processed: Int,
+    percent: Int,
     error: String,
     onRetry: () -> Unit,
 ) {
@@ -229,7 +299,7 @@ private fun LibraryPreparationScreen(
                 )
 
                 Text(
-                    "$processed içerik işlendi",
+                    "%$percent · $processed içerik işlendi",
                     color = Color(0xFF60A5FA),
                     style = MaterialTheme.typography.titleMedium,
                 )
@@ -411,6 +481,10 @@ private fun TvMainScreen(
                     TvSearchScreen(
                         provider = provider,
                         locale = locale,
+                        playerFor = playerFor,
+                        releasePlayer = releasePlayer,
+                        onFullscreenStateChanged =
+                            fullscreenCallback,
                         onContentFocused = {
                             if (!anyFullscreen) {
                                 menuExpanded = false
