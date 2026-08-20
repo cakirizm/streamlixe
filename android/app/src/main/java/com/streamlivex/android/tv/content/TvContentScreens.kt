@@ -2,8 +2,11 @@
 
 package com.streamlivex.android.tv.content
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -47,7 +50,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import com.streamlivex.android.PlaybackItem
 import com.streamlivex.android.PlaybackPreferences
 import com.streamlivex.android.PlaybackRequest
@@ -59,6 +65,7 @@ import com.streamlivex.android.tv.data.TvContentCache
 import com.streamlivex.android.tv.data.TvContentStore
 import com.streamlivex.android.tv.data.TvIndexedMedia
 import com.streamlivex.android.tv.data.TvLibraryIndex
+import com.streamlivex.android.tv.data.TvLiveLibraryCache
 import com.streamlivex.android.tv.data.TvProviderConfig
 import com.streamlivex.android.tv.data.TvSavedItem
 import com.streamlivex.android.tv.data.TvTmdbClient
@@ -226,50 +233,82 @@ fun TvHomeScreen(
             }
         }
 
-        item {
-            HomeRail(
-                title = strings["trending_movies"],
-                cards = trendingMovies.map { media ->
-                    val local = index.findByTitle(provider, "movie", media.name)
-                    HomeCard(
-                        id = "tmdb-m-${media.id}",
-                        title = media.name,
-                        artwork = media.poster,
-                        subtitle = availabilityText(strings, local != null),
-                        target = ContentTarget(
+        val localTrendingMovies =
+            trendingMovies.mapNotNull { media ->
+                val local =
+                    index.findByTitle(
+                        provider,
+                        "movie",
+                        media.name,
+                    ) ?: return@mapNotNull null
+
+                HomeCard(
+                    id = "tmdb-m-${media.id}",
+                    title = media.name,
+                    artwork = media.poster ?: local.artwork,
+                    subtitle = strings["in_playlist"],
+                    target =
+                        ContentTarget(
                             kind = "movie",
                             name = media.name,
                             tmdbId = media.id,
-                            poster = media.poster,
+                            poster = media.poster ?: local.artwork,
                             local = local,
                         ),
-                    )
-                },
-                onClick = { card -> card.target?.let { target = it } },
-            )
+                )
+            }
+
+        if (localTrendingMovies.isNotEmpty()) {
+            item {
+                HomeRail(
+                    title = strings["trending_movies"],
+                    cards = localTrendingMovies,
+                    onClick = { card ->
+                        card.target?.let {
+                            target = it
+                        }
+                    },
+                )
+            }
         }
 
-        item {
-            HomeRail(
-                title = strings["trending_series"],
-                cards = trendingSeries.map { media ->
-                    val local = index.findByTitle(provider, "series", media.name)
-                    HomeCard(
-                        id = "tmdb-s-${media.id}",
-                        title = media.name,
-                        artwork = media.poster,
-                        subtitle = availabilityText(strings, local != null),
-                        target = ContentTarget(
+        val localTrendingSeries =
+            trendingSeries.mapNotNull { media ->
+                val local =
+                    index.findByTitle(
+                        provider,
+                        "series",
+                        media.name,
+                    ) ?: return@mapNotNull null
+
+                HomeCard(
+                    id = "tmdb-s-${media.id}",
+                    title = media.name,
+                    artwork = media.poster ?: local.artwork,
+                    subtitle = strings["in_playlist"],
+                    target =
+                        ContentTarget(
                             kind = "series",
                             name = media.name,
                             tmdbId = media.id,
-                            poster = media.poster,
+                            poster = media.poster ?: local.artwork,
                             local = local,
                         ),
-                    )
-                },
-                onClick = { card -> card.target?.let { target = it } },
-            )
+                )
+            }
+
+        if (localTrendingSeries.isNotEmpty()) {
+            item {
+                HomeRail(
+                    title = strings["trending_series"],
+                    cards = localTrendingSeries,
+                    onClick = { card ->
+                        card.target?.let {
+                            target = it
+                        }
+                    },
+                )
+            }
         }
 
         item {
@@ -390,6 +429,16 @@ fun TvMoviesScreen(
     }
 
     LaunchedEffect(provider.server, provider.username) {
+        if (categories.isEmpty()) {
+            val diskCategories =
+                index.loadVodCategories(provider)
+            if (diskCategories.isNotEmpty()) {
+                categories = diskCategories
+                TvContentCache.vodCategories =
+                    diskCategories
+            }
+        }
+
         if (categories.isNotEmpty()) {
             val targetId =
                 selectedCategoryId
@@ -713,6 +762,20 @@ fun TvSeriesScreen(
         provider.server,
         provider.username,
     ) {
+        if (categories.isEmpty()) {
+            val diskCategories =
+                index.loadSeriesCategories(
+                    provider,
+                )
+            if (diskCategories.isNotEmpty()) {
+                categories =
+                    diskCategories
+                TvContentCache
+                    .seriesCategories =
+                    diskCategories
+            }
+        }
+
         if (categories.isNotEmpty()) {
             val targetId =
                 selectedCategoryId
@@ -996,6 +1059,7 @@ private fun GenericDetailScreen(
     onBack: () -> Unit,
     onFullscreenStateChanged: (Boolean) -> Unit,
 ) {
+    val context = LocalContext.current
     val strings = remember(locale) { TvStrings(locale) }
     val tmdb = remember { TvTmdbClient() }
     val xtream = remember { XtreamClient() }
@@ -1372,11 +1436,13 @@ private fun GenericDetailScreen(
                         }
 
                         ActionButton(
-                            if (favorite) {
-                                "★ ${strings["remove_list"]}"
-                            } else {
-                                "☆ ${strings["add_list"]}"
-                            },
+                            text =
+                                if (favorite) {
+                                    "★ ${strings["remove_list"]}"
+                                } else {
+                                    "☆ ${strings["add_list"]}"
+                                },
+                            selected = favorite,
                         ) {
                             store.toggleFavorite(
                                 TvSavedItem(
@@ -1396,9 +1462,33 @@ private fun GenericDetailScreen(
                                         media?.year,
                                 ),
                             )
-
                             favoriteRefresh += 1
                         }
+
+                        detail
+                            ?.trailerUrl
+                            ?.let { trailerUrl ->
+                                ActionButton(
+                                    text = "▶ Fragman",
+                                ) {
+                                    runCatching {
+                                        val intent =
+                                            Intent(
+                                                Intent.ACTION_VIEW,
+                                                Uri.parse(
+                                                    trailerUrl,
+                                                ),
+                                            ).apply {
+                                                addFlags(
+                                                    Intent.FLAG_ACTIVITY_NEW_TASK,
+                                                )
+                                            }
+                                        context.startActivity(
+                                            intent,
+                                        )
+                                    }
+                                }
+                            }
                     }
 
                     PeopleLine(
@@ -1809,53 +1899,569 @@ private fun TmdbRail(
 fun TvSearchScreen(
     provider: TvProviderConfig,
     locale: TvLocale,
+    playerFor: (PlaybackRequest) -> ExoPlayer,
+    releasePlayer: (String) -> Unit,
+    onFullscreenStateChanged: (Boolean) -> Unit,
     onContentFocused: () -> Unit,
 ) {
+    val context = LocalContext.current
     val strings = remember(locale) { TvStrings(locale) }
-    var query by remember { mutableStateOf("") }
+    val index = remember { TvLibraryIndex(context) }
+    val store = remember { TvContentStore(context) }
 
-    val cachedMovies = TvContentCache.vodByCategory.values.flatten().distinctBy { it.id }
-    val cachedSeries = TvContentCache.seriesByCategory.values.flatten().distinctBy { it.id }
-    val q = query.trim()
-    val movieResults =
-        if (q.length < 2) emptyList()
-        else cachedMovies.filter { it.name.contains(q, true) }.take(30)
-    val seriesResults =
-        if (q.length < 2) emptyList()
-        else cachedSeries.filter { it.name.contains(q, true) }.take(30)
+    var query by remember { mutableStateOf("") }
+    var selectedType by remember { mutableStateOf("movie") }
+    var results by remember { mutableStateOf<List<TvIndexedMedia>>(emptyList()) }
+    var channelResults by remember {
+        mutableStateOf(
+            emptyList<com.streamlivex.android.tv.data.NativeLiveChannel>(),
+        )
+    }
+    var target by remember { mutableStateOf<ContentTarget?>(null) }
+    var playing by remember { mutableStateOf<TvSavedItem?>(null) }
+    var liveChannel by remember {
+        mutableStateOf<com.streamlivex.android.tv.data.NativeLiveChannel?>(null)
+    }
+    var loading by remember { mutableStateOf(false) }
+
+    LaunchedEffect(
+        selectedType,
+        provider.server,
+        provider.username,
+    ) {
+        if (
+            selectedType == "channel" &&
+            TvLiveLibraryCache.library == null
+        ) {
+            loading = true
+            Thread {
+                val result =
+                    XtreamClient()
+                        .loadLiveLibrary(
+                            provider,
+                        )
+                Handler(
+                    Looper.getMainLooper(),
+                ).post {
+                    loading = false
+                    if (
+                        result.isSuccess &&
+                        query.trim().length >= 2
+                    ) {
+                        val q =
+                            query.trim()
+                        channelResults =
+                            TvLiveLibraryCache
+                                .library
+                                ?.channels
+                                .orEmpty()
+                                .asSequence()
+                                .filter {
+                                    it.name.contains(
+                                        q,
+                                        ignoreCase = true,
+                                    )
+                                }
+                                .take(60)
+                                .toList()
+                    }
+                }
+            }.start()
+        }
+    }
+
+    LaunchedEffect(
+        query,
+        selectedType,
+        provider.server,
+        provider.username,
+    ) {
+        val q = query.trim()
+        if (q.length < 2) {
+            results = emptyList()
+            channelResults = emptyList()
+            return@LaunchedEffect
+        }
+
+        loading = true
+        delay(180)
+
+        if (selectedType == "channel") {
+            val live =
+                TvLiveLibraryCache
+                    .library
+                    ?.channels
+                    .orEmpty()
+
+            channelResults =
+                live
+                    .asSequence()
+                    .filter {
+                        it.name.contains(
+                            q,
+                            ignoreCase = true,
+                        )
+                    }
+                    .take(60)
+                    .toList()
+
+            results = emptyList()
+            loading = false
+        } else {
+            Thread {
+                val rows =
+                    index.search(
+                        provider = provider,
+                        query = q,
+                        kind = selectedType,
+                        limit = 60,
+                    )
+
+                Handler(
+                    Looper.getMainLooper(),
+                ).post {
+                    results = rows
+                    channelResults =
+                        emptyList()
+                    loading = false
+                }
+            }.start()
+        }
+    }
+
+    if (liveChannel != null) {
+        SearchLivePlayer(
+            channel = liveChannel!!,
+            playerFor = playerFor,
+            releasePlayer = releasePlayer,
+            onFullscreenStateChanged =
+                onFullscreenStateChanged,
+            onClose = {
+                liveChannel = null
+            },
+        )
+        return
+    }
+
+    if (playing != null) {
+        val saved = playing!!
+        TvNativePlayer(
+            saved = saved,
+            request =
+                PlaybackRequest(
+                    sessionId =
+                        "tv-search-${saved.id}",
+                    item =
+                        PlaybackItem(
+                            saved.name,
+                            saved.url,
+                            saved.kind,
+                        ),
+                    resumeTimeMs =
+                        store
+                            .progressFor(
+                                saved.id,
+                            )
+                            ?.positionMs
+                            ?: 0L,
+                    preferences =
+                        PlaybackPreferences(
+                            showInfo = true,
+                        ),
+                ),
+            playerFor = playerFor,
+            releasePlayer =
+                releasePlayer,
+            store = store,
+            locale = locale,
+            onFullscreenStateChanged =
+                onFullscreenStateChanged,
+            onClose = {
+                playing = null
+            },
+        )
+        return
+    }
+
+    if (target != null) {
+        GenericDetailScreen(
+            provider = provider,
+            locale = locale,
+            target = target!!,
+            store = store,
+            index = index,
+            onPlay = {
+                playing = it
+            },
+            onOpen = {
+                target = it
+            },
+            onBack = {
+                target = null
+            },
+            onFullscreenStateChanged =
+                onFullscreenStateChanged,
+        )
+        return
+    }
 
     Column(
-        modifier = Modifier.fillMaxSize().background(Color(0xFF0D111B)).padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Color(0xFF0D111B),
+                )
+                .padding(24.dp),
+        verticalArrangement =
+            Arrangement.spacedBy(14.dp),
     ) {
         Text(
             strings["search"],
             color = Color.White,
-            fontWeight = FontWeight.Bold,
-            style = MaterialTheme.typography.headlineMedium,
+            fontWeight =
+                FontWeight.Bold,
+            style =
+                MaterialTheme
+                    .typography
+                    .headlineMedium,
         )
+
+        Row(
+            horizontalArrangement =
+                Arrangement.spacedBy(10.dp),
+        ) {
+            ActionButton(
+                text =
+                    strings["movies"],
+                selected =
+                    selectedType ==
+                        "movie",
+            ) {
+                selectedType = "movie"
+                onContentFocused()
+            }
+
+            ActionButton(
+                text =
+                    strings["series"],
+                selected =
+                    selectedType ==
+                        "series",
+            ) {
+                selectedType = "series"
+                onContentFocused()
+            }
+
+            ActionButton(
+                text = "Kanallar",
+                selected =
+                    selectedType ==
+                        "channel",
+            ) {
+                selectedType = "channel"
+                onContentFocused()
+            }
+        }
 
         OutlinedTextField(
             value = query,
-            onValueChange = { query = it },
-            label = { Text(strings["search_hint"]) },
-            modifier = Modifier.fillMaxWidth(),
+            onValueChange = {
+                query = it
+            },
+            label = {
+                Text(
+                    strings["search_hint"],
+                )
+            },
+            modifier =
+                Modifier.fillMaxWidth(),
             singleLine = true,
         )
 
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (movieResults.isNotEmpty()) {
-                item { Text(strings["movies"], color = Color(0xFF60A5FA), fontWeight = FontWeight.Bold) }
-                items(movieResults, key = { it.id }) {
-                    SimpleResultRow(it.name, listOfNotNull(it.year, it.genre).joinToString(" • "))
+        if (loading) {
+            CircularProgressIndicator()
+        }
+
+        LazyColumn(
+            modifier =
+                Modifier.fillMaxSize(),
+            verticalArrangement =
+                Arrangement.spacedBy(8.dp),
+        ) {
+            if (
+                selectedType ==
+                "channel"
+            ) {
+                items(
+                    channelResults,
+                    key = { it.id },
+                ) { channel ->
+                    SearchResultRow(
+                        title =
+                            channel.name,
+                        subtitle =
+                            "Canlı TV",
+                        artwork =
+                            channel.logo,
+                    ) {
+                        liveChannel =
+                            channel
+                    }
+                }
+            } else {
+                items(
+                    results,
+                    key = {
+                        "${it.kind}-${it.localId}"
+                    },
+                ) { item ->
+                    SearchResultRow(
+                        title =
+                            item.name,
+                        subtitle =
+                            if (
+                                item.kind ==
+                                "movie"
+                            ) {
+                                strings[
+                                    "movies"
+                                ]
+                            } else {
+                                strings[
+                                    "series"
+                                ]
+                            },
+                        artwork =
+                            item.artwork,
+                    ) {
+                        target =
+                            ContentTarget(
+                                kind =
+                                    item.kind,
+                                name =
+                                    item.name,
+                                poster =
+                                    item.artwork,
+                                local =
+                                    item,
+                            )
+                    }
                 }
             }
-            if (seriesResults.isNotEmpty()) {
-                item { Text(strings["series"], color = Color(0xFF60A5FA), fontWeight = FontWeight.Bold) }
-                items(seriesResults, key = { it.id }) {
-                    SimpleResultRow(it.name, listOfNotNull(it.year, it.genre).joinToString(" • "))
+
+            if (
+                !loading &&
+                query.trim().length >= 2 &&
+                (
+                    (
+                        selectedType ==
+                        "channel" &&
+                        channelResults
+                            .isEmpty()
+                    ) ||
+                    (
+                        selectedType !=
+                        "channel" &&
+                        results.isEmpty()
+                    )
+                )
+            ) {
+                item {
+                    Text(
+                        strings["empty"],
+                        color =
+                            Color(
+                                0xFF94A3B8,
+                            ),
+                    )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SearchResultRow(
+    title: String,
+    subtitle: String,
+    artwork: String?,
+    onClick: () -> Unit,
+) {
+    var focused by remember {
+        mutableStateOf(false)
+    }
+
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(
+                    if (focused) {
+                        Color(0xFF2563EB)
+                    } else {
+                        Color(0xFF151C28)
+                    },
+                    RoundedCornerShape(9.dp),
+                )
+                .onFocusChanged {
+                    focused =
+                        it.isFocused
+                }
+                .clickable(
+                    onClick = onClick,
+                )
+                .padding(10.dp),
+        verticalAlignment =
+            Alignment.CenterVertically,
+        horizontalArrangement =
+            Arrangement.spacedBy(12.dp),
+    ) {
+        TvPosterImage(
+            artwork,
+            modifier =
+                Modifier
+                    .width(54.dp)
+                    .height(78.dp),
+        )
+
+        Column {
+            Text(
+                title,
+                color = Color.White,
+                fontWeight =
+                    FontWeight.Bold,
+            )
+            Text(
+                subtitle,
+                color =
+                    Color(0xFFCBD5E1),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SearchLivePlayer(
+    channel: com.streamlivex.android.tv.data.NativeLiveChannel,
+    playerFor: (PlaybackRequest) -> ExoPlayer,
+    releasePlayer: (String) -> Unit,
+    onFullscreenStateChanged: (Boolean) -> Unit,
+    onClose: () -> Unit,
+) {
+    val sessionId =
+        "tv-search-live-${channel.id}"
+
+    val request =
+        remember(
+            channel.id,
+        ) {
+            PlaybackRequest(
+                sessionId = sessionId,
+                item =
+                    PlaybackItem(
+                        name =
+                            channel.name,
+                        url =
+                            channel.streamUrl,
+                        kind =
+                            "live",
+                    ),
+                preferences =
+                    PlaybackPreferences(
+                        showInfo = false,
+                    ),
+            )
+        }
+
+    val player =
+        remember(sessionId) {
+            playerFor(request)
+        }
+
+    DisposableEffect(
+        sessionId,
+    ) {
+        onFullscreenStateChanged(
+            true,
+        )
+        onDispose {
+            onFullscreenStateChanged(
+                false,
+            )
+            releasePlayer(
+                sessionId,
+            )
+        }
+    }
+
+    LaunchedEffect(
+        channel.streamUrl,
+    ) {
+        player.setMediaItem(
+            MediaItem.fromUri(
+                channel.streamUrl,
+            ),
+        )
+        player.prepare()
+        player.playWhenReady = true
+    }
+
+    BackHandler {
+        onClose()
+    }
+
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Color.Black,
+                ),
+    ) {
+        AndroidView(
+            modifier =
+                Modifier.fillMaxSize(),
+            factory = { viewContext ->
+                PlayerView(
+                    viewContext,
+                ).apply {
+                    layoutParams =
+                        ViewGroup
+                            .LayoutParams(
+                                ViewGroup
+                                    .LayoutParams
+                                    .MATCH_PARENT,
+                                ViewGroup
+                                    .LayoutParams
+                                    .MATCH_PARENT,
+                            )
+                    this.player =
+                        player
+                    useController =
+                        false
+                    keepScreenOn =
+                        true
+                }
+            },
+            update = {
+                it.player = player
+                it.useController =
+                    false
+            },
+        )
+
+        ActionButton(
+            text =
+                "← ${channel.name}",
+            modifier =
+                Modifier
+                    .align(
+                        Alignment.TopStart,
+                    )
+                    .padding(20.dp),
+        ) {
+            onClose()
         }
     }
 }
