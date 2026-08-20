@@ -52,7 +52,7 @@ class TvContentStore(context: Context) {
 
         val finished =
             item.durationMs > 0L &&
-                item.positionMs >= (item.durationMs * 0.92).toLong()
+                item.positionMs >= (item.durationMs * 0.95).toLong()
 
         if (!finished && item.positionMs >= 15_000L) {
             rows.add(0, item)
@@ -62,6 +62,61 @@ class TvContentStore(context: Context) {
 
     fun progressFor(id: String): TvSavedItem? =
         readArray("continue").firstOrNull { it.id == id }
+
+    fun isWatched(id: String): Boolean =
+        prefs.getStringSet("watched", emptySet())
+            .orEmpty()
+            .contains(id)
+
+    fun setWatched(
+        id: String,
+        watched: Boolean,
+    ) {
+        val rows =
+            prefs.getStringSet(
+                "watched",
+                emptySet(),
+            ).orEmpty().toMutableSet()
+
+        if (watched) {
+            rows.add(id)
+        } else {
+            rows.remove(id)
+        }
+
+        prefs.edit()
+            .putStringSet(
+                "watched",
+                rows,
+            )
+            .apply()
+    }
+
+    fun toggleWatched(id: String): Boolean {
+        val next = !isWatched(id)
+        setWatched(id, next)
+        return next
+    }
+
+    fun removeFavorite(id: String) {
+        val rows =
+            favorites()
+                .filterNot { it.id == id }
+                .take(100)
+
+        writeArray(
+            "favorites",
+            rows,
+            synchronous = true,
+        )
+    }
+
+    fun clearViewingHistory() {
+        prefs.edit()
+            .remove("continue")
+            .remove("watched")
+            .apply()
+    }
 
     fun clear() {
         prefs.edit().clear().apply()
