@@ -25,6 +25,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -63,6 +65,23 @@ fun TvProfileSelectScreen(
             mutableStateOf("")
         }
 
+    var managing by
+        remember {
+            mutableStateOf(false)
+        }
+
+    if (managing) {
+        TvProfileManagerScreen(
+            onBack = {
+                profiles =
+                    store.all()
+                managing =
+                    false
+            },
+        )
+        return
+    }
+
     Box(
         modifier =
             Modifier
@@ -71,10 +90,12 @@ fun TvProfileSelectScreen(
                     Color(0xFF080B12),
                 )
                 .padding(42.dp),
+        contentAlignment =
+            Alignment.Center,
     ) {
         Column(
-            modifier =
-                Modifier.fillMaxSize(),
+            horizontalAlignment =
+                Alignment.CenterHorizontally,
             verticalArrangement =
                 Arrangement.spacedBy(
                     24.dp,
@@ -96,6 +117,8 @@ fun TvProfileSelectScreen(
                     Arrangement.spacedBy(
                         18.dp,
                     ),
+                verticalAlignment =
+                    Alignment.CenterVertically,
             ) {
                 profiles.forEach {
                     profile ->
@@ -118,14 +141,35 @@ fun TvProfileSelectScreen(
                         }
                     }
                 }
+
+                AddProfileCard {
+                    managing = true
+                }
             }
 
-            onManage?.let {
+            Row(
+                horizontalArrangement =
+                    Arrangement.spacedBy(
+                        12.dp,
+                    ),
+            ) {
                 ProfileButton(
                     text =
                         "Profilleri Yönet",
-                    onClick = it,
-                )
+                ) {
+                    managing = true
+                }
+
+                onManage?.let {
+                    externalManage ->
+
+                    ProfileButton(
+                        text =
+                            "Ayarlar",
+                        onClick =
+                            externalManage,
+                    )
+                }
             }
         }
 
@@ -280,6 +324,28 @@ fun TvProfileManagerScreen(
         remember {
             mutableStateOf(false)
         }
+    var editing by
+        remember {
+            mutableStateOf<TvProfile?>(
+                null,
+            )
+        }
+
+    editing?.let {
+        profile ->
+
+        TvEditProfileScreen(
+            profile = profile,
+            onBack = {
+                editing = null
+            },
+            onSaved = {
+                rows = store.all()
+                editing = null
+            },
+        )
+        return
+    }
 
     if (adding) {
         TvCreateProfileScreen(
@@ -416,6 +482,13 @@ fun TvProfileManagerScreen(
                     )
                 }
 
+                ProfileButton(
+                    "Düzenle",
+                ) {
+                    editing =
+                        profile
+                }
+
                 if (rows.size > 1) {
                     ProfileButton(
                         "Sil",
@@ -435,6 +508,308 @@ fun TvProfileManagerScreen(
                 "＋ Yeni Profil",
             ) {
                 adding = true
+            }
+        }
+    }
+}
+
+@Composable
+private fun TvEditProfileScreen(
+    profile: TvProfile,
+    onBack: () -> Unit,
+    onSaved: (TvProfile) -> Unit,
+) {
+    BackHandler(
+        onBack = onBack,
+    )
+
+    val context =
+        LocalContext.current
+    val store =
+        remember {
+            TvProfileStore(
+                context,
+            )
+        }
+
+    var name by
+        remember(profile.id) {
+            mutableStateOf(
+                profile.name,
+            )
+        }
+    var avatar by
+        remember(profile.id) {
+            mutableStateOf(
+                profile.avatar,
+            )
+        }
+    var kids by
+        remember(profile.id) {
+            mutableStateOf(
+                profile.isKids,
+            )
+        }
+    var pinMode by
+        remember(profile.id) {
+            mutableStateOf(
+                if (
+                    profile.pinHash !=
+                    null
+                ) {
+                    "keep"
+                } else {
+                    "off"
+                },
+            )
+        }
+    var pin by
+        remember(profile.id) {
+            mutableStateOf("")
+        }
+    var error by
+        remember(profile.id) {
+            mutableStateOf("")
+        }
+
+    Column(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Color(
+                        0xFF0D111B,
+                    ),
+                )
+                .padding(32.dp),
+        verticalArrangement =
+            Arrangement.spacedBy(
+                14.dp,
+            ),
+    ) {
+        Row(
+            horizontalArrangement =
+                Arrangement.spacedBy(
+                    12.dp,
+                ),
+            verticalAlignment =
+                Alignment.CenterVertically,
+        ) {
+            ProfileButton(
+                "← Geri",
+                onClick = onBack,
+            )
+
+            Text(
+                "Profili Düzenle",
+                color =
+                    Color.White,
+                fontWeight =
+                    FontWeight.Bold,
+                style =
+                    MaterialTheme
+                        .typography
+                        .headlineMedium,
+            )
+        }
+
+        OutlinedTextField(
+            value = name,
+            onValueChange = {
+                name = it
+                error = ""
+            },
+            label = {
+                Text("Profil adı")
+            },
+            modifier =
+                Modifier.width(
+                    430.dp,
+                ),
+            singleLine = true,
+        )
+
+        Text(
+            "Avatar",
+            color =
+                Color.White,
+            fontWeight =
+                FontWeight.Bold,
+        )
+
+        Row(
+            horizontalArrangement =
+                Arrangement.spacedBy(
+                    10.dp,
+                ),
+        ) {
+            listOf(
+                "🙂",
+                "😎",
+                "👩",
+                "👨",
+                "🧒",
+                "🦊",
+            ).forEach {
+                item ->
+
+                ProfileButton(
+                    text = item,
+                    selected =
+                        avatar == item,
+                ) {
+                    avatar = item
+                }
+            }
+        }
+
+        ProfileButton(
+            text =
+                if (kids) {
+                    "Çocuk Profili: Açık"
+                } else {
+                    "Çocuk Profili: Kapalı"
+                },
+            selected =
+                kids,
+        ) {
+            kids = !kids
+        }
+
+        Row(
+            horizontalArrangement =
+                Arrangement.spacedBy(
+                    10.dp,
+                ),
+        ) {
+            ProfileButton(
+                text =
+                    "PIN'i Koru",
+                selected =
+                    pinMode ==
+                        "keep",
+            ) {
+                pinMode =
+                    "keep"
+                pin = ""
+            }
+
+            ProfileButton(
+                text =
+                    "PIN'i Kaldır",
+                selected =
+                    pinMode ==
+                        "off",
+            ) {
+                pinMode =
+                    "off"
+                pin = ""
+            }
+
+            ProfileButton(
+                text =
+                    "Yeni PIN",
+                selected =
+                    pinMode ==
+                        "new",
+            ) {
+                pinMode =
+                    "new"
+            }
+        }
+
+        if (
+            pinMode ==
+            "new"
+        ) {
+            OutlinedTextField(
+                value = pin,
+                onValueChange = {
+                    pin =
+                        it.filter {
+                            ch ->
+                            ch.isDigit()
+                        }
+                            .take(4)
+                    error = ""
+                },
+                label = {
+                    Text(
+                        "Yeni 4 haneli PIN",
+                    )
+                },
+                visualTransformation =
+                    PasswordVisualTransformation(),
+                modifier =
+                    Modifier.width(
+                        430.dp,
+                    ),
+                singleLine = true,
+            )
+        }
+
+        if (
+            error.isNotBlank()
+        ) {
+            Text(
+                error,
+                color =
+                    Color(
+                        0xFFF87171,
+                    ),
+            )
+        }
+
+        ProfileButton(
+            "Kaydet",
+            selected =
+                name.isNotBlank(),
+        ) {
+            if (
+                name.isBlank()
+            ) {
+                error =
+                    "Profil adı gerekli."
+                return@ProfileButton
+            }
+
+            if (
+                pinMode ==
+                    "new" &&
+                pin.length != 4
+            ) {
+                error =
+                    "PIN 4 haneli olmalı."
+                return@ProfileButton
+            }
+
+            val updated =
+                store.update(
+                    id =
+                        profile.id,
+                    name = name,
+                    avatar = avatar,
+                    isKids = kids,
+                    pin =
+                        if (
+                            pinMode ==
+                            "new"
+                        ) {
+                            pin
+                        } else {
+                            null
+                        },
+                    keepExistingPin =
+                        pinMode ==
+                            "keep",
+                )
+
+            if (
+                updated != null
+            ) {
+                onSaved(
+                    updated,
+                )
             }
         }
     }
@@ -755,6 +1130,68 @@ private fun ProfileCard(
                     ),
             )
         }
+    }
+}
+
+@Composable
+private fun AddProfileCard(
+    onClick: () -> Unit,
+) {
+    var focused by
+        remember {
+            mutableStateOf(false)
+        }
+
+    Column(
+        modifier =
+            Modifier
+                .width(180.dp)
+                .background(
+                    if (focused) {
+                        Color(
+                            0xFF2563EB,
+                        )
+                    } else {
+                        Color(
+                            0xFF151C28,
+                        )
+                    },
+                    RoundedCornerShape(
+                        16.dp,
+                    ),
+                )
+                .onFocusChanged {
+                    focused =
+                        it.isFocused
+                }
+                .clickable(
+                    onClick =
+                        onClick,
+                )
+                .padding(20.dp),
+        horizontalAlignment =
+            Alignment.CenterHorizontally,
+        verticalArrangement =
+            Arrangement.spacedBy(
+                10.dp,
+            ),
+    ) {
+        Text(
+            "＋",
+            color =
+                Color.White,
+            style =
+                MaterialTheme
+                    .typography
+                    .displayMedium,
+        )
+        Text(
+            "Profil Ekle",
+            color =
+                Color.White,
+            fontWeight =
+                FontWeight.Bold,
+        )
     }
 }
 
