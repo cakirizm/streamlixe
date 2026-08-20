@@ -1,6 +1,7 @@
 package com.streamlivex.android.tv.data
 
 import android.content.Context
+import com.streamlivex.android.tv.profile.TvActiveScope
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -16,11 +17,102 @@ data class TvSavedItem(
 )
 
 class TvContentStore(context: Context) {
+    private val appContext =
+        context.applicationContext
+    private val scopeKey =
+        TvActiveScope.storageKey()
     private val prefs =
-        context.getSharedPreferences(
-            "streamlivex_tv_content_v3",
+        appContext.getSharedPreferences(
+            "streamlivex_tv_content_v4_$scopeKey",
             Context.MODE_PRIVATE,
         )
+
+    init {
+        migrateLegacyOnce()
+    }
+
+    private fun migrateLegacyOnce() {
+        val migrationPrefs =
+            appContext.getSharedPreferences(
+                "streamlivex_tv_content_migration",
+                Context.MODE_PRIVATE,
+            )
+
+        if (
+            migrationPrefs.getBoolean(
+                "legacy_v3_done",
+                false,
+            )
+        ) {
+            return
+        }
+
+        val legacy =
+            appContext.getSharedPreferences(
+                "streamlivex_tv_content_v3",
+                Context.MODE_PRIVATE,
+            )
+
+        val all =
+            legacy.all
+
+        if (all.isNotEmpty()) {
+            val editor =
+                prefs.edit()
+
+            all.forEach {
+                (key, value) ->
+
+                when (value) {
+                    is String ->
+                        editor.putString(
+                            key,
+                            value,
+                        )
+
+                    is Boolean ->
+                        editor.putBoolean(
+                            key,
+                            value,
+                        )
+
+                    is Int ->
+                        editor.putInt(
+                            key,
+                            value,
+                        )
+
+                    is Long ->
+                        editor.putLong(
+                            key,
+                            value,
+                        )
+
+                    is Float ->
+                        editor.putFloat(
+                            key,
+                            value,
+                        )
+
+                    is Set<*> ->
+                        editor.putStringSet(
+                            key,
+                            value
+                                .filterIsInstance<String>()
+                                .toSet(),
+                        )
+                }
+            }
+            editor.apply()
+        }
+
+        migrationPrefs.edit()
+            .putBoolean(
+                "legacy_v3_done",
+                true,
+            )
+            .apply()
+    }
 
     fun favorites(): List<TvSavedItem> = readArray("favorites")
 
