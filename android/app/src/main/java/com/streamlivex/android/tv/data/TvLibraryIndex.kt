@@ -13,7 +13,7 @@ class TvLibraryIndex(
     context.applicationContext,
     "streamlivex_tv_library_v3.db",
     null,
-    3,
+    4,
 ) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -60,6 +60,17 @@ class TvLibraryIndex(
             )
             """.trimIndent(),
         )
+        db.execSQL(
+            """
+            CREATE TABLE new_items (
+                provider_key TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                local_id TEXT NOT NULL,
+                detected_at INTEGER NOT NULL,
+                PRIMARY KEY(provider_key, kind, local_id)
+            )
+            """.trimIndent(),
+        )
     }
 
     override fun onUpgrade(
@@ -67,10 +78,19 @@ class TvLibraryIndex(
         oldVersion: Int,
         newVersion: Int,
     ) {
-        db.execSQL("DROP TABLE IF EXISTS media")
-        db.execSQL("DROP TABLE IF EXISTS library_meta")
-        db.execSQL("DROP TABLE IF EXISTS categories")
-        onCreate(db)
+        if (oldVersion < 4) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS new_items (
+                    provider_key TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    local_id TEXT NOT NULL,
+                    detected_at INTEGER NOT NULL,
+                    PRIMARY KEY(provider_key, kind, local_id)
+                )
+                """.trimIndent(),
+            )
+        }
     }
 
     fun providerKey(provider: TvProviderConfig): String =
@@ -104,6 +124,30 @@ class TvLibraryIndex(
         }
     }
 
+    fun markNotReady(
+        provider: TvProviderConfig,
+    ) {
+        val key =
+            providerKey(provider)
+        val db =
+            writableDatabase
+
+        val values =
+            ContentValues().apply {
+                put(
+                    "ready",
+                    0,
+                )
+            }
+
+        db.update(
+            "library_meta",
+            values,
+            "provider_key=?",
+            arrayOf(key),
+        )
+    }
+
     fun clearProvider(provider: TvProviderConfig) {
         val db = writableDatabase
         db.beginTransaction()
@@ -112,6 +156,7 @@ class TvLibraryIndex(
             db.delete("media", "provider_key=?", arrayOf(key))
             db.delete("library_meta", "provider_key=?", arrayOf(key))
             db.delete("categories", "provider_key=?", arrayOf(key))
+            db.delete("new_items", "provider_key=?", arrayOf(key))
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
@@ -134,6 +179,31 @@ class TvLibraryIndex(
 
         db.beginTransaction()
         try {
+            db.execSQL("DROP TABLE IF EXISTS temp_previous_media")
+            db.execSQL(
+                """
+                CREATE TEMP TABLE temp_previous_media AS
+                SELECT kind, local_id
+                FROM media
+                WHERE provider_key=?
+                """.trimIndent(),
+                arrayOf(key),
+            )
+
+            val previousCountCursor =
+                db.rawQuery(
+                    "SELECT COUNT(*) FROM temp_previous_media",
+                    emptyArray(),
+                )
+            val previousCount =
+                previousCountCursor.use {
+                    if (it.moveToFirst()) {
+                        it.getInt(0)
+                    } else {
+                        0
+                    }
+                }
+
             db.delete("media", "provider_key=?", arrayOf(key))
             db.delete("library_meta", "provider_key=?", arrayOf(key))
 
@@ -155,6 +225,33 @@ class TvLibraryIndex(
                 }
             }.getOrThrow()
 
+            db.delete(
+                "new_items",
+                "provider_key=?",
+                arrayOf(key),
+            )
+
+            if (previousCount > 0) {
+                db.execSQL(
+                    """
+                    INSERT OR REPLACE INTO new_items(provider_key, kind, local_id, detected_at)
+                    SELECT m.provider_key, m.kind, m.local_id, ?
+                    FROM media m
+                    LEFT JOIN temp_previous_media p
+                      ON p.kind=m.kind AND p.local_id=m.local_id
+                    WHERE m.provider_key=? AND p.local_id IS NULL
+                    """.trimIndent(),
+                    arrayOf(
+                        System.currentTimeMillis(),
+                        key,
+                    ),
+                )
+            }
+
+            db.execSQL(
+                "DROP TABLE IF EXISTS temp_previous_media",
+            )
+
             val meta = ContentValues().apply {
                 put("provider_key", key)
                 put("ready", 1)
@@ -175,6 +272,129 @@ class TvLibraryIndex(
 
         onProgress("done", processed)
         processed
+    }
+
+    fun updatedAt(
+        provider: TvProviderConfig,
+    ): Long {
+        val cursor =
+            readableDatabase.rawQuery(
+                "SELECT updated_at FROM library_meta WHERE provider_key=? LIMIT 1",
+                arrayOf(providerKey(provider)),
+            )
+        cursor.use {
+            return if (it.moveToFirst()) {
+                it.getLong(0)
+            } else {
+                0L
+            }
+        }
+    }
+
+    fun needsRefresh(
+        provider: TvProviderConfig,
+        ttlHours: Int = 24,
+    ): Boolean {
+        if (!isReady(provider)) {
+            return true
+        }
+
+        val updated =
+            updatedAt(provider)
+        if (updated <= 0L) {
+            return true
+        }
+
+        val ttlMs =
+            ttlHours
+                .coerceAtLeast(1)
+                .toLong() *
+                60L *
+                60L *
+                1000L
+
+        return System.currentTimeMillis() -
+            updated >= ttlMs
+    }
+
+    fun newItems(
+        provider: TvProviderConfig,
+        kind: String? = null,
+        limit: Int = 24,
+    ): List<TvIndexedMedia> {
+        val key =
+            providerKey(provider)
+        val sql =
+            if (kind.isNullOrBlank()) {
+                """
+                SELECT m.kind,m.local_id,m.name,m.stream_url,m.artwork,m.series_id,m.category_id
+                FROM new_items n
+                JOIN media m
+                  ON m.provider_key=n.provider_key
+                 AND m.kind=n.kind
+                 AND m.local_id=n.local_id
+                WHERE n.provider_key=?
+                ORDER BY n.detected_at DESC
+                LIMIT ?
+                """.trimIndent()
+            } else {
+                """
+                SELECT m.kind,m.local_id,m.name,m.stream_url,m.artwork,m.series_id,m.category_id
+                FROM new_items n
+                JOIN media m
+                  ON m.provider_key=n.provider_key
+                 AND m.kind=n.kind
+                 AND m.local_id=n.local_id
+                WHERE n.provider_key=? AND n.kind=?
+                ORDER BY n.detected_at DESC
+                LIMIT ?
+                """.trimIndent()
+            }
+
+        val args =
+            if (kind.isNullOrBlank()) {
+                arrayOf(
+                    key,
+                    limit.toString(),
+                )
+            } else {
+                arrayOf(
+                    key,
+                    kind,
+                    limit.toString(),
+                )
+            }
+
+        val cursor =
+            readableDatabase.rawQuery(
+                sql,
+                args,
+            )
+
+        return buildList {
+            cursor.use {
+                while (it.moveToNext()) {
+                    add(
+                        TvIndexedMedia(
+                            kind =
+                                it.getString(0),
+                            localId =
+                                it.getString(1),
+                            name =
+                                it.getString(2),
+                            streamUrl =
+                                it.getString(3),
+                            artwork =
+                                it.getString(4),
+                            seriesId =
+                                it.getString(5),
+                            categoryId =
+                                it.getString(6),
+                        ),
+                    )
+                }
+            }
+        }
     }
 
     fun put(
