@@ -159,7 +159,7 @@ class XtreamClient {
     fun scanVod(
         provider: TvProviderConfig,
         onItem: (NativeVodItem) -> Unit,
-    ) {
+    ): Result<Unit> = runCatching {
         val p =
             normalized(provider)
 
@@ -293,7 +293,7 @@ class XtreamClient {
     fun scanSeries(
         provider: TvProviderConfig,
         onItem: (NativeSeriesItem) -> Unit,
-    ) {
+    ): Result<Unit> = runCatching {
         val p =
             normalized(provider)
 
