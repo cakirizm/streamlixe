@@ -10,6 +10,7 @@ import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -2204,31 +2205,15 @@ private fun EpisodeCard(
     onToggleWatched: () -> Unit,
     onClick: () -> Unit,
 ) {
-    var focused by
-        remember {
-            mutableStateOf(false)
-        }
-
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .background(
-                    if (focused) {
-                        Color(0xFF1D4ED8)
-                    } else {
-                        Color(0xFF151C28)
-                    },
+                    Color(0xFF151C28),
                     RoundedCornerShape(
                         10.dp,
                     ),
-                )
-                .onFocusChanged {
-                    focused =
-                        it.isFocused
-                }
-                .clickable(
-                    onClick = onClick,
                 )
                 .padding(10.dp),
         horizontalArrangement =
@@ -3925,36 +3910,95 @@ private fun MediaCard(
     onFocus: () -> Unit = {},
     onClick: () -> Unit,
 ) {
-    var focused by remember(title) { mutableStateOf(false) }
+    var focused by
+        remember(title) {
+            mutableStateOf(false)
+        }
 
     Column(
-        modifier = modifier
-            .background(
-                if (focused) Color(0xFF2563EB) else Color(0xFF151C28),
-                RoundedCornerShape(10.dp),
-            )
-            .onFocusChanged {
-                focused = it.isFocused
-                if (it.isFocused) onFocus()
-            }
-            .clickable(onClick = onClick)
-            .padding(7.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier =
+            modifier
+                .background(
+                    if (focused) {
+                        Color(0xFF2563EB)
+                    } else {
+                        Color(0xFF151C28)
+                    },
+                    RoundedCornerShape(10.dp),
+                )
+                .onFocusChanged { state ->
+                    focused =
+                        state.isFocused
+                    if (
+                        state.isFocused
+                    ) {
+                        onFocus()
+                    }
+                }
+                .onKeyEvent { event ->
+                    if (
+                        event.type ==
+                        KeyEventType.KeyUp &&
+                        (
+                            event.key ==
+                            Key.DirectionCenter ||
+                            event.key ==
+                            Key.Enter ||
+                            event.key ==
+                            Key.NumPadEnter
+                        )
+                    ) {
+                        onClick()
+                        true
+                    } else {
+                        false
+                    }
+                }
+                .focusable()
+                .padding(7.dp),
+        verticalArrangement =
+            Arrangement.spacedBy(
+                6.dp,
+            ),
     ) {
-        TvPosterImage(artwork, modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f))
+        TvPosterImage(
+            artwork,
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(
+                        2f / 3f,
+                    ),
+        )
+
         Text(
             title,
-            color = Color.White,
-            fontWeight = FontWeight.Bold,
+            color =
+                Color.White,
+            fontWeight =
+                FontWeight.Bold,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            overflow =
+                TextOverflow.Ellipsis,
         )
+
         Text(
             subtitle,
-            color = if (focused) Color.White else Color(0xFF94A3B8),
+            color =
+                if (focused) {
+                    Color.White
+                } else {
+                    Color(
+                        0xFF94A3B8,
+                    )
+                },
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.labelSmall,
+            overflow =
+                TextOverflow.Ellipsis,
+            style =
+                MaterialTheme
+                    .typography
+                    .labelSmall,
         )
     }
 }
@@ -3966,32 +4010,85 @@ private fun FocusRow(
     onFocus: () -> Unit,
     onClick: () -> Unit,
 ) {
-    var focused by remember { mutableStateOf(false) }
+    var focused by
+        remember(title) {
+            mutableStateOf(false)
+        }
 
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(
-                when {
-                    focused -> Color(0xFF2563EB)
-                    selected -> Color(0xFF172554)
-                    else -> Color(0xFF151C28)
-                },
-                RoundedCornerShape(8.dp),
-            )
-            .onFocusChanged {
-                focused = it.isFocused
-                if (it.isFocused) onFocus()
-            }
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 11.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(
+                    when {
+                        focused ->
+                            Color(
+                                0xFF2563EB,
+                            )
+
+                        selected ->
+                            Color(
+                                0xFF172554,
+                            )
+
+                        else ->
+                            Color(
+                                0xFF151C28,
+                            )
+                    },
+                    RoundedCornerShape(
+                        8.dp,
+                    ),
+                )
+                .onFocusChanged { state ->
+                    focused =
+                        state.isFocused
+                    if (
+                        state.isFocused
+                    ) {
+                        onFocus()
+                    }
+                }
+                .onKeyEvent { event ->
+                    if (
+                        event.type ==
+                        KeyEventType.KeyUp &&
+                        (
+                            event.key ==
+                            Key.DirectionCenter ||
+                            event.key ==
+                            Key.Enter ||
+                            event.key ==
+                            Key.NumPadEnter
+                        )
+                    ) {
+                        onClick()
+                        true
+                    } else {
+                        false
+                    }
+                }
+                .focusable()
+                .padding(
+                    horizontal =
+                        12.dp,
+                    vertical =
+                        11.dp,
+                ),
     ) {
         Text(
             title,
-            color = Color.White,
-            fontWeight = FontWeight.SemiBold,
+            color =
+                Color.White,
+            fontWeight =
+                if (selected) {
+                    FontWeight.Bold
+                } else {
+                    FontWeight.SemiBold
+                },
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            overflow =
+                TextOverflow.Ellipsis,
         )
     }
 }
@@ -4004,55 +4101,64 @@ private fun ActionButton(
     onClick: () -> Unit,
 ) {
     var focused by
-        remember {
-            mutableStateOf(
-                false,
-            )
+        remember(text) {
+            mutableStateOf(false)
         }
 
-    androidx.compose.material3.Button(
-        onClick =
-            onClick,
+    Box(
         modifier =
             modifier
-                .onFocusChanged {
+                .background(
+                    when {
+                        focused ->
+                            Color(
+                                0xFF2563EB,
+                            )
+
+                        selected ->
+                            Color(
+                                0xFF1D4ED8,
+                            )
+
+                        else ->
+                            Color(
+                                0xFF1E293B,
+                            )
+                    },
+                    RoundedCornerShape(
+                        9.dp,
+                    ),
+                )
+                .onFocusChanged { state ->
                     focused =
-                        it.isFocused
-                },
-        shape =
-            RoundedCornerShape(
-                9.dp,
-            ),
-        colors =
-            androidx.compose.material3.ButtonDefaults
-                .buttonColors(
-                    containerColor =
-                        when {
-                            focused ->
-                                Color(
-                                    0xFF2563EB,
-                                )
-
-                            selected ->
-                                Color(
-                                    0xFF1D4ED8,
-                                )
-
-                            else ->
-                                Color(
-                                    0xFF1E293B,
-                                )
-                        },
-                    contentColor =
-                        Color.White,
+                        state.isFocused
+                }
+                .onKeyEvent { event ->
+                    if (
+                        event.type ==
+                        KeyEventType.KeyUp &&
+                        (
+                            event.key ==
+                            Key.DirectionCenter ||
+                            event.key ==
+                            Key.Enter ||
+                            event.key ==
+                            Key.NumPadEnter
+                        )
+                    ) {
+                        onClick()
+                        true
+                    } else {
+                        false
+                    }
+                }
+                .focusable()
+                .padding(
+                    horizontal =
+                        16.dp,
+                    vertical =
+                        11.dp,
                 ),
-        contentPadding =
-            androidx.compose.foundation.layout.PaddingValues(
-                horizontal =
-                    16.dp,
-                vertical =
-                    11.dp,
-            ),
     ) {
         Text(
             text =
