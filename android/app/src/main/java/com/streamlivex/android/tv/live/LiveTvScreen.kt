@@ -1,9 +1,11 @@
 package com.streamlivex.android.tv.live
 
 import android.os.Handler
+import android.graphics.BitmapFactory
 import android.os.Looper
 import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -26,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -36,6 +40,8 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -43,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -52,6 +59,7 @@ import com.streamlivex.android.PlaybackPreferences
 import com.streamlivex.android.PlaybackRequest
 import com.streamlivex.android.tv.data.NativeLiveCategory
 import com.streamlivex.android.tv.data.NativeLiveChannel
+import com.streamlivex.android.tv.data.NativeLiveEpgProgram
 import com.streamlivex.android.tv.data.TvLiveLibraryCache
 import com.streamlivex.android.tv.data.TvLiveProfileStore
 import com.streamlivex.android.tv.data.TvProviderConfig
@@ -61,7 +69,117 @@ import com.streamlivex.android.tv.profile.TvActiveScope
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.net.URL
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+
+@Composable
+private fun ChannelLogo(
+    url: String?,
+    modifier: Modifier = Modifier,
+) {
+    var bitmap by remember(url) {
+        mutableStateOf<android.graphics.Bitmap?>(null)
+    }
+
+    LaunchedEffect(url) {
+        val target =
+            url?.takeIf { it.isNotBlank() }
+                ?: return@LaunchedEffect
+
+        bitmap =
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    URL(target)
+                        .openStream()
+                        .use {
+                            BitmapFactory.decodeStream(it)
+                        }
+                }.getOrNull()
+            }
+    }
+
+    Box(
+        modifier =
+            modifier.background(
+                Color(0xFF111827),
+                RoundedCornerShape(8.dp),
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        bitmap?.let { logo ->
+            Image(
+                bitmap = logo.asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(3.dp),
+                contentScale = ContentScale.Fit,
+            )
+        } ?: Text(
+            text = "TV",
+            color = Color(0xFF64748B),
+            style = MaterialTheme.typography.labelSmall,
+        )
+    }
+}
+
+private fun resolutionLabel(
+    width: Int,
+    height: Int,
+): String =
+    when {
+        maxOf(width, height) >= 3840 ||
+            minOf(width, height) >= 2160 -> "4K"
+
+        maxOf(width, height) >= 1920 ||
+            minOf(width, height) >= 1080 -> "FHD"
+
+        maxOf(width, height) >= 1280 ||
+            minOf(width, height) >= 720 -> "HD"
+
+        width > 0 && height > 0 -> "SD"
+        else -> "—"
+    }
+
+private fun formatEpgTime(seconds: Long): String =
+    SimpleDateFormat(
+        "HH:mm",
+        Locale.getDefault(),
+    ).format(
+        Date(seconds * 1000L),
+    )
+
+private fun currentEpg(
+    rows: List<NativeLiveEpgProgram>,
+): NativeLiveEpgProgram? {
+    val now =
+        System.currentTimeMillis() / 1000L
+
+    return rows.firstOrNull {
+        it.isCurrent(now)
+    }
+}
+
+private fun epgProgress(
+    row: NativeLiveEpgProgram?,
+): Float {
+    row ?: return 0f
+
+    val now =
+        System.currentTimeMillis() / 1000L
+    val duration =
+        row.stopTimestamp -
+            row.startTimestamp
+
+    if (duration <= 0L) return 0f
+
+    return (
+        (now - row.startTimestamp).toFloat() /
+            duration.toFloat()
+    ).coerceIn(0f, 1f)
+}
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -129,6 +247,12 @@ fun LiveTvScreen(
     }
     var fullscreen by remember { mutableStateOf(false) }
     var channelOverlayVisible by remember { mutableStateOf(false) }
+    var channelOverlayNonce by remember { mutableIntStateOf(0) }
+    var epgRows by remember {
+        mutableStateOf<List<NativeLiveEpgProgram>>(emptyList())
+    }
+    var epgLoading by remember { mutableStateOf(false) }
+    var qualityLabel by remember { mutableStateOf("—") }
 
     val categoryReturnFocusRequester = remember { FocusRequester() }
     val channelReturnFocusRequester = remember { FocusRequester() }
@@ -253,6 +377,53 @@ fun LiveTvScreen(
     val playbackChannel =
         currentLibrary.channels.firstOrNull { it.id == playbackChannelId }
 
+    LaunchedEffect(
+        selectedChannel?.streamId,
+        provider.server,
+        provider.username,
+    ) {
+        val channel =
+            selectedChannel
+
+        epgRows =
+            emptyList()
+
+        if (channel == null) {
+            epgLoading =
+                false
+            return@LaunchedEffect
+        }
+
+        epgLoading =
+            true
+
+        // Kanal listesinde hızlı gezinirken sağlayıcıya her satır için istek atma.
+        delay(180)
+
+        Thread {
+            val rows =
+                client.loadShortEpg(
+                    provider = provider,
+                    streamId = channel.streamId,
+                    limit = 6,
+                ).getOrDefault(
+                    emptyList(),
+                )
+
+            Handler(Looper.getMainLooper()).post {
+                if (
+                    selectedChannelId ==
+                    channel.id
+                ) {
+                    epgRows =
+                        rows
+                    epgLoading =
+                        false
+                }
+            }
+        }.start()
+    }
+
     var livePlayer by remember(sessionId) {
         mutableStateOf<ExoPlayer?>(null)
     }
@@ -310,6 +481,54 @@ fun LiveTvScreen(
         }
     }
 
+    DisposableEffect(livePlayer) {
+        val player =
+            livePlayer
+
+        if (player == null) {
+            qualityLabel =
+                "—"
+            onDispose { }
+        } else {
+            fun updateQuality(
+                width: Int,
+                height: Int,
+            ) {
+                qualityLabel =
+                    resolutionLabel(
+                        width,
+                        height,
+                    )
+            }
+
+            val initialSize =
+                player.videoSize
+
+            updateQuality(
+                initialSize.width,
+                initialSize.height,
+            )
+
+            val listener =
+                object : Player.Listener {
+                    override fun onVideoSizeChanged(
+                        videoSize: VideoSize,
+                    ) {
+                        updateQuality(
+                            videoSize.width,
+                            videoSize.height,
+                        )
+                    }
+                }
+
+            player.addListener(listener)
+
+            onDispose {
+                player.removeListener(listener)
+            }
+        }
+    }
+
     // Fullscreen'den çıkınca aynı kanal satırına odak dönsün.
     LaunchedEffect(fullscreen) {
         if (!fullscreen && selectedChannelId != null) {
@@ -328,28 +547,51 @@ fun LiveTvScreen(
         if (action != KeyEvent.ACTION_DOWN) return@LaunchedEffect
 
         when (keyCode) {
-            KeyEvent.KEYCODE_DPAD_UP -> moveChannel(-1)
-            KeyEvent.KEYCODE_DPAD_DOWN -> moveChannel(1)
+            KeyEvent.KEYCODE_DPAD_UP -> {
+                moveChannel(-1)
+                channelOverlayVisible = true
+                channelOverlayNonce += 1
+            }
 
-            // Canlı TV'de ileri/geri ve merkez tuş player kontrolü yapmaz.
-            KeyEvent.KEYCODE_DPAD_LEFT,
-            KeyEvent.KEYCODE_DPAD_RIGHT,
+            KeyEvent.KEYCODE_DPAD_DOWN -> {
+                moveChannel(1)
+                channelOverlayVisible = true
+                channelOverlayNonce += 1
+            }
+
             KeyEvent.KEYCODE_DPAD_CENTER,
             KeyEvent.KEYCODE_ENTER,
+            -> {
+                channelOverlayVisible = true
+                channelOverlayNonce += 1
+            }
+
+            KeyEvent.KEYCODE_DPAD_LEFT,
+            KeyEvent.KEYCODE_DPAD_RIGHT,
             -> Unit
         }
     }
 
     // Kanal değişiminde gerçek TV/TiviMate tarzı alt bilgi bandı.
-    LaunchedEffect(fullscreen, selectedChannel?.id) {
-        if (!fullscreen || selectedChannel == null) {
-            channelOverlayVisible = false
+    LaunchedEffect(
+        fullscreen,
+        selectedChannel?.id,
+        channelOverlayNonce,
+    ) {
+        if (
+            !fullscreen ||
+            selectedChannel == null
+        ) {
+            channelOverlayVisible =
+                false
             return@LaunchedEffect
         }
 
-        channelOverlayVisible = true
-        delay(2600)
-        channelOverlayVisible = false
+        channelOverlayVisible =
+            true
+        delay(3_500)
+        channelOverlayVisible =
+            false
     }
 
     BackHandler(enabled = fullscreen) {
@@ -374,7 +616,27 @@ fun LiveTvScreen(
                     menuFocusRequester = menuFocusRequester,
                     onSelected = { category ->
                         onContentFocused()
-                        selectedCategoryId = category.id
+                        selectedCategoryId =
+                            category.id
+
+                        selectedChannelId =
+                            if (
+                                category.id ==
+                                "all"
+                            ) {
+                                currentLibrary
+                                    .channels
+                                    .firstOrNull()
+                                    ?.id
+                            } else {
+                                currentLibrary
+                                    .channels
+                                    .firstOrNull {
+                                        it.categoryId ==
+                                            category.id
+                                    }
+                                    ?.id
+                            }
                     },
                     modifier = Modifier.weight(0.30f),
                 )
@@ -392,21 +654,28 @@ fun LiveTvScreen(
                     selectedChannelFocusRequester = channelReturnFocusRequester,
                     onActivate = { channel ->
                         onContentFocused()
-                        selectedChannelId = channel.id
-                        if (playbackChannelId == channel.id) {
-                            fullscreen = true
-                        } else {
-                            playbackChannelId = channel.id
-                        }
+                        selectedChannelId =
+                            channel.id
+                        playbackChannelId =
+                            channel.id
+                        fullscreen =
+                            true
+                        channelOverlayVisible =
+                            true
+                        channelOverlayNonce +=
+                            1
                     },
                     modifier = Modifier.weight(0.42f),
                 )
 
                 ChannelPreviewPanel(
-                    channel = playbackChannel,
+                    channel = selectedChannel,
                     player = livePlayer,
+                    epgRows = epgRows,
+                    epgLoading = epgLoading,
+                    qualityLabel = qualityLabel,
                     isFavorite =
-                        playbackChannel
+                        selectedChannel
                             ?.id
                             ?.let {
                                 favoriteChannelIds
@@ -444,6 +713,8 @@ fun LiveTvScreen(
                         it.id == selectedChannel.id
                     }.let { if (it >= 0) it + 1 else 0 },
                     categoryName = selectedCategory.name,
+                    epgRows = epgRows,
+                    qualityLabel = qualityLabel,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
@@ -701,6 +972,11 @@ private fun ChannelColumn(
                         .padding(horizontal = 10.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    ChannelLogo(
+                        url = channel.logo,
+                        modifier = Modifier.size(42.dp),
+                    )
+
                     Text(
                         text = "${index + 1}",
                         color = Color(0xFF64748B),
@@ -747,6 +1023,9 @@ private fun ChannelColumn(
 private fun ChannelPreviewPanel(
     channel: NativeLiveChannel?,
     player: ExoPlayer?,
+    epgRows: List<NativeLiveEpgProgram>,
+    epgLoading: Boolean,
+    qualityLabel: String,
     isFavorite: Boolean,
     onToggleFavorite: (NativeLiveChannel) -> Unit,
     modifier: Modifier = Modifier,
@@ -761,7 +1040,7 @@ private fun ChannelPreviewPanel(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(0.68f)
+                .weight(0.64f)
                 .background(
                     color = Color.Black,
                     shape = RoundedCornerShape(10.dp),
@@ -778,7 +1057,7 @@ private fun ChannelPreviewPanel(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "Kanalı açmak için OK",
+                        text = "OK ile kanalı aç",
                         color = Color(0xFF94A3B8),
                         style = MaterialTheme.typography.bodyLarge,
                     )
@@ -804,7 +1083,7 @@ private fun ChannelPreviewPanel(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(0.32f)
+                .weight(0.36f)
                 .background(
                     color = Color(0xFF111827),
                     shape = RoundedCornerShape(10.dp),
@@ -812,91 +1091,110 @@ private fun ChannelPreviewPanel(
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
-            Text(
-                text = channel?.name ?: "Kanal seç",
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = if (channel == null) {
-                    "Kanal üzerinde OK ile ön izleme açılır"
-                } else {
-                    "Aynı kanalda tekrar OK ile tam ekran"
-                },
-                color = Color(0xFF60A5FA),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Text(
-                text = if (channel?.epgId.isNullOrBlank()) {
-                    "Program bilgisi bulunamadı"
-                } else {
-                    "EPG mevcut"
-                },
-                color = Color(0xFF94A3B8),
-                style = MaterialTheme.typography.bodySmall,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                ChannelLogo(
+                    url = channel?.logo,
+                    modifier = Modifier.size(46.dp),
+                )
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = channel?.name ?: "Kanal seç",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+
+                    Text(
+                        text = qualityLabel,
+                        color = Color(0xFF60A5FA),
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+            }
+
+            val current = currentEpg(epgRows)
+
+            if (epgLoading) {
+                Text(
+                    text = "Program bilgisi yükleniyor…",
+                    color = Color(0xFF94A3B8),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            } else if (current != null) {
+                Text(
+                    text = current.title,
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+
+                Text(
+                    text =
+                        "${formatEpgTime(current.startTimestamp)} – " +
+                            formatEpgTime(current.stopTimestamp),
+                    color = Color(0xFFCBD5E1),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+
+                androidx.compose.material3.LinearProgressIndicator(
+                    progress = {
+                        epgProgress(current)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            } else {
+                Text(
+                    text = "Program bilgisi bulunamadı",
+                    color = Color(0xFF94A3B8),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
 
             if (channel != null) {
                 var favoriteFocused by
-                    remember(
-                        channel.id,
-                    ) {
-                        mutableStateOf(
-                            false,
-                        )
+                    remember(channel.id) {
+                        mutableStateOf(false)
                     }
 
                 Box(
-                    modifier =
-                        Modifier
-                            .background(
-                                if (
-                                    favoriteFocused
-                                ) {
-                                    Color(
-                                        0xFF2563EB,
-                                    )
-                                } else {
-                                    Color(
-                                        0xFF1E293B,
-                                    )
-                                },
-                                RoundedCornerShape(
-                                    8.dp,
-                                ),
-                            )
-                            .onFocusChanged {
-                                favoriteFocused =
-                                    it.isFocused
-                            }
-                            .clickable {
-                                onToggleFavorite(
-                                    channel,
-                                )
-                            }
-                            .padding(
-                                horizontal =
-                                    12.dp,
-                                vertical =
-                                    8.dp,
-                            ),
+                    modifier = Modifier
+                        .background(
+                            if (favoriteFocused) {
+                                Color(0xFF2563EB)
+                            } else {
+                                Color(0xFF1E293B)
+                            },
+                            RoundedCornerShape(8.dp),
+                        )
+                        .onFocusChanged {
+                            favoriteFocused =
+                                it.isFocused
+                        }
+                        .clickable {
+                            onToggleFavorite(channel)
+                        }
+                        .padding(
+                            horizontal = 12.dp,
+                            vertical = 8.dp,
+                        ),
                 ) {
                     Text(
                         text =
-                            if (
-                                isFavorite
-                            ) {
+                            if (isFavorite) {
                                 "★ Favorilerden Çıkar"
                             } else {
                                 "☆ Favoriye Ekle"
                             },
-                        color =
-                            Color.White,
-                        fontWeight =
-                            FontWeight.SemiBold,
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
                     )
                 }
             }
@@ -937,28 +1235,44 @@ private fun ChannelOverlay(
     channel: NativeLiveChannel,
     channelNumber: Int,
     categoryName: String,
+    epgRows: List<NativeLiveEpgProgram>,
+    qualityLabel: String,
     modifier: Modifier = Modifier,
 ) {
-    val now = remember(channel.id) {
-        SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-    }
+    val current =
+        currentEpg(epgRows)
+    val next =
+        current?.let { now ->
+            epgRows.firstOrNull {
+                it.startTimestamp >=
+                    now.stopTimestamp
+            }
+        }
 
     Row(
         modifier = modifier
             .background(
                 color = Color(0xE6151A23),
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(16.dp),
             )
             .padding(horizontal = 22.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(18.dp),
     ) {
+        ChannelLogo(
+            url = channel.logo,
+            modifier = Modifier.size(64.dp),
+        )
+
         Text(
-            text = if (channelNumber > 0) {
-                channelNumber.toString().padStart(3, '0')
-            } else {
-                "TV"
-            },
+            text =
+                if (channelNumber > 0) {
+                    channelNumber
+                        .toString()
+                        .padStart(3, '0')
+                } else {
+                    "TV"
+                },
             color = Color(0xFF60A5FA),
             fontWeight = FontWeight.Bold,
             style = MaterialTheme.typography.headlineSmall,
@@ -966,27 +1280,78 @@ private fun ChannelOverlay(
 
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(3.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(
-                text = channel.name,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.titleLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = if (channel.epgId.isNullOrBlank()) {
-                    "$categoryName • Canlı yayın"
-                } else {
-                    "$categoryName • EPG mevcut"
-                },
-                color = Color(0xFFCBD5E1),
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    text = channel.name,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+
+                Text(
+                    text = qualityLabel,
+                    color = Color(0xFF60A5FA),
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+
+            if (current != null) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(
+                        text =
+                            "${formatEpgTime(current.startTimestamp)} – " +
+                                formatEpgTime(current.stopTimestamp),
+                        color = Color(0xFFCBD5E1),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+
+                    Text(
+                        text = current.title,
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+
+                androidx.compose.material3.LinearProgressIndicator(
+                    progress = {
+                        epgProgress(current)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                if (next != null) {
+                    Text(
+                        text =
+                            "Sonraki ${formatEpgTime(next.startTimestamp)} · ${next.title}",
+                        color = Color(0xFF94A3B8),
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            } else {
+                Text(
+                    text =
+                        "$categoryName • Program bilgisi yok",
+                    color = Color(0xFFCBD5E1),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
         }
 
         Column(
@@ -998,11 +1363,17 @@ private fun ChannelOverlay(
                 fontWeight = FontWeight.Bold,
                 style = MaterialTheme.typography.labelLarge,
             )
+
             Text(
-                text = now,
+                text =
+                    SimpleDateFormat(
+                        "HH:mm",
+                        Locale.getDefault(),
+                    ).format(Date()),
                 color = Color(0xFFCBD5E1),
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
     }
 }
+
