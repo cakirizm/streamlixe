@@ -46,6 +46,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -67,6 +72,7 @@ import com.streamlivex.android.tv.data.TvIndexedMedia
 import com.streamlivex.android.tv.data.TvLibraryIndex
 import com.streamlivex.android.tv.data.TvLiveLibraryCache
 import com.streamlivex.android.tv.data.TvProviderConfig
+import com.streamlivex.android.tv.data.TvPerformanceManager
 import com.streamlivex.android.tv.data.TvSavedItem
 import com.streamlivex.android.tv.data.TvTmdbClient
 import com.streamlivex.android.tv.data.TvTmdbDetail
@@ -496,7 +502,7 @@ fun TvMoviesScreen(
     var target by remember { mutableStateOf<ContentTarget?>(null) }
     var playing by remember { mutableStateOf<TvSavedItem?>(null) }
 
-    val pageSize = 120
+    val pageSize = remember { TvPerformanceManager.pageSize(context) }
 
     fun loadPage(
         categoryId: String,
@@ -832,7 +838,7 @@ fun TvSeriesScreen(
     }
     var playlistIndex by remember { mutableIntStateOf(0) }
 
-    val pageSize = 120
+    val pageSize = remember { TvPerformanceManager.pageSize(context) }
 
     fun loadPage(
         categoryId: String,
@@ -1217,6 +1223,7 @@ private fun GenericDetailScreen(
     val xtream = remember { XtreamClient() }
     val detailListState = rememberLazyListState()
     val primaryFocusRequester = remember { FocusRequester() }
+    val episodesFocusRequester = remember { FocusRequester() }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     var detail by remember(target.name, target.tmdbId, locale) {
@@ -1439,6 +1446,20 @@ private fun GenericDetailScreen(
             )
         }
 
+    fun openEpisodes() {
+        scope.launch {
+            detailListState
+                .animateScrollToItem(
+                    1,
+                )
+            delay(120)
+            runCatching {
+                episodesFocusRequester
+                    .requestFocus()
+            }
+        }
+    }
+
     LazyColumn(
         state = detailListState,
         modifier =
@@ -1456,13 +1477,107 @@ private fun GenericDetailScreen(
                 horizontalArrangement =
                     Arrangement.spacedBy(26.dp),
             ) {
-                TvPosterImage(
-                    displayPoster,
+                Column(
                     modifier =
-                        Modifier
-                            .width(250.dp)
-                            .aspectRatio(2f / 3f),
-                )
+                        Modifier.width(
+                            250.dp,
+                        ),
+                    verticalArrangement =
+                        Arrangement.spacedBy(
+                            12.dp,
+                        ),
+                ) {
+                    TvPosterImage(
+                        displayPoster,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(
+                                    2f / 3f,
+                                ),
+                    )
+
+                    if (
+                        target.kind ==
+                        "movie"
+                    ) {
+                        if (
+                            local
+                                ?.streamUrl
+                                ?.isNotBlank()
+                                == true
+                        ) {
+                            ActionButton(
+                                text =
+                                    "▶ ${strings["play"]}",
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .focusRequester(
+                                            primaryFocusRequester,
+                                        ),
+                            ) {
+                                onPlay(
+                                    TvSavedItem(
+                                        id =
+                                            local.localId,
+                                        kind =
+                                            "movie",
+                                        name =
+                                            local.name,
+                                        url =
+                                            local.streamUrl,
+                                        artwork =
+                                            displayPoster,
+                                        subtitle =
+                                            media?.year,
+                                    ),
+                                )
+                            }
+                        } else {
+                            ActionButton(
+                                text =
+                                    strings[
+                                        "not_in_playlist"
+                                    ],
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .focusRequester(
+                                            primaryFocusRequester,
+                                        ),
+                            ) {}
+                        }
+                    } else {
+                        ActionButton(
+                            text =
+                                "↓ Bölümlere Git",
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .focusRequester(
+                                        primaryFocusRequester,
+                                    )
+                                    .onKeyEvent {
+                                        event ->
+
+                                        if (
+                                            event.type ==
+                                            KeyEventType.KeyDown &&
+                                            event.key ==
+                                            Key.DirectionDown
+                                        ) {
+                                            openEpisodes()
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    },
+                        ) {
+                            openEpisodes()
+                        }
+                    }
+                }
 
                 Column(
                     modifier =
@@ -1520,74 +1635,6 @@ private fun GenericDetailScreen(
                         horizontalArrangement =
                             Arrangement.spacedBy(10.dp),
                     ) {
-                        if (
-                            target.kind ==
-                            "movie"
-                        ) {
-                            if (
-                                local
-                                    ?.streamUrl
-                                    ?.isNotBlank()
-                                    == true
-                            ) {
-                                ActionButton(
-                                    text =
-                                        "▶ ${strings["play"]}",
-                                    modifier =
-                                        Modifier
-                                            .focusRequester(
-                                                primaryFocusRequester,
-                                            ),
-                                ) {
-                                    onPlay(
-                                        TvSavedItem(
-                                            id =
-                                                local.localId,
-                                            kind =
-                                                "movie",
-                                            name =
-                                                local.name,
-                                            url =
-                                                local.streamUrl,
-                                            artwork =
-                                                displayPoster,
-                                            subtitle =
-                                                media?.year,
-                                        ),
-                                    )
-                                }
-                            } else {
-                                ActionButton(
-                                    text =
-                                        strings[
-                                            "not_in_playlist"
-                                        ],
-                                    modifier =
-                                        Modifier
-                                            .focusRequester(
-                                                primaryFocusRequester,
-                                            ),
-                                ) {}
-                            }
-                        } else {
-                            ActionButton(
-                                text =
-                                    "▶ ${strings["seasons_episodes"]}",
-                                modifier =
-                                    Modifier
-                                        .focusRequester(
-                                            primaryFocusRequester,
-                                        ),
-                            ) {
-                                scope.launch {
-                                    detailListState
-                                        .animateScrollToItem(
-                                            1,
-                                        )
-                                }
-                            }
-                        }
-
                         ActionButton(
                             text =
                                 if (favorite) {
@@ -1724,6 +1771,8 @@ private fun GenericDetailScreen(
                     onSeason = {
                         selectedSeason = it
                     },
+                    firstFocusRequester =
+                        episodesFocusRequester,
                     tmdbEpisodes =
                         tmdbEpisodes,
                     loading =
@@ -1898,6 +1947,7 @@ private fun SeriesEpisodesBlock(
     series: NativeSeriesInfo?,
     selectedSeason: Int,
     onSeason: (Int) -> Unit,
+    firstFocusRequester: FocusRequester,
     tmdbEpisodes: List<TvTmdbEpisode>,
     loading: Boolean,
     artwork: String?,
@@ -1942,7 +1992,10 @@ private fun SeriesEpisodesBlock(
                     10.dp,
                 ),
         ) {
-            items(seasons) {
+            itemsIndexed(
+                seasons,
+            ) {
+                index,
                 season ->
 
                 ActionButton(
@@ -1951,13 +2004,40 @@ private fun SeriesEpisodesBlock(
                     selected =
                         season ==
                             selectedSeason,
+                    modifier =
+                        if (
+                            index == 0
+                        ) {
+                            Modifier
+                                .focusRequester(
+                                    firstFocusRequester,
+                                )
+                        } else {
+                            Modifier
+                        },
                 ) {
                     onSeason(season)
                 }
             }
         }
 
-        if (loading) {
+        if (
+            seasons.isEmpty()
+        ) {
+            ActionButton(
+                text =
+                    if (loading) {
+                        "Bölümler yükleniyor…"
+                    } else {
+                        "Bölüm bulunamadı"
+                    },
+                modifier =
+                    Modifier
+                        .focusRequester(
+                            firstFocusRequester,
+                        ),
+            ) {}
+        } else if (loading) {
             Text(
                 strings["loading"],
                 color =
