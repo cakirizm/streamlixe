@@ -1,5 +1,6 @@
 package com.streamlivex.android.tv.setup
 
+import androidx.activity.compose.BackHandler
 import android.content.Context
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
@@ -56,47 +57,67 @@ private const val KEY_PASSWORD = "xtream_password"
 private const val KEY_PROVIDER_NAME = "xtream_provider_name"
 
 object TvProviderStorage {
-    fun load(context: Context): TvProviderConfig? {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val server = prefs.getString(KEY_SERVER, "").orEmpty().trim()
-        val username = prefs.getString(KEY_USERNAME, "").orEmpty().trim()
-        val password = prefs.getString(KEY_PASSWORD, "").orEmpty()
-        val name =
-            prefs.getString(KEY_PROVIDER_NAME, "Oynatma Listem")
-                .orEmpty()
-                .ifBlank { "Oynatma Listem" }
+    fun load(
+        context: Context,
+    ): TvProviderConfig? =
+        TvPlaylistRegistry(context)
+            .active()
+            ?.provider
 
-        if (
-            server.isBlank() ||
-            username.isBlank() ||
-            password.isBlank()
-        ) {
-            return null
-        }
+    fun activeId(
+        context: Context,
+    ): String? =
+        TvPlaylistRegistry(context)
+            .activeId()
 
-        return TvProviderConfig(
-            name = name,
-            server = server,
-            username = username,
-            password = password,
-        )
-    }
+    fun all(
+        context: Context,
+    ): List<TvPlaylistAccount> =
+        TvPlaylistRegistry(context)
+            .all()
 
     fun save(
         context: Context,
         provider: TvProviderConfig,
     ) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putString(KEY_PROVIDER_NAME, provider.name)
-            .putString(KEY_SERVER, provider.server.trim())
-            .putString(KEY_USERNAME, provider.username.trim())
-            .putString(KEY_PASSWORD, provider.password)
-            .apply()
+        TvPlaylistRegistry(context)
+            .addOrUpdate(
+                provider,
+                makeActive = true,
+            )
     }
 
-    fun clear(context: Context) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    fun select(
+        context: Context,
+        id: String,
+    ): TvProviderConfig? =
+        TvPlaylistRegistry(context)
+            .select(id)
+            ?.provider
+
+    fun removeActive(
+        context: Context,
+    ): TvProviderConfig? {
+        val registry =
+            TvPlaylistRegistry(context)
+        val id =
+            registry.activeId()
+                ?: return null
+        return registry
+            .remove(id)
+            ?.provider
+    }
+
+    fun clear(
+        context: Context,
+    ) {
+        TvPlaylistRegistry(context)
+            .clear()
+
+        context.getSharedPreferences(
+            PREFS_NAME,
+            Context.MODE_PRIVATE,
+        )
             .edit()
             .clear()
             .apply()
@@ -111,10 +132,17 @@ private enum class SetupMode {
 @Composable
 fun TvSetupScreen(
     onConnected: (TvProviderConfig) -> Unit,
+    onBack: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val xtreamClient = remember { XtreamClient() }
     val pairingClient = remember { TvPairingClient() }
+
+    if (onBack != null) {
+        BackHandler {
+            onBack()
+        }
+    }
 
     var mode by remember { mutableStateOf(SetupMode.Qr) }
 
@@ -250,6 +278,23 @@ fun TvSetupScreen(
         contentAlignment =
             Alignment.Center,
     ) {
+        if (onBack != null) {
+            Box(
+                modifier =
+                    Modifier
+                        .align(
+                            Alignment.TopStart,
+                        )
+                        .padding(24.dp),
+            ) {
+                SetupTab(
+                    title = "← Geri",
+                    selected = false,
+                    onClick = onBack,
+                )
+            }
+        }
+
         Row(
             modifier =
                 Modifier
