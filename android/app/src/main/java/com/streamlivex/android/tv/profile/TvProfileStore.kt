@@ -173,6 +173,64 @@ class TvProfileStore(
         return profile
     }
 
+    fun update(
+        id: String,
+        name: String,
+        avatar: String,
+        isKids: Boolean,
+        pin: String?,
+        keepExistingPin: Boolean = true,
+    ): TvProfile? {
+        val rows =
+            all().toMutableList()
+        val index =
+            rows.indexOfFirst {
+                it.id == id
+            }
+
+        if (index < 0) {
+            return null
+        }
+
+        val current =
+            rows[index]
+
+        val nextPinHash =
+            when {
+                pin != null &&
+                    pin.length == 4 ->
+                    hashPin(pin)
+
+                keepExistingPin ->
+                    current.pinHash
+
+                else ->
+                    null
+            }
+
+        val updated =
+            current.copy(
+                name =
+                    name.trim()
+                        .ifBlank {
+                            current.name
+                        },
+                avatar =
+                    avatar.ifBlank {
+                        current.avatar
+                    },
+                isKids =
+                    isKids,
+                pinHash =
+                    nextPinHash,
+            )
+
+        rows[index] =
+            updated
+        writeAll(rows)
+        return updated
+    }
+
     fun remove(id: String) {
         val rows =
             all().filterNot {
