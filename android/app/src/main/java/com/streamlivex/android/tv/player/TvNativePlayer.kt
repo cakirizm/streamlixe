@@ -5,6 +5,7 @@ package com.streamlivex.android.tv.player
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,6 +39,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -542,7 +544,15 @@ fun TvNativePlayer(
                             event.key ==
                             Key.Enter ||
                             event.key ==
-                            Key.NumPadEnter
+                            Key.NumPadEnter ||
+                            event.key ==
+                            Key.DirectionLeft ||
+                            event.key ==
+                            Key.DirectionRight ||
+                            event.key ==
+                            Key.DirectionUp ||
+                            event.key ==
+                            Key.DirectionDown
                         )
                     ) {
                         revealControls()
@@ -580,6 +590,12 @@ fun TvNativePlayer(
 
                     this.player =
                         player
+
+                    // The native PlayerView must never own TV focus.
+                    // Compose controls are the only DPAD focus graph.
+                    isFocusable = false
+                    isFocusableInTouchMode = false
+
                     useController =
                         false
                     resizeMode =
@@ -609,6 +625,10 @@ fun TvNativePlayer(
 
                 view.player =
                     player
+                view.isFocusable =
+                    false
+                view.isFocusableInTouchMode =
+                    false
                 view.useController =
                     false
                 view.resizeMode =
@@ -630,6 +650,36 @@ fun TvNativePlayer(
                     )
             },
         )
+
+        // Touch/mouse path is intentionally separate from DPAD:
+        // a tap anywhere on the video reveals the controls and puts
+        // remote focus on Play/Pause. This layer only exists while
+        // controls are hidden, so it never blocks the actual buttons.
+        if (
+            !controlsVisible &&
+            panel ==
+            TrackPanel.None
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .pointerInput(
+                            request.sessionId,
+                        ) {
+                            detectTapGestures(
+                                onTap = {
+                                    revealControls()
+
+                                    runCatching {
+                                        pauseFocusRequester
+                                            .requestFocus()
+                                    }
+                                },
+                            )
+                        },
+            )
+        }
 
         if (
             controlsVisible
@@ -1342,6 +1392,16 @@ private fun TvPlayerIconButton(
                         onActivity()
                     }
                 }
+                .pointerInput(
+                    onClick,
+                ) {
+                    detectTapGestures(
+                        onTap = {
+                            onActivity()
+                            onClick()
+                        },
+                    )
+                }
                 .onKeyEvent {
                     event ->
 
@@ -1422,6 +1482,15 @@ private fun TvPlayerTextButton(
                 .onFocusChanged {
                     focused =
                         it.isFocused
+                }
+                .pointerInput(
+                    onClick,
+                ) {
+                    detectTapGestures(
+                        onTap = {
+                            onClick()
+                        },
+                    )
                 }
                 .onKeyEvent {
                     event ->
