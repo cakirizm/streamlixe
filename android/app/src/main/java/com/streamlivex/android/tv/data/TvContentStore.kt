@@ -139,6 +139,21 @@ class TvContentStore(context: Context) {
     }
 
     fun saveProgress(item: TvSavedItem) {
+        val historyRows =
+            readArray("history")
+                .toMutableList()
+        historyRows.removeAll {
+            it.id == item.id
+        }
+        historyRows.add(
+            0,
+            item,
+        )
+        writeArray(
+            "history",
+            historyRows.take(100),
+        )
+
         val rows = readArray("continue").toMutableList()
         rows.removeAll { it.id == item.id }
 
@@ -203,10 +218,130 @@ class TvContentStore(context: Context) {
         )
     }
 
+    fun viewingHistory(): List<TvSavedItem> =
+        readArray("history")
+            .take(100)
+
+    fun removeFromHistory(id: String) {
+        val rows =
+            viewingHistory()
+                .filterNot {
+                    it.id == id
+                }
+        writeArray(
+            "history",
+            rows,
+            synchronous = true,
+        )
+
+        val continueRows =
+            continueWatching()
+                .filterNot {
+                    it.id == id
+                }
+        writeArray(
+            "continue",
+            continueRows,
+            synchronous = true,
+        )
+    }
+
+    fun restart(id: String) {
+        val history =
+            viewingHistory()
+                .map {
+                    if (it.id == id) {
+                        it.copy(
+                            positionMs = 0L,
+                            durationMs =
+                                it.durationMs,
+                        )
+                    } else {
+                        it
+                    }
+                }
+
+        writeArray(
+            "history",
+            history,
+            synchronous = true,
+        )
+
+        val continueRows =
+            continueWatching()
+                .filterNot {
+                    it.id == id
+                }
+
+        writeArray(
+            "continue",
+            continueRows,
+            synchronous = true,
+        )
+        setWatched(
+            id,
+            false,
+        )
+    }
+
+    fun recentSearches(): List<String> =
+        prefs.getString(
+            "recent_searches",
+            "",
+        )
+            .orEmpty()
+            .split("\\n")
+            .map {
+                it.trim()
+            }
+            .filter {
+                it.isNotBlank()
+            }
+            .distinct()
+            .take(12)
+
+    fun addRecentSearch(
+        query: String,
+    ) {
+        val clean =
+            query.trim()
+        if (clean.length < 2) {
+            return
+        }
+
+        val rows =
+            (
+                listOf(clean) +
+                    recentSearches()
+            )
+                .distinctBy {
+                    it.lowercase()
+                }
+                .take(12)
+
+        prefs.edit()
+            .putString(
+                "recent_searches",
+                rows.joinToString(
+                    "\\n",
+                ),
+            )
+            .apply()
+    }
+
+    fun clearRecentSearches() {
+        prefs.edit()
+            .remove(
+                "recent_searches",
+            )
+            .apply()
+    }
+
     fun clearViewingHistory() {
         prefs.edit()
             .remove("continue")
             .remove("watched")
+            .remove("history")
             .apply()
     }
 
