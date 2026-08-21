@@ -355,6 +355,14 @@ class MainActivity : ComponentActivity() {
         val active = playbackRequest ?: return
         playbackRequest = null
         releaseOrphanedPlayer(active.sessionId)
+        // NativePlayerSurface (PlayerView) kompozisyondan kaldirilinca WebView otomatik olarak
+        // odagi geri almiyordu -- ekran (detay/poster sayfasi) gorunse bile dokunmalara tepki
+        // vermiyordu ("film ekranı dokunulmuyor" sikayeti). Bir sonraki frame'de acikca odagi
+        // ve dokunma teslimatini WebView'e geri veriyoruz.
+        webView?.post {
+            webView?.requestFocus()
+            webView?.invalidate()
+        }
         if (notifyWeb) {
             val detail = JSONObject()
                 .put("current", lastProgress.currentSeconds)

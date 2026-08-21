@@ -8,27 +8,34 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -43,9 +50,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.focusGroup
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.platform.LocalContext
@@ -103,10 +107,16 @@ fun NativePlayerSurface(
     var onlineSubtitleBusy by remember(request.sessionId) { mutableStateOf(false) }
     var onlineSubtitleError by remember(request.sessionId) { mutableStateOf<String?>(null) }
     // Panel acikken kumandayla hangi satirin "isaretli" oldugunu Android/Compose'un ambient
-    // odak sistemine hic guvenmeden kendimiz takip ediyoruz (0=ses sutunu, 1=altyazi sutunu).
-    var panelColumn by remember(request.sessionId) { mutableIntStateOf(0) }
-    var panelIndex by remember(request.sessionId) { mutableIntStateOf(0) }
+    // odak sistemine hic guvenmeden kendimiz takip ediyoruz -- TEK duz liste (bkz. PanelRow).
+    var panelFocusIndex by remember(request.sessionId) { mutableIntStateOf(0) }
+    val panelRows = remember(audioOptions, subtitleOptions, onlineSubtitleResults) {
+        buildPanelRows(audioOptions, subtitleOptions, onlineSubtitleResults)
+    }
     var playerViewRef by remember(request.sessionId) { mutableStateOf<PlayerView?>(null) }
+    // Kumanda solda/sagda basitce +10sn/-10sn saniye atlayinca gorunur hicbir geri bildirim
+    // yoktu ("boşa gidiyor" sikayeti) -- kisa sureli bir "+10sn/-10sn" rozeti gosterip
+    // otomatik olarak soluyoruz.
+    var seekIndicator by remember(request.sessionId) { mutableStateOf<Pair<Boolean, Long>?>(null) }
     val coroutineScope = rememberCoroutineScope()
     val streamFailedMessage = stringResource(R.string.stream_failed)
     val fitLabel = stringResource(R.string.fit_screen)
@@ -253,69 +263,6 @@ fun NativePlayerSurface(
         onPreferencesChanged(next)
     }
 
-    // Panel acilinca/kapaninca secili satiri sifirla ve PlayerView'in gercek Android View
-    // odagini acikca birak/geri al -- Compose'un kendi FocusRequester/focusGroup sistemi
-    // PlayerView'dan BAGIMSIZ calisir, bu yuzden bu olmadan panel "odaklanmis" gorunse bile
-    // donanim tuslari hala PlayerView'a gidip hicbir sey olmuyordu.
-    LaunchedEffect(tracksPanelVisible) {
-        if (tracksPanelVisible) {
-            panelColumn = 0
-            panelIndex = 0
-            playerViewRef?.clearFocus()
-        } else {
-            playerViewRef?.post { playerViewRef?.requestFocus() }
-        }
-    }
-
-    // Kumanda tuslarini View/Compose odak sistemine hic guvenmeden burada isliyoruz (bkz.
-    // MainActivity.dispatchKeyEvent + externalKeyEvent). Panel acikken yukari/asagi secili
-    // satiri, sag/sol sutunu (ses/altyazi) degistirir; OK secili parcayi uygular. Panel
-    // kapaliyken OK, oynatici kontrollerini (oynat/duraklat cubugu) ac/kapat yapar.
-    LaunchedEffect(externalKeyEvent) {
-        val event = externalKeyEvent ?: return@LaunchedEffect
-        val (keyCode, action, _) = event
-        if (action != android.view.KeyEvent.ACTION_DOWN) return@LaunchedEffect
-        if (tracksPanelVisible) {
-            when (keyCode) {
-                android.view.KeyEvent.KEYCODE_DPAD_LEFT -> { panelColumn = 0; panelIndex = 0 }
-                android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> { panelColumn = 1; panelIndex = 0 }
-                android.view.KeyEvent.KEYCODE_DPAD_UP -> panelIndex = (panelIndex - 1).coerceAtLeast(0)
-                android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
-                    val maxIndex = if (panelColumn == 0) (audioOptions.size - 1).coerceAtLeast(0) else subtitleOptions.size
-                    panelIndex = (panelIndex + 1).coerceAtMost(maxIndex)
-                }
-                android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER -> {
-                    if (panelColumn == 0) {
-                        audioOptions.getOrNull(panelIndex)?.let { selectAudio(it) }
-                    } else {
-                        if (panelIndex == 0) selectSubtitle(null) else subtitleOptions.getOrNull(panelIndex - 1)?.let { selectSubtitle(it) }
-                    }
-                }
-                android.view.KeyEvent.KEYCODE_BACK -> tracksPanelVisible = false
-            }
-        } else {
-            // Panel kapaliyken: ExoPlayer'in kendi PlayerControlView butonlari (oynat/duraklat,
-            // ileri/geri sarma) da ayni View odak sorunundan muzdarip -- kumandayla o
-            // butonlara erisilemiyordu ("dur calismiyor"). Kontrolleri sadece gorunur/gizli
-            // yapmak yerine, gorunurken OK dogrudan oynat/duraklat yapiyor, yukari da her
-            // zaman doğrudan Ses ve Altyazı panelini aciyor (ayri bir "yukari git" gezinme
-            // zinciri gerekmeden -- "yukarida altyazıya gitmiyor" sikayeti).
-            val view = playerViewRef
-            when (keyCode) {
-                android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER -> {
-                    if (view != null && !view.isControllerFullyVisible) {
-                        view.showController()
-                    } else {
-                        if (player.isPlaying) player.pause() else player.play()
-                    }
-                }
-                android.view.KeyEvent.KEYCODE_DPAD_UP -> if (!request.item.isLive) tracksPanelVisible = true
-                android.view.KeyEvent.KEYCODE_DPAD_LEFT -> player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0))
-                android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> player.seekTo(player.currentPosition + 10_000)
-            }
-        }
-    }
-
     fun searchOnlineSubtitles() {
         if (onlineSubtitleBusy) return
         onlineSubtitleBusy = true
@@ -381,6 +328,82 @@ fun NativePlayerSurface(
         }
     }
 
+    // Panel acilinca/kapaninca secili satiri sifirla ve PlayerView'in gercek Android View
+    // odagini acikca birak/geri al -- Compose'un kendi FocusRequester/focusGroup sistemi
+    // PlayerView'dan BAGIMSIZ calisir, bu yuzden bu olmadan panel "odaklanmis" gorunse bile
+    // donanim tuslari hala PlayerView'a gidip hicbir sey olmuyordu.
+    LaunchedEffect(tracksPanelVisible) {
+        if (tracksPanelVisible) {
+            panelFocusIndex = 0
+            playerViewRef?.clearFocus()
+        } else {
+            playerViewRef?.post { playerViewRef?.requestFocus() }
+        }
+    }
+
+    // Kumanda tuslarini View/Compose odak sistemine hic guvenmeden burada isliyoruz (bkz.
+    // MainActivity.dispatchKeyEvent + externalKeyEvent). Panel acikken yukari/asagi secili
+    // satiri, sag/sol sutunu (ses/altyazi) degistirir; OK secili parcayi uygular. Panel
+    // kapaliyken OK, oynatici kontrollerini (oynat/duraklat cubugu) ac/kapat yapar.
+    LaunchedEffect(externalKeyEvent) {
+        val event = externalKeyEvent ?: return@LaunchedEffect
+        val (keyCode, action, _) = event
+        if (action != android.view.KeyEvent.ACTION_DOWN) return@LaunchedEffect
+        if (tracksPanelVisible) {
+            val current = panelRows.getOrNull(panelFocusIndex)
+            when (keyCode) {
+                android.view.KeyEvent.KEYCODE_DPAD_UP -> panelFocusIndex = (panelFocusIndex - 1).coerceAtLeast(0)
+                android.view.KeyEvent.KEYCODE_DPAD_DOWN -> panelFocusIndex = (panelFocusIndex + 1).coerceAtMost((panelRows.size - 1).coerceAtLeast(0))
+                // Sol/sag yalnizca "ayarlanabilir" satirlarda (Boyut/Renk/Arka plan) deger
+                // degistirir -- listeleri (ses/altyazi/arama sonuclari) etkilemez.
+                android.view.KeyEvent.KEYCODE_DPAD_LEFT -> adjustPanelRow(current, subtitlePrefs, -1)?.let(::updateSubtitleStyle)
+                android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> adjustPanelRow(current, subtitlePrefs, 1)?.let(::updateSubtitleStyle)
+                android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER -> when (current) {
+                    is PanelRow.AudioRow -> selectAudio(current.option)
+                    is PanelRow.SubtitleOffRow -> selectSubtitle(null)
+                    is PanelRow.SubtitleRow -> selectSubtitle(current.option)
+                    is PanelRow.SearchOnlineRow -> searchOnlineSubtitles()
+                    is PanelRow.OnlineResultRow -> applyOnlineSubtitle(current.result)
+                    else -> Unit
+                }
+                android.view.KeyEvent.KEYCODE_BACK -> tracksPanelVisible = false
+            }
+        } else {
+            // Panel kapaliyken: ExoPlayer'in kendi PlayerControlView butonlari (oynat/duraklat,
+            // ileri/geri sarma) da ayni View odak sorunundan muzdarip -- kumandayla o
+            // butonlara erisilemiyordu ("dur calismiyor"). Kontrolleri sadece gorunur/gizli
+            // yapmak yerine, gorunurken OK dogrudan oynat/duraklat yapiyor, yukari da her
+            // zaman doğrudan Ses ve Altyazı panelini aciyor (ayri bir "yukari git" gezinme
+            // zinciri gerekmeden -- "yukarida altyazıya gitmiyor" sikayeti).
+            val view = playerViewRef
+            when (keyCode) {
+                android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER -> {
+                    if (view != null && !view.isControllerFullyVisible) {
+                        view.showController()
+                    } else {
+                        if (player.isPlaying) player.pause() else player.play()
+                    }
+                }
+                android.view.KeyEvent.KEYCODE_DPAD_UP -> if (!request.item.isLive) tracksPanelVisible = true
+                android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
+                    player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0))
+                    seekIndicator = false to System.nanoTime()
+                }
+                android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    player.seekTo(player.currentPosition + 10_000)
+                    seekIndicator = true to System.nanoTime()
+                }
+            }
+        }
+    }
+
+    // Seek rozeti kisa bir sure sonra kendiliğinden kaybolsun diye.
+    LaunchedEffect(seekIndicator) {
+        if (seekIndicator == null) return@LaunchedEffect
+        delay(900)
+        seekIndicator = null
+    }
+
     // Altyazi paneli acikken geri tusu tum oynaticiyi degil, sadece paneli kapatmali --
     // oncesinde ust duzeyde her zaman etkin olan tek bir BackHandler (MainActivity'de)
     // oldugu icin panel acikken bile geri basinca filmden direkt cikiliyordu.
@@ -402,6 +425,15 @@ fun NativePlayerSurface(
                     controllerAutoShow = false
                     controllerHideOnTouch = true
                     controllerShowTimeoutMs = 1_800
+                    // ExoPlayer'in kendi ileri/geri sarma dugmeleri kumandayla tetiklenemiyordu
+                    // (View odak sorunu) ve kendi varsayilan atlama suresini (5sn/10sn) gosterip
+                    // aslinda bizim 10sn'lik dogrudan sol/sag isleyicimizle celisiyordu -- ekranda
+                    // gorunen ama isleve yaramayan bu dugmeler "boşa gidiyor" hissi yaratiyordu.
+                    // Kaldirip tek, tutarli bir sol/sag + SeekIndicator akisi birakiyoruz.
+                    setShowFastForwardButton(false)
+                    setShowRewindButton(false)
+                    setShowPreviousButton(false)
+                    setShowNextButton(false)
                     this.resizeMode = resizeMode
                     keepScreenOn = true
                     isFocusable = true
@@ -492,24 +524,23 @@ fun NativePlayerSurface(
         }
 
         if (tracksPanelVisible) TracksPanel(
-            modifier = Modifier.align(Alignment.Center),
-            audioOptions = audioOptions,
+            modifier = Modifier.align(Alignment.CenterEnd),
+            rows = panelRows,
+            focusIndex = panelFocusIndex,
             selectedAudioGroup = selectedAudioGroup,
-            onSelectAudio = { selectAudio(it) },
-            subtitleOptions = subtitleOptions,
             selectedSubtitleGroup = selectedSubtitleGroup,
-            highlightColumn = panelColumn,
-            highlightIndex = panelIndex,
             prefs = subtitlePrefs,
+            onSelectAudio = { selectAudio(it) },
             onSelectSubtitle = { selectSubtitle(it) },
             onPrefsChange = { updateSubtitleStyle(it) },
             onClose = { tracksPanelVisible = false },
-            onlineResults = onlineSubtitleResults,
             onlineBusy = onlineSubtitleBusy,
             onlineError = onlineSubtitleError,
             onSearchOnline = { searchOnlineSubtitles() },
             onApplyOnline = { applyOnlineSubtitle(it) },
         )
+
+        SeekIndicator(state = seekIndicator, modifier = Modifier.align(Alignment.Center))
 
         if (!ready && !failed) {
             Column(
@@ -600,6 +631,57 @@ private fun subtitleMimeType(url: String): String = when (Uri.parse(url).path?.s
 internal data class SubtitleOption(val group: Tracks.Group, val label: String)
 internal data class AudioOption(val group: Tracks.Group, val label: String)
 
+// Panel eskiden iki ayri "sutun" (ses/altyazi) + kendi basina, kumandayla hic
+// erisilemeyen "Gorunum" ve "Internetten altyazi bul" bolumlerinden olusuyordu --
+// kullanicinin "internetten altyazi bul kismina gelmiyor" sikayetinin sebebi buydu.
+// Artik TUM satirlar (ses, altyazi, arama, sonuclar, boyut/renk/arka plan) TEK bir
+// dikey liste; yukari/asagi bu listede gezinir, sol/sag yalnizca "ayarlanabilir"
+// satirlarda (Boyut/Renk/Arka plan) degeri degistirir, geri kalaninda hicbir sey yapmaz.
+internal sealed class PanelRow {
+    data class AudioRow(val option: AudioOption) : PanelRow()
+    object SubtitleOffRow : PanelRow()
+    data class SubtitleRow(val option: SubtitleOption) : PanelRow()
+    object SearchOnlineRow : PanelRow()
+    data class OnlineResultRow(val result: OnlineSubtitleResult) : PanelRow()
+    object SizeRow : PanelRow()
+    object ColorRow : PanelRow()
+    object BackgroundRow : PanelRow()
+}
+
+private val panelBackgroundOptions = listOf("shadow" to "Gölge", "box" to "Koyu kutu", "none" to "Yok")
+
+// "Boyut/Renk/Arka plan" satirlarinda sol/sag basildiginda bir sonraki/onceki degere gecer;
+// diger tum satir turlerinde (listeler) hicbir sey yapmaz (null doner).
+internal fun adjustPanelRow(row: PanelRow?, prefs: PlaybackPreferences, direction: Int): PlaybackPreferences? = when (row) {
+    is PanelRow.SizeRow -> prefs.copy(subtitleSize = (prefs.subtitleSize + direction * 10).coerceIn(70, 180))
+    is PanelRow.ColorRow -> {
+        val index = subtitleColorPresets.indexOfFirst { it.first.equals(prefs.subtitleColor, ignoreCase = true) }.let { if (it < 0) 0 else it }
+        val next = (index + direction).mod(subtitleColorPresets.size)
+        prefs.copy(subtitleColor = subtitleColorPresets[next].first)
+    }
+    is PanelRow.BackgroundRow -> {
+        val index = panelBackgroundOptions.indexOfFirst { it.first == prefs.subtitleBackground }.let { if (it < 0) 0 else it }
+        val next = (index + direction).mod(panelBackgroundOptions.size)
+        prefs.copy(subtitleBackground = panelBackgroundOptions[next].first)
+    }
+    else -> null
+}
+
+internal fun buildPanelRows(
+    audioOptions: List<AudioOption>,
+    subtitleOptions: List<SubtitleOption>,
+    onlineResults: List<OnlineSubtitleResult>,
+): List<PanelRow> = buildList {
+    audioOptions.forEach { add(PanelRow.AudioRow(it)) }
+    add(PanelRow.SubtitleOffRow)
+    subtitleOptions.forEach { add(PanelRow.SubtitleRow(it)) }
+    add(PanelRow.SearchOnlineRow)
+    onlineResults.forEach { add(PanelRow.OnlineResultRow(it)) }
+    add(PanelRow.SizeRow)
+    add(PanelRow.ColorRow)
+    add(PanelRow.BackgroundRow)
+}
+
 private val subtitleColorPresets = listOf(
     "#ffffff" to "Beyaz",
     "#ffe066" to "Sarı",
@@ -616,55 +698,41 @@ private val PanelFaint = ComposeColor(0xFF6F6982)
 @Composable
 private fun TracksPanel(
     modifier: Modifier = Modifier,
-    audioOptions: List<AudioOption>,
+    rows: List<PanelRow>,
+    focusIndex: Int,
     selectedAudioGroup: Tracks.Group?,
-    onSelectAudio: (AudioOption) -> Unit,
-    subtitleOptions: List<SubtitleOption>,
     selectedSubtitleGroup: Tracks.Group?,
     prefs: PlaybackPreferences,
+    onSelectAudio: (AudioOption) -> Unit,
     onSelectSubtitle: (SubtitleOption?) -> Unit,
     onPrefsChange: (PlaybackPreferences) -> Unit,
     onClose: () -> Unit,
-    highlightColumn: Int = -1,
-    highlightIndex: Int = -1,
-    onlineResults: List<OnlineSubtitleResult> = emptyList(),
     onlineBusy: Boolean = false,
     onlineError: String? = null,
     onSearchOnline: () -> Unit = {},
     onApplyOnline: (OnlineSubtitleResult) -> Unit = {},
 ) {
-    val panelFocusRequester = remember { FocusRequester() }
-    // Panel acilinca kumanda odagini icine tasiyoruz -- aksi halde D-pad, panel arkasindaki
-    // (gorunmeyen) video/ust cubuk elemanlari arasinda dolanmaya devam ediyor, panel hic
-    // erisilemez gibi duruyordu.
-    LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(80)
-        runCatching { panelFocusRequester.requestFocus() }
+    val listState = rememberLazyListState()
+    // Kumandayla asagi/yukari giderken vurgulanan satir listenin gorunur alaninin disina
+    // cikabiliyordu ("cok altyazi varsa sayfanin altina gidiyor ve gozukmuyor" sikayeti) --
+    // odak index'i degistikce o satiri otomatik gorunur alana kaydiriyoruz.
+    LaunchedEffect(focusIndex, rows.size) {
+        if (focusIndex in rows.indices) listState.animateScrollToItem(focusIndex)
     }
+    // Panel eskiden ekranin sabit bir yuksekligini (520dp) kullaniyordu -- kucuk TV
+    // ekranlarinda bu, panelin alt kismini gorunur alanin disina tasiriyordu. fillMaxHeight
+    // bir oran (%88) kullanarak HER ekranda sigmasini garanti ediyoruz; ayrica istenen
+    // seffafligi geri getirmek icin arka plan alfasini dusurduk.
     androidx.compose.material3.Surface(
         modifier = modifier
-            .fillMaxWidth(0.62f)
-            .focusRequester(panelFocusRequester)
-            .focusGroup(),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
-        color = ComposeColor(0xE0120E1C),
+            .fillMaxHeight(0.88f)
+            .fillMaxWidth(0.42f)
+            .padding(vertical = 18.dp, horizontal = 12.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
+        color = ComposeColor(0xB3120E1C),
         shadowElevation = 18.dp,
     ) {
-        Column(
-            modifier = Modifier
-                .heightIn(max = 520.dp)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(13.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .size(width = 36.dp, height = 4.dp)
-                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
-                    .background(ComposeColor(0x33FFFFFF)),
-            )
-
+        Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -672,7 +740,7 @@ private fun TracksPanel(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(42.dp)
+                        .size(38.dp)
                         .clip(CircleShape)
                         .background(
                             androidx.compose.ui.graphics.Brush.linearGradient(
@@ -683,17 +751,19 @@ private fun TracksPanel(
                 ) { Text("🎧", style = MaterialTheme.typography.titleMedium) }
                 Column(Modifier.weight(1f)) {
                     Text("Ses ve Altyazı", color = ComposeColor.White, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleSmall)
-                    Text("Parçayı seç, görünümü ayarla", color = PanelMuted, style = MaterialTheme.typography.labelSmall)
+                    Text("↑↓ gezin · Enter seç · ←→ ayarla", color = PanelMuted, style = MaterialTheme.typography.labelSmall)
                 }
                 Box(
                     modifier = Modifier
-                        .size(32.dp)
+                        .size(30.dp)
                         .clip(CircleShape)
                         .background(ComposeColor(0x1AFFFFFF))
                         .clickable { onClose() },
                     contentAlignment = Alignment.Center,
                 ) { Text("✕", color = ComposeColor.White, style = MaterialTheme.typography.labelMedium) }
             }
+
+            Spacer(Modifier.height(10.dp))
 
             Box(
                 modifier = Modifier
@@ -707,95 +777,66 @@ private fun TracksPanel(
                     .border(1.dp, ComposeColor(0x1AFFFFFF), androidx.compose.foundation.shape.RoundedCornerShape(14.dp)),
             ) { SubtitlePreview(prefs = prefs) }
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
-                    .background(PanelCardBg)
-                    .padding(14.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            Spacer(Modifier.height(10.dp))
+
+            // Eskiden ses/altyazi iki ayri sutunda, "Gorunum" ve "Internetten altyazi bul"
+            // ise kumandayla hic erisilemeyen ayri kartlardaydi. Artik HEPSI tek dikey
+            // listede (rows) -- boylece her satir kumandayla ulasilabilir oluyor.
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    PanelSectionLabel("🔊", "Ses kaynağı", audioOptions.size.coerceAtLeast(1))
-                    if (audioOptions.isEmpty()) {
-                        Text("Tek ses parçası", color = PanelFaint, style = MaterialTheme.typography.labelSmall)
-                    } else {
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            audioOptions.forEachIndexed { index, option ->
-                                TrackRow(
-                                    label = option.label,
-                                    active = option.group == selectedAudioGroup,
-                                    highlighted = highlightColumn == 0 && highlightIndex == index,
-                                ) { onSelectAudio(option) }
-                            }
-                        }
-                    }
-                }
-
-                androidx.compose.material3.VerticalDivider(color = ComposeColor(0x1AFFFFFF))
-
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    PanelSectionLabel("💬", "Altyazı kaynağı", subtitleOptions.size)
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        TrackRow(
-                            label = "Kapalı",
+                itemsIndexed(rows, key = { index, _ -> index }) { index, row ->
+                    val highlighted = index == focusIndex
+                    when (row) {
+                        is PanelRow.AudioRow -> TrackRow(
+                            label = "🔊 ${row.option.label}",
+                            active = row.option.group == selectedAudioGroup,
+                            highlighted = highlighted,
+                        ) { onSelectAudio(row.option) }
+                        is PanelRow.SubtitleOffRow -> TrackRow(
+                            label = "💬 Kapalı",
                             active = selectedSubtitleGroup == null,
-                            highlighted = highlightColumn == 1 && highlightIndex == 0,
+                            highlighted = highlighted,
                         ) { onSelectSubtitle(null) }
-                        subtitleOptions.forEachIndexed { index, option ->
-                            TrackRow(
-                                label = option.label,
-                                active = option.group == selectedSubtitleGroup,
-                                highlighted = highlightColumn == 1 && highlightIndex == index + 1,
-                            ) { onSelectSubtitle(option) }
-                        }
-                        if (subtitleOptions.isEmpty()) Text("Yerleşik altyazı yok", color = PanelFaint, style = MaterialTheme.typography.labelSmall)
-                    }
-                }
-            }
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
-                    .background(PanelCardBg)
-                    .padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    PanelSectionLabel("🌐", "İnternetten altyazı bul", null)
-                    Box(
-                        modifier = Modifier
-                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(50))
-                            .background(if (onlineBusy) ComposeColor(0x1AFFFFFF) else PanelAccentDim)
-                            .clickable(enabled = !onlineBusy) { onSearchOnline() }
-                            .padding(horizontal = 14.dp, vertical = 7.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (onlineBusy) {
-                            androidx.compose.material3.CircularProgressIndicator(
-                                modifier = Modifier.size(13.dp),
-                                strokeWidth = 2.dp,
-                                color = PanelAccent,
-                            )
-                        } else {
-                            Text("Ara", color = ComposeColor.White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium)
-                        }
-                    }
-                }
-                if (onlineError != null) Text(onlineError, color = ComposeColor(0xFFFF8A8A), style = MaterialTheme.typography.labelSmall)
-                if (onlineResults.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    onlineResults.forEach { result ->
-                        Row(
+                        is PanelRow.SubtitleRow -> TrackRow(
+                            label = "💬 ${row.option.label}",
+                            active = row.option.group == selectedSubtitleGroup,
+                            highlighted = highlighted,
+                        ) { onSelectSubtitle(row.option) }
+                        is PanelRow.SearchOnlineRow -> Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                                .let { if (highlighted) it.border(2.dp, PanelAccent, androidx.compose.foundation.shape.RoundedCornerShape(10.dp)) else it }
+                                .background(if (onlineBusy) ComposeColor(0x14FFFFFF) else PanelAccentDim)
+                                .clickable(enabled = !onlineBusy) { onSearchOnline() }
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text("🌐", style = MaterialTheme.typography.labelMedium)
+                            Text(
+                                "İnternetten altyazı bul",
+                                color = ComposeColor.White,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (onlineBusy) androidx.compose.material3.CircularProgressIndicator(
+                                modifier = Modifier.size(13.dp),
+                                strokeWidth = 2.dp,
+                                color = ComposeColor.White,
+                            ) else Text("Ara", color = ComposeColor.White, style = MaterialTheme.typography.labelSmall)
+                        }
+                        is PanelRow.OnlineResultRow -> Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                                .let { if (highlighted) it.border(2.dp, PanelAccent, androidx.compose.foundation.shape.RoundedCornerShape(10.dp)) else it }
                                 .background(ComposeColor(0x1F000000))
-                                .clickable { onApplyOnline(result) }
+                                .clickable { onApplyOnline(row.result) }
                                 .padding(horizontal = 12.dp, vertical = 9.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -806,10 +847,10 @@ private fun TracksPanel(
                                     .background(ComposeColor(0x33D84CFF))
                                     .padding(horizontal = 7.dp, vertical = 3.dp),
                             ) {
-                                Text(result.language.uppercase(), color = PanelAccent, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelSmall)
+                                Text(row.result.language.uppercase(), color = PanelAccent, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelSmall)
                             }
                             Text(
-                                result.release,
+                                row.result.release,
                                 color = ComposeColor(0xFFCFC9DC),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -818,67 +859,86 @@ private fun TracksPanel(
                             )
                             Text("↓", color = PanelMuted, style = MaterialTheme.typography.labelMedium)
                         }
+                        is PanelRow.SizeRow -> AdjustRow(
+                            icon = "🔤",
+                            label = "Boyut",
+                            value = "%${prefs.subtitleSize}",
+                            highlighted = highlighted,
+                        ) { direction -> adjustPanelRow(row, prefs, direction)?.let(onPrefsChange) }
+                        is PanelRow.ColorRow -> AdjustRow(
+                            icon = "🎨",
+                            label = "Renk",
+                            value = subtitleColorPresets.firstOrNull { it.first.equals(prefs.subtitleColor, ignoreCase = true) }?.second ?: "-",
+                            highlighted = highlighted,
+                            swatch = runCatching { ComposeColor(android.graphics.Color.parseColor(prefs.subtitleColor)) }.getOrNull(),
+                        ) { direction -> adjustPanelRow(row, prefs, direction)?.let(onPrefsChange) }
+                        is PanelRow.BackgroundRow -> AdjustRow(
+                            icon = "🖼️",
+                            label = "Arka plan",
+                            value = panelBackgroundOptions.firstOrNull { it.first == prefs.subtitleBackground }?.second ?: "-",
+                            highlighted = highlighted,
+                        ) { direction -> adjustPanelRow(row, prefs, direction)?.let(onPrefsChange) }
                     }
+                }
+                if (onlineError != null) item {
+                    Text(onlineError, color = ComposeColor(0xFFFF8A8A), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 4.dp))
                 }
             }
+        }
+    }
+}
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
-                    .background(PanelCardBg)
-                    .padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                PanelSectionLabel("🎨", "Görünüm", null)
+// Boyut/Renk/Arka plan gibi "ayarlanabilir" satirlar -- kumandada sol/sag deger degistirir,
+// dokunmatikte satira tiklamak bir sonraki degere gecer (tek yonlu ama en azindan
+// erisilebilir; TV kumandasi zaten sol/sagi kullaniyor).
+@Composable
+private fun AdjustRow(icon: String, label: String, value: String, highlighted: Boolean, swatch: ComposeColor? = null, onAdjust: (Int) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+            .let { if (highlighted) it.border(2.dp, PanelAccent, androidx.compose.foundation.shape.RoundedCornerShape(10.dp)) else it }
+            .background(ComposeColor(0x14FFFFFF))
+            .clickable { onAdjust(1) }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(icon, style = MaterialTheme.typography.labelMedium)
+        Text(label, color = ComposeColor(0xFFB8B4C8), style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
+        if (swatch != null) Box(
+            modifier = Modifier.size(14.dp).clip(CircleShape).background(swatch).border(1.dp, ComposeColor(0x33FFFFFF), CircleShape),
+        )
+        Text("‹", color = PanelMuted, style = MaterialTheme.typography.labelMedium, modifier = Modifier.clickable { onAdjust(-1) })
+        Text(value, color = ComposeColor.White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium)
+        Text("›", color = PanelMuted, style = MaterialTheme.typography.labelMedium, modifier = Modifier.clickable { onAdjust(1) })
+    }
+}
 
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Boyut", color = PanelMuted, style = MaterialTheme.typography.labelSmall)
-                    Text("%${prefs.subtitleSize}", color = ComposeColor.White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium)
-                }
-                Slider(
-                    value = prefs.subtitleSize.toFloat(),
-                    onValueChange = { onPrefsChange(prefs.copy(subtitleSize = it.toInt())) },
-                    valueRange = 70f..180f,
-                    steps = 10,
-                    colors = androidx.compose.material3.SliderDefaults.colors(
-                        thumbColor = PanelAccent,
-                        activeTrackColor = PanelAccent,
-                        inactiveTrackColor = ComposeColor(0x26FFFFFF),
-                    ),
-                )
-
-                Text("Renk", color = PanelMuted, style = MaterialTheme.typography.labelSmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    subtitleColorPresets.forEach { (hex, _) ->
-                        val active = prefs.subtitleColor.equals(hex, ignoreCase = true)
-                        Box(
-                            modifier = Modifier
-                                .size(30.dp)
-                                .clip(CircleShape)
-                                .background(ComposeColor(android.graphics.Color.parseColor(hex)))
-                                .border(
-                                    width = if (active) 3.dp else 1.dp,
-                                    color = if (active) PanelAccent else ComposeColor(0x33FFFFFF),
-                                    shape = CircleShape,
-                                )
-                                .clickable { onPrefsChange(prefs.copy(subtitleColor = hex)) },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            if (active) Text("✓", color = ComposeColor.Black, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-
-                Text("Arka plan", color = PanelMuted, style = MaterialTheme.typography.labelSmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("shadow" to "Gölge", "box" to "Koyu kutu", "none" to "Yok").forEach { (value, label) ->
-                        TrackRow(label = label, active = prefs.subtitleBackground == value, compact = true) {
-                            onPrefsChange(prefs.copy(subtitleBackground = value))
-                        }
-                    }
-                }
-            }
+// Sol/sag kumanda tuslariyla +10sn/-10sn atlanirken hicbir gorsel geri bildirim yoktu
+// ("bosa gidiyor" sikayeti) -- kisa sureli, soluk-buyuk animasyonlu bir rozet gosteriyoruz.
+@Composable
+private fun SeekIndicator(state: Pair<Boolean, Long>?, modifier: Modifier = Modifier) {
+    AnimatedVisibility(
+        visible = state != null,
+        modifier = modifier,
+        enter = fadeIn() + scaleIn(initialScale = 0.8f),
+        exit = fadeOut() + scaleOut(targetScale = 0.8f),
+    ) {
+        val forward = state?.first ?: true
+        Box(
+            modifier = Modifier
+                .clip(CircleShape)
+                .background(ComposeColor(0xB3000000))
+                .padding(horizontal = 22.dp, vertical = 16.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                if (forward) "⏩ +10sn" else "⏪ -10sn",
+                color = ComposeColor.White,
+                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.titleMedium,
+            )
         }
     }
 }

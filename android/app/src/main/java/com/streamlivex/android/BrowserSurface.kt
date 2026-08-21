@@ -123,8 +123,17 @@ fun BrowserSurface(
                             val sameApp = destination.scheme in setOf("http", "https") &&
                                 (destination.host == configuredHost || destination.host in setOf("localhost", "10.0.2.2"))
                             if (sameApp) return false
-                            if (destination.scheme in setOf("http", "https")) {
+                            if (destination.scheme in setOf("http", "https", "mailto", "tel")) {
                                 runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, destination)) }
+                                    .onFailure {
+                                        if (destination.scheme == "mailto") {
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                "Mail uygulaması bulunamadı: ${destination.schemeSpecificPart}",
+                                                android.widget.Toast.LENGTH_LONG,
+                                            ).show()
+                                        }
+                                    }
                             }
                             return true
                         }
