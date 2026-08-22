@@ -123,6 +123,17 @@ class TvLiveProfileStore(
             .apply()
     }
 
+    fun recordChannelView(channelId: String) {
+        val key = "channel_views_$channelId"
+        prefs.edit()
+            .putInt(key, prefs.getInt(key, 0) + 1)
+            .putString("last_channel_id", channelId)
+            .apply()
+    }
+
+    fun channelViewCount(channelId: String): Int =
+        prefs.getInt("channel_views_$channelId", 0)
+
     fun clearPlayback() {
         prefs.edit()
             .remove(

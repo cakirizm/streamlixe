@@ -766,11 +766,37 @@ class MainActivity : ComponentActivity() {
          * player state'ine aktar.
          */
         if (
-            (
-                playbackRequest !=
-                    null ||
-                    tvFullscreenActive
-                ) &&
+            tvFullscreenActive &&
+            event.keyCode in
+            dpadKeys
+        ) {
+
+            /*
+             * Film/dizi native Compose oynaticisi kendi odak agacini
+             * kullanir. Once olayi ekrana ver; bir dugme veya oynatici
+             * kok katmani islediyse burada bitir. Eski kod olayi daha
+             * Compose'a ulasmadan tukettigi icin kumanda calismiyordu.
+             */
+            if (super.dispatchKeyEvent(event)) {
+                return true
+            }
+
+            /*
+             * LiveTvScreen AndroidView tabanli oldugu icin islenmeyen
+             * tuslari mevcut harici olay yoluna aktarmaya devam et.
+             */
+            externalPlayerKeyEvent =
+                Triple(
+                    event.keyCode,
+                    event.action,
+                    System.nanoTime(),
+                )
+
+            return true
+        }
+
+        if (
+            playbackRequest != null &&
             event.keyCode in
             dpadKeys
         ) {

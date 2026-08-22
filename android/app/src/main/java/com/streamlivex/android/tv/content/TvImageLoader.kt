@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -19,6 +20,10 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
+
+private class TvNetworkImageView(context: android.content.Context) : ImageView(context) {
+    var requestedKey: String? = null
+}
 
 private object TvImageLoader {
     private val executor = Executors.newFixedThreadPool(3)
@@ -38,10 +43,18 @@ private object TvImageLoader {
         height: Int,
         imageView: ImageView,
     ) {
+        val widthBucket = ((width.coerceAtLeast(1) + 119) / 120) * 120
+        val heightBucket = ((height.coerceAtLeast(1) + 119) / 120) * 120
+        val cacheKey = "$url@$widthBucket:$heightBucket"
+        val networkView = imageView as? TvNetworkImageView
+        if (networkView?.requestedKey == cacheKey) return
+
         val requestToken = token.incrementAndGet()
         imageView.tag = requestToken
+        networkView?.requestedKey = cacheKey
+        imageView.setImageDrawable(null)
 
-        cache.get(url)?.let {
+        cache.get(cacheKey)?.let {
             imageView.setImageBitmap(it)
             return
         }
@@ -50,12 +63,12 @@ private object TvImageLoader {
             val bitmap = runCatching {
                 fetchAndDecode(
                     url = url,
-                    reqWidth = width.coerceAtLeast(180),
-                    reqHeight = height.coerceAtLeast(270),
+                    reqWidth = widthBucket.coerceAtLeast(180),
+                    reqHeight = heightBucket.coerceAtLeast(270),
                 )
             }.getOrNull()
 
-            if (bitmap != null) cache.put(url, bitmap)
+            if (bitmap != null) cache.put(cacheKey, bitmap)
 
             main.post {
                 if (imageView.tag == requestToken && bitmap != null) {
@@ -170,16 +183,16 @@ fun TvPosterImage(
         contentAlignment = Alignment.Center,
     ) {
         if (!url.isNullOrBlank()) {
-            AndroidView(
+            key(url) {
+                AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { context ->
-                    ImageView(context).apply {
+                    TvNetworkImageView(context).apply {
                         scaleType = ImageView.ScaleType.CENTER_CROP
                         adjustViewBounds = false
                     }
                 },
                 update = { view ->
-                    view.setImageDrawable(null)
                     view.post {
                         TvImageLoader.load(
                             url = url,
@@ -189,7 +202,35 @@ fun TvPosterImage(
                         )
                     }
                 },
-            )
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun TvLogoImage(
+    url: String?,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        if (!url.isNullOrBlank()) {
+            key(url) {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { context ->
+                        TvNetworkImageView(context).apply {
+                            scaleType = ImageView.ScaleType.CENTER_INSIDE
+                            adjustViewBounds = false
+                        }
+                    },
+                    update = { view ->
+                        view.post {
+                            TvImageLoader.load(url, view.width.coerceAtLeast(160), view.height.coerceAtLeast(80), view)
+                        }
+                    },
+                )
+            }
         }
     }
 }

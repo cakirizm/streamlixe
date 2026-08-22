@@ -1,5 +1,6 @@
 package com.streamlivex.android.tv.data
 
+import com.streamlivex.android.BuildConfig
 import android.util.JsonReader
 import android.util.JsonToken
 import android.util.Base64
@@ -8,6 +9,8 @@ import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 data class TvProviderConfig(
     val name: String = "Oynatma Listem",
@@ -54,6 +57,61 @@ object TvLiveLibraryCache {
 
 class XtreamClient {
 
+    fun loadChannelEpg(
+        provider: TvProviderConfig,
+        channel: NativeLiveChannel,
+        limit: Int = 6,
+    ): Result<List<NativeLiveEpgProgram>> = runCatching {
+        val now = System.currentTimeMillis() / 1000L
+        val providerRows = loadShortEpg(provider, channel.streamId, limit)
+            .getOrDefault(emptyList())
+            .filter { it.stopTimestamp > now - 60L }
+            .sortedBy { it.startTimestamp }
+        // Bazı Xtream sağlayıcıları dolu ama tamamen geçmiş bir short_epg listesi
+        // döndürüyor. Bu satırlar fallback'i engellememeli.
+        if (providerRows.any { it.isCurrent(now) }) {
+            return@runCatching providerRows.take(limit.coerceIn(1, 12))
+        }
+
+        val query = URLEncoder.encode(channel.name, "UTF-8")
+        val epgId = URLEncoder.encode(channel.epgId.orEmpty(), "UTF-8")
+        val base = BuildConfig.WEB_APP_URL.trimEnd('/').removeSuffix("/app")
+        val root = JSONObject(requestSmallText("$base/api/epg?channel=$query&id=$epgId", 512 * 1024))
+        val programmes = root.optJSONArray("programmes") ?: return@runCatching emptyList()
+        val parsed = buildList {
+            for (index in 0 until programmes.length()) {
+                val row = programmes.optJSONObject(index) ?: continue
+                val start = parseXmlTvTimestamp(row.optString("start")) ?: continue
+                val stop = parseXmlTvTimestamp(row.optString("stop")) ?: continue
+                if (stop <= start) continue
+                add(
+                    NativeLiveEpgProgram(
+                        title = row.optString("title", "Program bilgisi").ifBlank { "Program bilgisi" },
+                        description = row.optString("description").takeIf { it.isNotBlank() },
+                        startTimestamp = start,
+                        stopTimestamp = stop,
+                    ),
+                )
+            }
+        }
+        val fallbackRows = parsed.filter { it.stopTimestamp > now - 60L }
+            .sortedBy { it.startTimestamp }
+            .take(limit.coerceIn(1, 12))
+        if (fallbackRows.isNotEmpty()) fallbackRows else providerRows.take(limit.coerceIn(1, 12))
+    }
+
+    private fun parseXmlTvTimestamp(value: String): Long? {
+        val clean = value.trim()
+        val patterns = listOf("yyyyMMddHHmmss Z", "yyyyMMddHHmmssZ", "yyyyMMddHHmmss")
+        for (pattern in patterns) {
+            val parsed = runCatching {
+                SimpleDateFormat(pattern, Locale.US).apply { isLenient = false }.parse(clean)
+            }.getOrNull()
+            if (parsed != null) return parsed.time / 1000L
+        }
+        return null
+    }
+
     /*
      * MEMORY RULE:
      * VOD/Series için provider'ın bütün kütüphanesini ASLA tek JSONArray/String olarak RAM'e almıyoruz.
@@ -88,43 +146,56 @@ class XtreamClient {
         limit: Int = 6,
     ): Result<List<NativeLiveEpgProgram>> = runCatching {
         val p = normalized(provider)
-        val url =
-            buildApiUrl(
-                p,
+        val actions =
+            listOf(
                 "get_short_epg",
-                mapOf(
-                    "stream_id" to streamId,
-                    "limit" to limit.coerceIn(1, 12).toString(),
-                ),
+                "get_simple_data_table",
             )
 
-        val root =
-            JSONObject(
-                requestSmallText(
-                    url,
-                    1024 * 1024,
-                ),
-            )
+        actions.forEach { action ->
+            val url =
+                buildApiUrl(
+                    p,
+                    action,
+                    mapOf(
+                        "stream_id" to streamId,
+                        "limit" to limit.coerceIn(1, 12).toString(),
+                    ),
+                )
+            val root =
+                JSONObject(
+                    requestSmallText(
+                        url,
+                        1024 * 1024,
+                    ),
+                )
+            val listings =
+                root.optJSONArray("epg_listings")
+                    ?: root.optJSONArray("listings")
+                    ?: return@forEach
 
-        val listings =
-            root.optJSONArray("epg_listings")
-                ?: return@runCatching emptyList()
-
-        buildList {
+            val parsed = buildList {
             for (index in 0 until listings.length()) {
                 val row =
                     listings.optJSONObject(index)
                         ?: continue
 
-                val start =
+                val rawStart =
                     row.optString("start_timestamp")
                         .toLongOrNull()
                         ?: row.optLong("start_timestamp", 0L)
 
-                val stop =
+                val rawStop =
                     row.optString("stop_timestamp")
                         .toLongOrNull()
                         ?: row.optLong("stop_timestamp", 0L)
+
+                val start =
+                    if (rawStart > 10_000_000_000L) rawStart / 1000L
+                    else rawStart
+                val stop =
+                    if (rawStop > 10_000_000_000L) rawStop / 1000L
+                    else rawStop
 
                 if (start <= 0L || stop <= start) continue
 
@@ -147,7 +218,14 @@ class XtreamClient {
                     ),
                 )
             }
+            }
+
+            if (parsed.isNotEmpty()) {
+                return@runCatching parsed
+            }
         }
+
+        emptyList()
     }
 
     /**

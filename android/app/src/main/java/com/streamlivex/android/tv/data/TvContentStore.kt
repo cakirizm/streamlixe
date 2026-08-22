@@ -164,7 +164,13 @@ class TvContentStore(context: Context) {
         if (!finished && item.positionMs >= 15_000L) {
             rows.add(0, item)
         }
-        writeArray("continue", rows.take(50))
+        // Oynaticidan detay ekranina donuldugunda ilerleme ayni karede
+        // okunabilsin; SharedPreferences.apply() yarisi olusmasin.
+        writeArray(
+            "continue",
+            rows.take(50),
+            synchronous = true,
+        )
     }
 
     fun progressFor(id: String): TvSavedItem? =
@@ -242,6 +248,14 @@ class TvContentStore(context: Context) {
         writeArray(
             "continue",
             continueRows,
+            synchronous = true,
+        )
+    }
+
+    fun removeFromContinue(id: String) {
+        writeArray(
+            "continue",
+            continueWatching().filterNot { it.id == id },
             synchronous = true,
         )
     }

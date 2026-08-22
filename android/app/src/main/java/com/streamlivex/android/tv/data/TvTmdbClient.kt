@@ -16,6 +16,8 @@ data class TvTmdbMedia(
     val overview: String?,
     val rating: Double?,
     val year: String?,
+    val genres: List<String> = emptyList(),
+    val seasonCount: Int? = null,
 )
 
 data class TvTmdbPerson(
@@ -82,6 +84,17 @@ class TvTmdbClient {
                             parseTrailerUrl(it)
                         }
             }
+        }
+
+        if (trailerUrl == null) {
+            trailerUrl =
+                runCatching {
+                    publicTmdbTrailer(
+                        tmdbId = row.optLong("id"),
+                        kind = kind,
+                        locale = locale,
+                    )
+                }.getOrNull()
         }
 
         TvTmdbDetail(
@@ -165,32 +178,90 @@ class TvTmdbClient {
         }
     }
 
+    /**
+     * Production API installations predating the videos enrichment can still resolve the
+     * editorially attached TMDB trailer. This deliberately reads TMDB's video page instead of
+     * issuing a broad YouTube search, so an unrelated upload can never become the trailer.
+     */
+    private fun publicTmdbTrailer(
+        tmdbId: Long,
+        kind: String,
+        locale: TvLocale,
+    ): String? {
+        if (tmdbId <= 0L) return null
+        val mediaPath = if (kind == "series" || kind == "tv") "tv" else "movie"
+        val pageUrl =
+            "https://www.themoviedb.org/$mediaPath/$tmdbId/videos?language=${enc(locale.tmdbLanguage)}"
+        val connection = URL(pageUrl).openConnection() as HttpURLConnection
+        return try {
+            connection.connectTimeout = 8_000
+            connection.readTimeout = 12_000
+            connection.instanceFollowRedirects = true
+            connection.setRequestProperty("Accept", "text/html")
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Android TV) StreamLiveX/1.0")
+            connection.connect()
+            if (connection.responseCode !in 200..299) return null
+            val html = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            val candidates =
+                Regex(
+                    "data-id=\"([A-Za-z0-9_-]{11})\"[^>]*data-title=\"([^\"]+)\"",
+                    RegexOption.IGNORE_CASE,
+                ).findAll(html).mapNotNull { match ->
+                    val key = match.groupValues[1]
+                    val title = match.groupValues[2]
+                    val normalized = title.lowercase()
+                    val isTrailer =
+                        listOf("resmi fragman", "official trailer", "ana fragman", "trailer", "fragman", "teaser")
+                            .any(normalized::contains)
+                    if (!isTrailer) null
+                    else {
+                        val priority =
+                            when {
+                                normalized.contains("resmi fragman") || normalized.contains("official trailer") -> 0
+                                normalized.contains("ana fragman") || normalized.contains("trailer") -> 1
+                                normalized.contains("fragman") -> 2
+                                else -> 3
+                            }
+                        Triple(priority, key, title)
+                    }
+                }.sortedBy { it.first }.toList()
+            candidates.firstOrNull()?.second?.let { "https://www.youtube.com/watch?v=$it" }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     private fun parseTrailerUrl(row: JSONObject): String? {
         row.optString("trailer_url")
             .takeIf { it.startsWith("http") }
             ?.let { return it }
+
+        listOf("youtubeTrailer", "trailer", "youtubeKey", "youtube_key")
+            .map { row.optString(it).trim() }
+            .firstOrNull { it.isNotBlank() }
+            ?.let { value ->
+                return if (value.startsWith("http")) value else "https://www.youtube.com/watch?v=$value"
+            }
 
         val videos =
             row.optJSONObject("videos")?.optJSONArray("results")
                 ?: row.optJSONArray("videos")
 
         if (videos != null) {
-            for (i in 0 until videos.length()) {
-                val video = videos.optJSONObject(i) ?: continue
-                val site = video.optString("site")
-                val type = video.optString("type")
-                val key = video.optString("key").trim()
-                if (
-                    site.equals("YouTube", ignoreCase = true) &&
-                    key.isNotBlank() &&
-                    (
-                        type.equals("Trailer", ignoreCase = true) ||
-                            type.equals("Teaser", ignoreCase = true)
-                    )
-                ) {
-                    return "https://www.youtube.com/watch?v=$key"
+            val candidates = buildList {
+                for (i in 0 until videos.length()) {
+                    val video = videos.optJSONObject(i) ?: continue
+                    val type = video.optString("type")
+                    val key = video.optString("key").trim()
+                    if (video.optString("site").equals("YouTube", true) && key.isNotBlank() &&
+                        (type.equals("Trailer", true) || type.equals("Teaser", true))) add(video)
                 }
-            }
+            }.sortedWith(
+                compareByDescending<JSONObject> { it.optBoolean("official", false) }
+                    .thenBy { if (it.optString("type").equals("Trailer", true)) 0 else 1 }
+                    .thenByDescending { it.optString("published_at") },
+            )
+            candidates.firstOrNull()?.optString("key")?.let { return "https://www.youtube.com/watch?v=$it" }
         }
         return null
     }
@@ -224,6 +295,13 @@ class TvTmdbClient {
             overview = row.optString("overview").takeIf { it.isNotBlank() },
             rating = row.optDouble("vote_average").takeIf { it > 0.0 },
             year = date.take(4).takeIf { it.length == 4 },
+            genres = buildList {
+                val genres = row.optJSONArray("genres")
+                if (genres != null) for (i in 0 until genres.length()) {
+                    genres.optJSONObject(i)?.optString("name")?.takeIf { it.isNotBlank() }?.let(::add)
+                }
+            },
+            seasonCount = row.optInt("number_of_seasons").takeIf { it > 0 },
         )
     }
 

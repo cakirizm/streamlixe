@@ -20,7 +20,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -65,6 +67,7 @@ import com.streamlivex.android.tv.data.TvLiveProfileStore
 import com.streamlivex.android.tv.data.TvProviderConfig
 import com.streamlivex.android.tv.data.XtreamClient
 import com.streamlivex.android.tv.data.XtreamLiveLibrary
+import com.streamlivex.android.tv.content.TvLogoImage
 import com.streamlivex.android.tv.profile.TvActiveScope
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -79,27 +82,6 @@ private fun ChannelLogo(
     url: String?,
     modifier: Modifier = Modifier,
 ) {
-    var bitmap by remember(url) {
-        mutableStateOf<android.graphics.Bitmap?>(null)
-    }
-
-    LaunchedEffect(url) {
-        val target =
-            url?.takeIf { it.isNotBlank() }
-                ?: return@LaunchedEffect
-
-        bitmap =
-            withContext(Dispatchers.IO) {
-                runCatching {
-                    URL(target)
-                        .openStream()
-                        .use {
-                            BitmapFactory.decodeStream(it)
-                        }
-                }.getOrNull()
-            }
-    }
-
     Box(
         modifier =
             modifier.background(
@@ -108,19 +90,9 @@ private fun ChannelLogo(
             ),
         contentAlignment = Alignment.Center,
     ) {
-        bitmap?.let { logo ->
-            Image(
-                bitmap = logo.asImageBitmap(),
-                contentDescription = null,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(3.dp),
-                contentScale = ContentScale.Fit,
-            )
-        } ?: Text(
-            text = "TV",
-            color = Color(0xFF64748B),
-            style = MaterialTheme.typography.labelSmall,
+        TvLogoImage(
+            url = url,
+            modifier = Modifier.fillMaxSize().padding(3.dp),
         )
     }
 }
@@ -181,6 +153,12 @@ private fun epgProgress(
     ).coerceIn(0f, 1f)
 }
 
+private fun epgRemainingMinutes(
+    row: NativeLiveEpgProgram,
+): Long =
+    ((row.stopTimestamp - System.currentTimeMillis() / 1000L) / 60L)
+        .coerceAtLeast(0L)
+
 @OptIn(UnstableApi::class)
 @Composable
 fun LiveTvScreen(
@@ -191,6 +169,8 @@ fun LiveTvScreen(
     onFullscreenStateChanged: (Boolean) -> Unit,
     onContentFocused: () -> Unit,
     menuFocusRequester: FocusRequester,
+    launchChannelId: String? = null,
+    onLaunchChannelConsumed: () -> Unit = {},
 ) {
     val client = remember { XtreamClient() }
     val context = LocalContext.current
@@ -234,9 +214,8 @@ fun LiveTvScreen(
     var playbackChannelId by remember(
         TvActiveScope.storageKey(),
     ) {
-        mutableStateOf(
-            liveStore.playbackChannelId(),
-        )
+        // Route acilisinda eski yayini otomatik baslatma. Playback yalniz OK ile baslar.
+        mutableStateOf<String?>(null)
     }
     var favoriteChannelIds by remember(
         TvActiveScope.storageKey(),
@@ -252,10 +231,17 @@ fun LiveTvScreen(
         mutableStateOf<List<NativeLiveEpgProgram>>(emptyList())
     }
     var epgLoading by remember { mutableStateOf(false) }
+    val epgMemoryCache = remember {
+        mutableMapOf<String, Pair<Long, List<NativeLiveEpgProgram>>>()
+    }
     var qualityLabel by remember { mutableStateOf("—") }
+    var categoryLayerFocused by remember { mutableStateOf(true) }
+    var initialBrowseFocusPending by remember { mutableStateOf(true) }
 
     val categoryReturnFocusRequester = remember { FocusRequester() }
     val channelReturnFocusRequester = remember { FocusRequester() }
+    val categoryListState = rememberLazyListState()
+    val channelListState = rememberLazyListState()
 
     LaunchedEffect(
         selectedCategoryId,
@@ -374,8 +360,34 @@ fun LiveTvScreen(
         visibleChannels.firstOrNull { it.id == selectedChannelId }
             ?: visibleChannels.firstOrNull()
 
+    LaunchedEffect(currentLibrary, fullscreen) {
+        if (initialBrowseFocusPending && !fullscreen) {
+            val categoryIndex =
+                currentLibrary.categories.indexOfFirst { it.id == selectedCategoryId }
+            if (categoryIndex >= 0) {
+                categoryListState.scrollToItem(categoryIndex)
+            }
+            delay(100)
+            runCatching { categoryReturnFocusRequester.requestFocus() }
+            initialBrowseFocusPending = false
+        }
+    }
+
     val playbackChannel =
         currentLibrary.channels.firstOrNull { it.id == playbackChannelId }
+
+    LaunchedEffect(launchChannelId, currentLibrary) {
+        val channel = currentLibrary.channels.firstOrNull { it.id == launchChannelId }
+            ?: return@LaunchedEffect
+        selectedCategoryId = channel.categoryId
+        selectedChannelId = channel.id
+        playbackChannelId = channel.id
+        categoryLayerFocused = false
+        onContentFocused()
+        onLaunchChannelConsumed()
+        delay(180)
+        runCatching { channelReturnFocusRequester.requestFocus() }
+    }
 
     LaunchedEffect(
         selectedChannel?.streamId,
@@ -394,6 +406,14 @@ fun LiveTvScreen(
             return@LaunchedEffect
         }
 
+        epgMemoryCache[channel.id]
+            ?.takeIf { System.currentTimeMillis() - it.first < 5 * 60_000L }
+            ?.let { cached ->
+                epgRows = cached.second
+                epgLoading = false
+                return@LaunchedEffect
+            }
+
         epgLoading =
             true
 
@@ -402,9 +422,9 @@ fun LiveTvScreen(
 
         Thread {
             val rows =
-                client.loadShortEpg(
+                client.loadChannelEpg(
                     provider = provider,
-                    streamId = channel.streamId,
+                    channel = channel,
                     limit = 6,
                 ).getOrDefault(
                     emptyList(),
@@ -412,9 +432,13 @@ fun LiveTvScreen(
 
             Handler(Looper.getMainLooper()).post {
                 if (
-                    selectedChannelId ==
+                    (
+                        selectedChannelId
+                            ?: visibleChannels.firstOrNull()?.id
+                        ) ==
                     channel.id
                 ) {
+                    epgMemoryCache[channel.id] = System.currentTimeMillis() to rows
                     epgRows =
                         rows
                     epgLoading =
@@ -450,14 +474,21 @@ fun LiveTvScreen(
     LaunchedEffect(playbackChannel?.id) {
         val channel = playbackChannel ?: return@LaunchedEffect
 
-        val player = livePlayer
-        if (player == null) {
-            livePlayer = playerFor(requestFor(channel))
-        } else {
-            player.setMediaItem(MediaItem.fromUri(channel.streamUrl))
-            player.prepare()
-            player.playWhenReady = true
-        }
+        val player =
+            livePlayer
+                ?: playerFor(requestFor(channel))
+                    .also {
+                        livePlayer = it
+                    }
+
+        // Ilk kanalda da yeni olusturulan player'a medya atanmalidir.
+        // Eski akis sadece player'i olusturuyor, ilk yayini ancak ikinci
+        // kanal seciminde setMediaItem/prepare ile baslatiyordu.
+        player.setMediaItem(
+            MediaItem.fromUri(channel.streamUrl),
+        )
+        player.prepare()
+        player.playWhenReady = true
     }
 
     // Live yayın asla pause durumda kalmasın.
@@ -532,7 +563,16 @@ fun LiveTvScreen(
     // Fullscreen'den çıkınca aynı kanal satırına odak dönsün.
     LaunchedEffect(fullscreen) {
         if (!fullscreen && selectedChannelId != null) {
-            delay(80)
+            // Fullscreen kapandığında kanal satırı viewport dışında olabilir. Önce aynı
+            // kategori/kanal konumunu compose ettir, sonra odağı geri ver. Aksi halde
+            // FocusRequester hedefi bulamayınca odak ana kategoriye düşüyordu.
+            val channelIndex = visibleChannels.indexOfFirst { it.id == selectedChannelId }
+            if (channelIndex >= 0) {
+                channelListState.scrollToItem(channelIndex)
+            }
+            delay(160)
+            onContentFocused()
+            categoryLayerFocused = false
             runCatching { channelReturnFocusRequester.requestFocus() }
         }
     }
@@ -595,6 +635,9 @@ fun LiveTvScreen(
     }
 
     BackHandler(enabled = fullscreen) {
+        selectedChannelId = playbackChannelId ?: selectedChannelId
+        categoryLayerFocused = false
+        onContentFocused()
         fullscreen = false
     }
 
@@ -612,10 +655,13 @@ fun LiveTvScreen(
                 CategoryColumn(
                     categories = currentLibrary.categories,
                     selectedCategory = selectedCategory,
+                    activeCategoryId = playbackChannel?.categoryId,
                     selectedCategoryFocusRequester = categoryReturnFocusRequester,
                     menuFocusRequester = menuFocusRequester,
+                    listState = categoryListState,
                     onSelected = { category ->
                         onContentFocused()
+                        categoryLayerFocused = true
                         selectedCategoryId =
                             category.id
 
@@ -638,32 +684,40 @@ fun LiveTvScreen(
                                     ?.id
                             }
                     },
-                    modifier = Modifier.weight(0.30f),
+                    modifier = Modifier.width(if (categoryLayerFocused) 240.dp else 140.dp),
                 )
 
                 ChannelColumn(
                     channels = visibleChannels,
                     selectedChannel = selectedChannel,
+                    activeChannelId = playbackChannelId,
                     favoriteChannelIds =
                         favoriteChannelIds,
                     onFocused = { channel ->
                         onContentFocused()
+                        categoryLayerFocused = false
                         selectedChannelId = channel.id
                     },
                     categoryFocusRequester = categoryReturnFocusRequester,
                     selectedChannelFocusRequester = channelReturnFocusRequester,
+                    listState = channelListState,
                     onActivate = { channel ->
                         onContentFocused()
                         selectedChannelId =
                             channel.id
-                        playbackChannelId =
-                            channel.id
-                        fullscreen =
-                            true
-                        channelOverlayVisible =
-                            true
-                        channelOverlayNonce +=
-                            1
+                        if (
+                            playbackChannelId == channel.id &&
+                            livePlayer != null
+                        ) {
+                            fullscreen = true
+                            channelOverlayVisible = true
+                            channelOverlayNonce += 1
+                        } else {
+                            // Ilk OK yalnizca sagdaki kucuk on izlemeyi baslatir.
+                            liveStore.recordChannelView(channel.id)
+                            playbackChannelId = channel.id
+                            fullscreen = false
+                        }
                     },
                     modifier = Modifier.weight(0.42f),
                 )
@@ -789,8 +843,10 @@ private fun LiveErrorScreen(message: String) {
 private fun CategoryColumn(
     categories: List<NativeLiveCategory>,
     selectedCategory: NativeLiveCategory,
+    activeCategoryId: String?,
     selectedCategoryFocusRequester: FocusRequester,
     menuFocusRequester: FocusRequester,
+    listState: LazyListState,
     onSelected: (NativeLiveCategory) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -821,6 +877,7 @@ private fun CategoryColumn(
         }
 
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
@@ -831,8 +888,9 @@ private fun CategoryColumn(
                 var focused by remember { mutableStateOf(false) }
 
                 val background = when {
-                    focused -> Color(0xFF2563EB)
-                    category.id == selectedCategory.id -> Color(0xFF172554)
+                    focused -> Color(0xFF164E63)
+                    category.id == activeCategoryId -> Color(0xFF134E4A)
+                    category.id == selectedCategory.id -> Color(0xFF202A36)
                     else -> Color(0xFF151C28)
                 }
 
@@ -868,8 +926,20 @@ private fun CategoryColumn(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = category.count.toString(),
-                        color = if (focused) Color.White else Color(0xFF94A3B8),
+                        text =
+                            if (category.id == activeCategoryId) {
+                                "● AÇIK"
+                            } else {
+                                category.count.toString()
+                            },
+                        color =
+                            if (category.id == activeCategoryId) {
+                                Color(0xFF5EEAD4)
+                            } else if (focused) {
+                                Color.White
+                            } else {
+                                Color(0xFF94A3B8)
+                            },
                         style = MaterialTheme.typography.labelMedium,
                     )
                 }
@@ -882,9 +952,11 @@ private fun CategoryColumn(
 private fun ChannelColumn(
     channels: List<NativeLiveChannel>,
     selectedChannel: NativeLiveChannel?,
+    activeChannelId: String?,
     favoriteChannelIds: Set<String>,
     categoryFocusRequester: FocusRequester,
     selectedChannelFocusRequester: FocusRequester,
+    listState: LazyListState,
     onFocused: (NativeLiveChannel) -> Unit,
     onActivate: (NativeLiveChannel) -> Unit,
     modifier: Modifier = Modifier,
@@ -929,6 +1001,7 @@ private fun ChannelColumn(
         }
 
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
@@ -939,8 +1012,9 @@ private fun ChannelColumn(
                 var focused by remember { mutableStateOf(false) }
 
                 val background = when {
-                    focused -> Color(0xFF1D4ED8)
-                    channel.id == selectedChannel?.id -> Color(0xFF172554)
+                    focused -> Color(0xFF164E63)
+                    channel.id == activeChannelId -> Color(0xFF134E4A)
+                    channel.id == selectedChannel?.id -> Color(0xFF202A36)
                     else -> Color(0xFF141B26)
                 }
 
@@ -1002,6 +1076,13 @@ private fun ChannelColumn(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
+                        if (channel.id == activeChannelId) {
+                            Text(
+                                text = "● ŞU AN AÇIK",
+                                color = Color(0xFF5EEAD4),
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        }
                         Text(
                             text = if (channel.epgId.isNullOrBlank()) {
                                 "Canlı yayın"
@@ -1139,7 +1220,8 @@ private fun ChannelPreviewPanel(
                 Text(
                     text =
                         "${formatEpgTime(current.startTimestamp)} – " +
-                            formatEpgTime(current.stopTimestamp),
+                            formatEpgTime(current.stopTimestamp) +
+                            " · ${epgRemainingMinutes(current)} dk kaldı",
                     color = Color(0xFFCBD5E1),
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -1312,7 +1394,8 @@ private fun ChannelOverlay(
                     Text(
                         text =
                             "${formatEpgTime(current.startTimestamp)} – " +
-                                formatEpgTime(current.stopTimestamp),
+                                formatEpgTime(current.stopTimestamp) +
+                                " · ${epgRemainingMinutes(current)} dk kaldı",
                         color = Color(0xFFCBD5E1),
                         style = MaterialTheme.typography.bodyMedium,
                     )

@@ -6,9 +6,12 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import android.util.Log
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -30,9 +34,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -47,6 +54,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -61,17 +70,20 @@ import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.streamlivex.android.PlaybackItem
+import com.streamlivex.android.BuildConfig
 import com.streamlivex.android.PlaybackPreferences
 import com.streamlivex.android.PlaybackRequest
 import com.streamlivex.android.tv.data.NativeSeriesEpisode
 import com.streamlivex.android.tv.data.NativeSeriesInfo
 import com.streamlivex.android.tv.data.NativeSeriesItem
 import com.streamlivex.android.tv.data.NativeVodItem
+import com.streamlivex.android.tv.data.NativeLiveChannel
 import com.streamlivex.android.tv.data.TvContentCache
 import com.streamlivex.android.tv.data.TvContentStore
 import com.streamlivex.android.tv.data.TvIndexedMedia
 import com.streamlivex.android.tv.data.TvLibraryIndex
 import com.streamlivex.android.tv.data.TvLiveLibraryCache
+import com.streamlivex.android.tv.data.TvLiveProfileStore
 import com.streamlivex.android.tv.data.TvProviderConfig
 import com.streamlivex.android.tv.data.TvPerformanceManager
 import com.streamlivex.android.tv.data.TvSavedItem
@@ -86,9 +98,19 @@ import com.streamlivex.android.tv.data.XtreamClient
 import com.streamlivex.android.tv.i18n.TvLocale
 import com.streamlivex.android.tv.i18n.TvStrings
 import com.streamlivex.android.tv.player.TvNativePlayer
+import com.streamlivex.android.tv.TvDesignTokens
+import com.streamlivex.android.tv.TvPerformanceTrace
 import com.streamlivex.android.tv.profile.TvProfilePolicy
+import com.streamlivex.android.tv.sports.SportsBroadcastResolver
+import com.streamlivex.android.tv.sports.SportsChannelIndex
+import com.streamlivex.android.tv.sports.SportsEvent
+import com.streamlivex.android.tv.sports.SportsRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private data class ContentTarget(
     val kind: String,
@@ -109,6 +131,18 @@ private data class HomeCard(
     val target: ContentTarget?,
 )
 
+private object TvHomeMemoryCache {
+    var key: String = ""
+    var movies: List<TvTmdbMedia> = emptyList()
+    var series: List<TvTmdbMedia> = emptyList()
+    var suggestions: List<TvIndexedMedia> = emptyList()
+    var newMovies: List<TvIndexedMedia> = emptyList()
+    var newSeries: List<TvIndexedMedia> = emptyList()
+    var channels: List<NativeLiveChannel> = emptyList()
+    var epg: Map<String, Pair<String, String>> = emptyMap()
+    var epgUpdatedAtMs: Long = 0L
+}
+
 @Composable
 fun TvHomeScreen(
     provider: TvProviderConfig,
@@ -116,18 +150,24 @@ fun TvHomeScreen(
     playerFor: (PlaybackRequest) -> ExoPlayer,
     releasePlayer: (String) -> Unit,
     onFullscreenStateChanged: (Boolean) -> Unit,
+    onOpenSportsEvent: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val strings = remember(locale) { TvStrings(locale) }
     val store = remember { TvContentStore(context) }
     val tmdb = remember { TvTmdbClient() }
     val index = remember { TvLibraryIndex(context) }
+    val homeCacheKey = "${provider.server}|${provider.username}|${locale.name}"
+    val hasHomeCache = TvHomeMemoryCache.key == homeCacheKey
 
-    var trendingMovies by remember(locale) { mutableStateOf<List<TvTmdbMedia>>(emptyList()) }
-    var trendingSeries by remember(locale) { mutableStateOf<List<TvTmdbMedia>>(emptyList()) }
-    var forYou by remember { mutableStateOf<List<TvIndexedMedia>>(emptyList()) }
-    var newMovies by remember { mutableStateOf<List<TvIndexedMedia>>(emptyList()) }
-    var newSeries by remember { mutableStateOf<List<TvIndexedMedia>>(emptyList()) }
+    var trendingMovies by remember(homeCacheKey) { mutableStateOf(if (hasHomeCache) TvHomeMemoryCache.movies else emptyList()) }
+    var trendingSeries by remember(homeCacheKey) { mutableStateOf(if (hasHomeCache) TvHomeMemoryCache.series else emptyList()) }
+    var forYou by remember(homeCacheKey) { mutableStateOf(if (hasHomeCache) TvHomeMemoryCache.suggestions else emptyList()) }
+    var newMovies by remember(homeCacheKey) { mutableStateOf(if (hasHomeCache) TvHomeMemoryCache.newMovies else emptyList()) }
+    var newSeries by remember(homeCacheKey) { mutableStateOf(if (hasHomeCache) TvHomeMemoryCache.newSeries else emptyList()) }
+    var favoriteChannels by remember(homeCacheKey) { mutableStateOf(if (hasHomeCache) TvHomeMemoryCache.channels else emptyList()) }
+    var liveEpgLabels by remember(homeCacheKey) { mutableStateOf(if (hasHomeCache) TvHomeMemoryCache.epg else emptyMap()) }
+    var sportsEvents by remember(homeCacheKey) { mutableStateOf<List<SportsEvent>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var target by remember { mutableStateOf<ContentTarget?>(null) }
     var playing by remember { mutableStateOf<TvSavedItem?>(null) }
@@ -135,12 +175,118 @@ fun TvHomeScreen(
         mutableStateOf<List<Pair<TvSavedItem, PlaybackItem>>>(emptyList())
     }
     var playlistIndex by remember { mutableIntStateOf(0) }
+    var homeRefresh by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(provider.server, provider.username, locale) {
+        val startedAt = SystemClock.elapsedRealtime()
+        if (BuildConfig.DEBUG) {
+            val profileAt = TvPerformanceTrace.profileSelectedAtMs
+            Log.d("StreamLiveXHome", "first-frame=${if (profileAt > 0L) SystemClock.elapsedRealtime() - profileAt else 0L}ms cached=$hasHomeCache")
+        }
+        Thread {
+            val sports = SportsRepository(context).today()
+            Handler(Looper.getMainLooper()).post {
+                sportsEvents = sports.take(12)
+                Log.i("SportsPipeline", "home state fixture count=${sportsEvents.size}")
+                Log.i("SportsPipeline", "home rendered fixtures=${sportsEvents.joinToString(" | ") { "${it.home}-${it.away}" }}")
+            }
+            val enriched = SportsRepository(context).enrichTeamBadges(sports.take(12))
+            Handler(Looper.getMainLooper()).post { sportsEvents = enriched }
+        }.start()
+        Thread {
+            val liveProfile = TvLiveProfileStore(context)
+            val favoriteIds = liveProfile.favoriteChannelIds()
+            val lastChannel = liveProfile.lastChannelId()
+            val libraryChannels = XtreamClient().loadLiveLibrary(provider).getOrNull()?.channels.orEmpty()
+            SportsChannelIndex.forChannels(libraryChannels)
+            val rankedChannels = libraryChannels
+                .filter { liveChannelPriority(it.name) < 100 }
+                .sortedWith(
+                    compareBy<NativeLiveChannel> { liveChannelPriority(it.name) }
+                        .thenByDescending { liveProfile.channelViewCount(it.id) }
+                        .thenByDescending { it.id in favoriteIds }
+                        .thenByDescending { it.id == lastChannel },
+                )
+                .distinctBy { liveChannelGroup(it.name) }
+                .take(6)
+
+            Handler(Looper.getMainLooper()).post {
+                favoriteChannels = rankedChannels
+                TvHomeMemoryCache.channels = rankedChannels
+                if (BuildConfig.DEBUG) Log.d("StreamLiveXHome", "live=${SystemClock.elapsedRealtime() - startedAt}ms")
+            }
+        }.start()
         Thread {
             val movies = tmdb.trending("movie", locale).getOrDefault(emptyList()).take(14)
             val series = tmdb.trending("series", locale).getOrDefault(emptyList()).take(14)
-            val suggestions = index.suggestions(provider, limit = 14)
+            Handler(Looper.getMainLooper()).post {
+                trendingMovies = movies
+                trendingSeries = series
+                TvHomeMemoryCache.key = homeCacheKey
+                TvHomeMemoryCache.movies = movies
+                TvHomeMemoryCache.series = series
+                if (BuildConfig.DEBUG) Log.d("StreamLiveXHome", "hero=${SystemClock.elapsedRealtime() - startedAt}ms")
+            }
+            val history =
+                store.viewingHistory()
+                    .take(12)
+            val affinityRows =
+                history.mapNotNull { watched ->
+                    val lookupKind =
+                        if (watched.kind == "episode") "series"
+                        else watched.kind
+                    val lookupTitle =
+                        if (watched.kind == "episode") {
+                            watched.subtitle ?: watched.name
+                        } else {
+                            watched.name
+                        }
+                    index.findByTitle(
+                        provider,
+                        lookupKind,
+                        lookupTitle,
+                    )
+                }
+            val favoriteCategories =
+                affinityRows
+                    .mapNotNull {
+                        row ->
+
+                        row.categoryId
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let { row.kind to it }
+                    }
+                    .groupingBy { it }
+                    .eachCount()
+                    .entries
+                    .sortedByDescending { it.value }
+                    .take(4)
+            val seenIds = affinityRows.map { it.localId }.toSet()
+            val suggestionPools =
+                favoriteCategories
+                    .map { preference ->
+                        index.categoryPage(
+                            provider = provider,
+                            kind = preference.key.first,
+                            categoryId = preference.key.second,
+                            limit = 8,
+                            offset = 0,
+                        )
+                    }
+            val personalized =
+                (0 until 8)
+                    .flatMap { position ->
+                        suggestionPools.mapNotNull {
+                            it.getOrNull(position)
+                        }
+                    }
+                    .filterNot { it.localId in seenIds }
+                    .distinctBy { it.localId }
+                    .take(14)
+            val suggestions =
+                personalized.ifEmpty {
+                    index.suggestions(provider, limit = 14)
+                }
             val addedMovies =
                 index.newItems(
                     provider = provider,
@@ -153,14 +299,15 @@ fun TvHomeScreen(
                     kind = "series",
                     limit = 14,
                 )
-
             Handler(Looper.getMainLooper()).post {
-                trendingMovies = movies
-                trendingSeries = series
                 forYou = suggestions
                 newMovies = addedMovies
                 newSeries = addedSeries
+                TvHomeMemoryCache.suggestions = suggestions
+                TvHomeMemoryCache.newMovies = addedMovies
+                TvHomeMemoryCache.newSeries = addedSeries
                 loading = false
+                if (BuildConfig.DEBUG) Log.d("StreamLiveXHome", "catalogue=${SystemClock.elapsedRealtime() - startedAt}ms")
             }
         }.start()
     }
@@ -174,6 +321,25 @@ fun TvHomeScreen(
                 forYou = next
             }
         }
+    }
+
+    LaunchedEffect(favoriteChannels) {
+        if (favoriteChannels.isEmpty()) return@LaunchedEffect
+        if (liveEpgLabels.isNotEmpty() && System.currentTimeMillis() - TvHomeMemoryCache.epgUpdatedAtMs < 15 * 60_000L) return@LaunchedEffect
+        Thread {
+            val now = System.currentTimeMillis() / 1000L
+            val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
+            val labels = favoriteChannels.take(6).mapNotNull { channel ->
+                val current = XtreamClient().loadChannelEpg(provider, channel, 8)
+                    .getOrNull()?.firstOrNull { it.isCurrent(now) } ?: return@mapNotNull null
+                channel.id to (current.title to "${formatter.format(Date(current.startTimestamp * 1000))} - ${formatter.format(Date(current.stopTimestamp * 1000))}")
+            }.toMap()
+            Handler(Looper.getMainLooper()).post {
+                liveEpgLabels = labels
+                TvHomeMemoryCache.epg = labels
+                TvHomeMemoryCache.epgUpdatedAtMs = System.currentTimeMillis()
+            }
+        }.start()
     }
 
     if (playing != null) {
@@ -225,48 +391,69 @@ fun TvHomeScreen(
         return
     }
 
-    val continueRows = store.continueWatching()
+    val continueRows = remember(homeRefresh) { store.continueWatching() }
+    val featuredRows = (trendingSeries + trendingMovies).mapNotNull { media ->
+        if (!TvProfilePolicy.allow(media.name)) null
+        else index.findByTitle(provider, media.kind, media.name)?.let { media to it }
+    }.take(5)
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0D111B))
-            .padding(22.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
+            .background(TvDesignTokens.Background)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Text(
-                "StreamLiveX",
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.headlineMedium,
-            )
+            if (featuredRows.isNotEmpty()) {
+                HomeFeaturedHero(mediaRows = featuredRows.map { it.first }) { media ->
+                    featuredRows.firstOrNull { it.first.id == media.id }?.second?.let { local ->
+                        target = ContentTarget(media.kind, media.name, media.id, media.poster, local)
+                    }
+                }
+            }
         }
 
         if (continueRows.isNotEmpty()) {
             item {
-                HomeRail(
-                    title = strings["continue"],
-                    cards = continueRows.take(12).map {
-                        HomeCard(
-                            id = it.id,
-                            title = it.name,
-                            artwork = it.artwork,
-                            subtitle = it.subtitle.orEmpty(),
-                            target = null,
-                        )
+                ContinueHomeRail(
+                    rows = continueRows.take(10),
+                    onClick = { playing = it },
+                    onRemoveContinue = {
+                        store.removeFromContinue(it.id)
+                        homeRefresh += 1
                     },
-                    onClick = { card ->
-                        continueRows.firstOrNull { it.id == card.id }?.let { playing = it }
+                    onRemoveHistory = {
+                        store.removeFromHistory(it.id)
+                        homeRefresh += 1
                     },
                 )
             }
         }
 
-        if (newMovies.isNotEmpty()) {
+        if (favoriteChannels.isNotEmpty()) {
             item {
-                HomeRail(
-                    title = "Yeni Eklenen Filmler",
+                LiveHomeRail(favoriteChannels, liveEpgLabels) { channel ->
+                    TvLiveProfileStore(context).recordChannelView(channel.id)
+                    playing = TvSavedItem("live-${channel.id}", "live", channel.name, channel.streamUrl, channel.logo)
+                }
+            }
+        }
+
+        if (sportsEvents.isNotEmpty()) {
+            item {
+                HomeSportsRail(
+                    events = sportsEvents,
+                    channels = TvLiveLibraryCache.library?.channels.orEmpty(),
+                    onClick = { onOpenSportsEvent(it.id) },
+                )
+            }
+        }
+
+        if (false && newMovies.isNotEmpty()) {
+            item {
+                PosterHomeRail(
+                    title = "Popüler Filmler",
                     cards =
                         newMovies
                             .filter {
@@ -311,7 +498,7 @@ fun TvHomeScreen(
             }
         }
 
-        if (newSeries.isNotEmpty()) {
+        if (false && newSeries.isNotEmpty()) {
             item {
                 HomeRail(
                     title = "Yeni Eklenen Diziler",
@@ -390,8 +577,8 @@ fun TvHomeScreen(
 
         if (localTrendingMovies.isNotEmpty()) {
             item {
-                HomeRail(
-                    title = strings["trending_movies"],
+                PosterHomeRail(
+                    title = "Popüler Filmler",
                     cards = localTrendingMovies,
                     onClick = { card ->
                         card.target?.let {
@@ -433,8 +620,8 @@ fun TvHomeScreen(
 
         if (localTrendingSeries.isNotEmpty()) {
             item {
-                HomeRail(
-                    title = strings["trending_series"],
+                PosterHomeRail(
+                    title = "Popüler Diziler",
                     cards = localTrendingSeries,
                     onClick = { card ->
                         card.target?.let {
@@ -445,9 +632,9 @@ fun TvHomeScreen(
             }
         }
 
-        item {
-            HomeRail(
-                title = strings["for_you"],
+        if (forYou.isNotEmpty()) item {
+            PosterHomeRail(
+                title = "Sizin İçin",
                 cards = forYou.map {
                     HomeCard(
                         id = it.localId,
@@ -482,6 +669,7 @@ fun TvMoviesScreen(
     releasePlayer: (String) -> Unit,
     onFullscreenStateChanged: (Boolean) -> Unit,
     onContentFocused: () -> Unit,
+    menuFocusRequester: FocusRequester,
 ) {
     val context = LocalContext.current
     val strings = remember(locale) { TvStrings(locale) }
@@ -490,19 +678,25 @@ fun TvMoviesScreen(
     val index = remember { TvLibraryIndex(context) }
     val restoreRequester = remember { FocusRequester() }
     val movieGridEntryRequester = remember { FocusRequester() }
+    val movieCategoryRequester = remember { FocusRequester() }
     val movieGridState = rememberLazyListState()
+    val movieBrowseScope = androidx.compose.runtime.rememberCoroutineScope()
 
     var categories by remember { mutableStateOf(TvContentCache.vodCategories.orEmpty()) }
     var selectedCategoryId by remember { mutableStateOf(TvContentCache.movieCategoryId) }
     var movies by remember { mutableStateOf<List<TvIndexedMedia>>(emptyList()) }
+    var previewMovie by remember { mutableStateOf<TvIndexedMedia?>(null) }
     var totalCount by remember { mutableIntStateOf(0) }
     var loadingCategories by remember { mutableStateOf(categories.isEmpty()) }
     var loadingPage by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var loadGeneration by remember { mutableIntStateOf(0) }
+    var categoryRailExpanded by remember { mutableStateOf(true) }
+    var pendingMovieGridFocus by remember { mutableStateOf(false) }
 
     var target by remember { mutableStateOf<ContentTarget?>(null) }
     var playing by remember { mutableStateOf<TvSavedItem?>(null) }
+    var returnToMovieGrid by remember { mutableStateOf(false) }
 
     val pageSize = remember { TvPerformanceManager.pageSize(context) }
 
@@ -510,7 +704,7 @@ fun TvMoviesScreen(
         categoryId: String,
         reset: Boolean,
     ) {
-        if (loadingPage) return
+        if (loadingPage && !reset) return
 
         if (reset) {
             loadGeneration += 1
@@ -551,6 +745,7 @@ fun TvMoviesScreen(
                         } else {
                             (movies + rows).distinctBy { it.localId }
                         }
+                    if (reset) previewMovie = rows.firstOrNull()
                     loadingPage = false
                 }
             }
@@ -559,8 +754,22 @@ fun TvMoviesScreen(
 
     fun selectCategory(categoryId: String) {
         TvContentCache.movieCategoryId = categoryId
+        TvContentCache.movieFocusedId = TvContentCache.movieFocusedByCategory[categoryId]
         selectedCategoryId = categoryId
         loadPage(categoryId, reset = true)
+    }
+
+    LaunchedEffect(movies, pendingMovieGridFocus, selectedCategoryId) {
+        if (!pendingMovieGridFocus || movies.isEmpty()) return@LaunchedEffect
+        val rememberedIndex = movies.indexOfFirst { it.localId == TvContentCache.movieFocusedId }
+        movieGridState.scrollToItem(rememberedIndex.coerceAtLeast(0) / 4)
+        categoryRailExpanded = false
+        delay(70)
+        runCatching {
+            if (rememberedIndex >= 0) restoreRequester.requestFocus()
+            else movieGridEntryRequester.requestFocus()
+        }
+        pendingMovieGridFocus = false
     }
 
     LaunchedEffect(provider.server, provider.username) {
@@ -671,6 +880,7 @@ fun TvMoviesScreen(
                 target = it
             },
             onBack = {
+                returnToMovieGrid = true
                 target = null
             },
             onFullscreenStateChanged =
@@ -685,10 +895,17 @@ fun TvMoviesScreen(
             playing == null &&
             TvContentCache.movieFocusedId != null
         ) {
-            delay(120)
+            categoryRailExpanded = false
+            val focusedIndex =
+                movies.indexOfFirst { it.localId == TvContentCache.movieFocusedId }
+            if (focusedIndex >= 0) {
+                movieGridState.scrollToItem(focusedIndex / 4)
+            }
+            delay(if (returnToMovieGrid) 180 else 120)
             runCatching {
                 restoreRequester.requestFocus()
             }
+            returnToMovieGrid = false
         }
     }
 
@@ -706,7 +923,7 @@ fun TvMoviesScreen(
         LazyColumn(
             modifier =
                 Modifier
-                    .width(220.dp)
+                    .width(if (categoryRailExpanded) 220.dp else 0.dp)
                     .fillMaxHeight()
                     .background(Color(0xFF101722))
                     .padding(10.dp),
@@ -722,8 +939,15 @@ fun TvMoviesScreen(
                     selected =
                         category.id ==
                             selectedCategoryId,
+                    modifier =
+                        if (category.id == selectedCategoryId) {
+                            Modifier.focusRequester(movieCategoryRequester)
+                        } else {
+                            Modifier
+                        },
                     onFocus = {
                         onContentFocused()
+                        categoryRailExpanded = true
                         if (
                             category.id !=
                             selectedCategoryId
@@ -737,10 +961,10 @@ fun TvMoviesScreen(
                         onContentFocused()
                     },
                     onRight = {
-                        runCatching {
-                            movieGridEntryRequester
-                                .requestFocus()
-                        }
+                        pendingMovieGridFocus = true
+                    },
+                    onLeft = {
+                        runCatching { menuFocusRequester.requestFocus() }
                     },
                 )
             }
@@ -749,7 +973,7 @@ fun TvMoviesScreen(
         Box(
             modifier =
                 Modifier
-                    .weight(1f)
+                    .weight(0.72f)
                     .fillMaxHeight(),
         ) {
             when {
@@ -794,10 +1018,22 @@ fun TvMoviesScreen(
                             }
                         },
                         onFocus = { movie ->
+                            categoryRailExpanded = false
+                            previewMovie = movie
                             TvContentCache
                                 .movieFocusedId =
                                 movie.localId
+                            selectedCategoryId?.let {
+                                TvContentCache.movieFocusedByCategory[it] = movie.localId
+                            }
                             onContentFocused()
+                        },
+                        onExitLeft = {
+                            categoryRailExpanded = true
+                            movieBrowseScope.launch {
+                                delay(70)
+                                runCatching { movieCategoryRequester.requestFocus() }
+                            }
                         },
                         onClick = { movie ->
                             target =
@@ -812,6 +1048,24 @@ fun TvMoviesScreen(
                     )
             }
         }
+
+        previewMovie?.let { movie ->
+            BrowsePreviewPanel(
+                item = movie,
+                kind = "movie",
+                locale = locale,
+                isFavorite = store.isFavorite("movie-${movie.localId}"),
+                modifier = Modifier.weight(0.28f).fillMaxHeight(),
+                onOpen = {
+                    target = ContentTarget("movie", movie.name, poster = movie.artwork, local = movie)
+                },
+                onToggleFavorite = {
+                    store.toggleFavorite(
+                        TvSavedItem("movie-${movie.localId}", "movie", movie.name, movie.streamUrl, movie.artwork),
+                    )
+                },
+            )
+        }
     }
 }
 
@@ -823,6 +1077,7 @@ fun TvSeriesScreen(
     releasePlayer: (String) -> Unit,
     onFullscreenStateChanged: (Boolean) -> Unit,
     onContentFocused: () -> Unit,
+    menuFocusRequester: FocusRequester,
 ) {
     val context = LocalContext.current
     val strings = remember(locale) { TvStrings(locale) }
@@ -831,19 +1086,25 @@ fun TvSeriesScreen(
     val index = remember { TvLibraryIndex(context) }
     val restoreRequester = remember { FocusRequester() }
     val seriesGridEntryRequester = remember { FocusRequester() }
+    val seriesCategoryRequester = remember { FocusRequester() }
     val seriesGridState = rememberLazyListState()
+    val seriesBrowseScope = androidx.compose.runtime.rememberCoroutineScope()
 
     var categories by remember { mutableStateOf(TvContentCache.seriesCategories.orEmpty()) }
     var selectedCategoryId by remember { mutableStateOf(TvContentCache.seriesCategoryId) }
     var shows by remember { mutableStateOf<List<TvIndexedMedia>>(emptyList()) }
+    var previewShow by remember { mutableStateOf<TvIndexedMedia?>(null) }
     var totalCount by remember { mutableIntStateOf(0) }
     var loadingCategories by remember { mutableStateOf(categories.isEmpty()) }
     var loadingPage by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var loadGeneration by remember { mutableIntStateOf(0) }
+    var categoryRailExpanded by remember { mutableStateOf(true) }
 
     var target by remember { mutableStateOf<ContentTarget?>(null) }
     var playingEpisode by remember { mutableStateOf<TvSavedItem?>(null) }
+    var pendingSeriesGridFocus by remember { mutableStateOf(false) }
+    var returnToSeriesGrid by remember { mutableStateOf(false) }
     var currentPlaylist by remember {
         mutableStateOf<List<Pair<TvSavedItem, PlaybackItem>>>(emptyList())
     }
@@ -855,7 +1116,7 @@ fun TvSeriesScreen(
         categoryId: String,
         reset: Boolean,
     ) {
-        if (loadingPage) return
+        if (loadingPage && !reset) return
 
         if (reset) {
             loadGeneration += 1
@@ -899,6 +1160,7 @@ fun TvSeriesScreen(
                                     it.localId
                                 }
                         }
+                    if (reset) previewShow = rows.firstOrNull()
                     loadingPage = false
                 }
             }
@@ -908,11 +1170,25 @@ fun TvSeriesScreen(
     fun selectCategory(categoryId: String) {
         TvContentCache.seriesCategoryId =
             categoryId
+        TvContentCache.seriesFocusedId = TvContentCache.seriesFocusedByCategory[categoryId]
         selectedCategoryId = categoryId
         loadPage(
             categoryId,
             reset = true,
         )
+    }
+
+    LaunchedEffect(shows, pendingSeriesGridFocus, selectedCategoryId) {
+        if (!pendingSeriesGridFocus || shows.isEmpty()) return@LaunchedEffect
+        val rememberedIndex = shows.indexOfFirst { it.localId == TvContentCache.seriesFocusedId }
+        seriesGridState.scrollToItem(rememberedIndex.coerceAtLeast(0) / 4)
+        categoryRailExpanded = false
+        delay(70)
+        runCatching {
+            if (rememberedIndex >= 0) restoreRequester.requestFocus()
+            else seriesGridEntryRequester.requestFocus()
+        }
+        pendingSeriesGridFocus = false
     }
 
     LaunchedEffect(
@@ -1069,6 +1345,7 @@ fun TvSeriesScreen(
                 target = it
             },
             onBack = {
+                returnToSeriesGrid = true
                 target = null
             },
             onFullscreenStateChanged =
@@ -1086,10 +1363,17 @@ fun TvSeriesScreen(
             playingEpisode == null &&
             TvContentCache.seriesFocusedId != null
         ) {
-            delay(120)
+            categoryRailExpanded = false
+            val focusedIndex =
+                shows.indexOfFirst { it.localId == TvContentCache.seriesFocusedId }
+            if (focusedIndex >= 0) {
+                seriesGridState.scrollToItem(focusedIndex / 4)
+            }
+            delay(if (returnToSeriesGrid) 180 else 120)
             runCatching {
                 restoreRequester.requestFocus()
             }
+            returnToSeriesGrid = false
         }
     }
 
@@ -1112,7 +1396,7 @@ fun TvSeriesScreen(
         LazyColumn(
             modifier =
                 Modifier
-                    .width(220.dp)
+                    .width(if (categoryRailExpanded) 220.dp else 0.dp)
                     .fillMaxHeight()
                     .background(Color(0xFF101722))
                     .padding(10.dp),
@@ -1129,8 +1413,15 @@ fun TvSeriesScreen(
                     selected =
                         category.id ==
                             selectedCategoryId,
+                    modifier =
+                        if (category.id == selectedCategoryId) {
+                            Modifier.focusRequester(seriesCategoryRequester)
+                        } else {
+                            Modifier
+                        },
                     onFocus = {
                         onContentFocused()
+                        categoryRailExpanded = true
 
                         if (
                             category.id !=
@@ -1145,10 +1436,10 @@ fun TvSeriesScreen(
                         onContentFocused()
                     },
                     onRight = {
-                        runCatching {
-                            seriesGridEntryRequester
-                                .requestFocus()
-                        }
+                        pendingSeriesGridFocus = true
+                    },
+                    onLeft = {
+                        runCatching { menuFocusRequester.requestFocus() }
                     },
                 )
             }
@@ -1157,7 +1448,7 @@ fun TvSeriesScreen(
         Box(
             modifier =
                 Modifier
-                    .weight(1f)
+                    .weight(0.70f)
                     .fillMaxHeight(),
         ) {
             when {
@@ -1202,10 +1493,22 @@ fun TvSeriesScreen(
                             }
                         },
                         onFocus = { show ->
+                            categoryRailExpanded = false
+                            previewShow = show
                             TvContentCache
                                 .seriesFocusedId =
                                 show.localId
+                            selectedCategoryId?.let {
+                                TvContentCache.seriesFocusedByCategory[it] = show.localId
+                            }
                             onContentFocused()
+                        },
+                        onExitLeft = {
+                            categoryRailExpanded = true
+                            seriesBrowseScope.launch {
+                                delay(70)
+                                runCatching { seriesCategoryRequester.requestFocus() }
+                            }
                         },
                         onClick = { show ->
                             target =
@@ -1219,6 +1522,24 @@ fun TvSeriesScreen(
                         },
                     )
             }
+        }
+
+        previewShow?.let { show ->
+            BrowsePreviewPanel(
+                item = show,
+                kind = "series",
+                locale = locale,
+                isFavorite = store.isFavorite("series-${show.localId}"),
+                modifier = Modifier.weight(0.30f).fillMaxHeight(),
+                onOpen = {
+                    target = ContentTarget("series", show.name, poster = show.artwork, local = show)
+                },
+                onToggleFavorite = {
+                    store.toggleFavorite(
+                        TvSavedItem("series-${show.localId}", "series", show.name, show.streamUrl, show.artwork),
+                    )
+                },
+            )
         }
     }
 }
@@ -1271,6 +1592,11 @@ private fun GenericDetailScreen(
     }
     var favoriteRefresh by remember {
         mutableIntStateOf(0)
+    }
+
+    DisposableEffect(target.kind, target.name) {
+        onFullscreenStateChanged(true)
+        onDispose { onFullscreenStateChanged(false) }
     }
 
     BackHandler {
@@ -1446,7 +1772,6 @@ private fun GenericDetailScreen(
         media?.overview
             ?: target.vod?.plot
             ?: target.series?.plot
-            ?: strings["no_description"]
 
     val favoriteId =
         local?.localId
@@ -1460,6 +1785,32 @@ private fun GenericDetailScreen(
             store.isFavorite(
                 favoriteId,
             )
+        }
+
+    val movieProgress =
+        if (target.kind == "movie") {
+            store.progressFor(favoriteId)
+        } else {
+            null
+        }
+
+    val seriesResumeProgress =
+        if (target.kind == "series") {
+            val prefix =
+                "series-${seriesInfo?.series?.seriesId}-"
+            store.continueWatching()
+                .firstOrNull {
+                    it.kind == "episode" &&
+                        it.id.startsWith(prefix)
+                }
+        } else {
+            null
+        }
+    val seriesResumeEpisode =
+        seriesResumeProgress?.let { progress ->
+            seriesInfo?.episodes?.firstOrNull {
+                progress.id.endsWith("-${it.episodeId}")
+            }
         }
 
     fun openEpisodes() {
@@ -1499,13 +1850,13 @@ private fun GenericDetailScreen(
                     kind =
                         "movie",
                     name =
-                        local.name,
+                        media?.name
+                            ?: local.name,
                     url =
                         local.streamUrl,
                     artwork =
                         displayPoster,
-                    subtitle =
-                        media?.year,
+                    subtitle = null,
                 ),
             )
         }
@@ -1535,26 +1886,35 @@ private fun GenericDetailScreen(
             1
     }
 
-    LazyColumn(
-        state =
-            detailListState,
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Color(
-                        0xFF0D111B,
+    Box(Modifier.fillMaxSize().background(Color(0xFF05090F))) {
+        media?.backdrop?.let { backdrop ->
+            TvPosterImage(backdrop, Modifier.fillMaxSize())
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(Color(0xF205090F), Color(0xCC05090F), Color(0x6605090F)),
+                        ),
+                    )
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(0x2205090F), Color(0xFF05090F)),
+                        ),
                     ),
-                )
-                .padding(
-                    horizontal = 28.dp,
-                    vertical = 22.dp,
-                ),
-        verticalArrangement =
-            Arrangement.spacedBy(
-                22.dp,
-            ),
-    ) {
+            )
+        }
+        LazyColumn(
+            state = detailListState,
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(
+                    horizontal = 24.dp,
+                        vertical = 12.dp,
+                    ),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
         item(
             key =
                 "detail-main",
@@ -1565,7 +1925,7 @@ private fun GenericDetailScreen(
                         .fillMaxWidth(),
                 horizontalArrangement =
                     Arrangement.spacedBy(
-                        28.dp,
+                                16.dp,
                     ),
                 verticalAlignment =
                     Alignment.Top,
@@ -1575,7 +1935,7 @@ private fun GenericDetailScreen(
                     modifier =
                         Modifier
                             .width(
-                                220.dp,
+                                116.dp,
                             )
                             .aspectRatio(
                                 2f / 3f,
@@ -1589,7 +1949,7 @@ private fun GenericDetailScreen(
                         ),
                     verticalArrangement =
                         Arrangement.spacedBy(
-                            12.dp,
+                            6.dp,
                         ),
                 ) {
                     Text(
@@ -1602,7 +1962,7 @@ private fun GenericDetailScreen(
                         style =
                             MaterialTheme
                                 .typography
-                                .headlineLarge,
+                                .headlineSmall,
                         maxLines = 2,
                         overflow =
                             TextOverflow.Ellipsis,
@@ -1632,23 +1992,31 @@ private fun GenericDetailScreen(
                         color =
                             Color(
                                 0xFF94A3B8,
-                            ),
+                        ),
                     )
 
-                    Text(
-                        description,
-                        color =
-                            Color(
-                                0xFFCBD5E1,
-                            ),
-                        style =
-                            MaterialTheme
-                                .typography
-                                .bodyLarge,
-                        maxLines = 5,
-                        overflow =
-                            TextOverflow.Ellipsis,
-                    )
+                    movieProgress
+                        ?.takeIf {
+                            it.positionMs >= 15_000L
+                        }
+                        ?.let {
+                            progress ->
+
+                            PlaybackProgressSummary(
+                                positionMs = progress.positionMs,
+                                durationMs = progress.durationMs,
+                            )
+                        }
+
+                    description?.takeIf { it.isNotBlank() }?.let { overview ->
+                        Text(
+                            overview,
+                            color = Color(0xFFCBD5E1),
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
 
                     Row(
                         horizontalArrangement =
@@ -1687,7 +2055,15 @@ private fun GenericDetailScreen(
                         } else {
                             ActionButton(
                                 text =
-                                    "↓ Bölümler",
+                                    if (
+                                        seriesResumeEpisode != null &&
+                                        seriesResumeProgress != null
+                                    ) {
+                                        "▶ S${seriesResumeEpisode.season} B${seriesResumeEpisode.episode} · " +
+                                            "${(seriesResumeProgress.positionMs / 60_000L).coerceAtLeast(1L)} dk'dan devam"
+                                    } else {
+                                        "↓ Bölümler"
+                                    },
                                 modifier =
                                     Modifier
                                         .focusRequester(
@@ -1709,7 +2085,19 @@ private fun GenericDetailScreen(
                                             }
                                         },
                             ) {
-                                openEpisodes()
+                                if (
+                                    seriesResumeEpisode != null &&
+                                    seriesResumeProgress != null
+                                ) {
+                                    onPlay(
+                                        seriesResumeProgress.copy(
+                                            url = seriesResumeEpisode.streamUrl,
+                                            artwork = displayPoster,
+                                        ),
+                                    )
+                                } else {
+                                    openEpisodes()
+                                }
                             }
                         }
 
@@ -1879,13 +2267,13 @@ private fun GenericDetailScreen(
                                         kind =
                                             "episode",
                                         name =
-                                            "${seriesInfo?.series?.name ?: target.name} • S${ep.season} E${ep.episode}",
+                                            "${media?.name ?: seriesInfo?.series?.name ?: target.name} • S${ep.season} E${ep.episode}",
                                         url =
                                             ep.streamUrl,
                                         artwork =
                                             displayPoster,
                                         subtitle =
-                                            target.name,
+                                            media?.name ?: target.name,
                                     )
 
                                 saved to
@@ -1912,6 +2300,15 @@ private fun GenericDetailScreen(
                                 .coerceAtLeast(
                                     0,
                                 )
+
+                        playlist
+                            .take(selectedIndex.coerceAtLeast(0))
+                            .forEach {
+                                store.setWatched(
+                                    it.first.id,
+                                    true,
+                                )
+                            }
 
                         onEpisodePlaylist(
                             playlist,
@@ -1962,8 +2359,15 @@ private fun GenericDetailScreen(
                 )
             }
         }
+        }
     }
 
+    LaunchedEffect(person) {
+        if (person == null) {
+            delay(140)
+            runCatching { primaryFocusRequester.requestFocus() }
+        }
+    }
 }
 
 @Composable
@@ -1977,7 +2381,13 @@ private fun PersonFilmographyScreen(
     onOpen: (ContentTarget) -> Unit,
 ) {
     val strings = remember(locale) { TvStrings(locale) }
+    val backFocusRequester = remember { FocusRequester() }
     BackHandler { onBack() }
+
+    LaunchedEffect(person.id) {
+        delay(100)
+        runCatching { backFocusRequester.requestFocus() }
+    }
 
     Column(
         modifier = Modifier
@@ -1986,10 +2396,10 @@ private fun PersonFilmographyScreen(
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text(
-            "← ${strings["back"]}",
-            color = Color(0xFF60A5FA),
-            modifier = Modifier.clickable { onBack() }.padding(8.dp),
+        ActionButton(
+            text = "← ${strings["back"]}",
+            modifier = Modifier.focusRequester(backFocusRequester),
+            onClick = onBack,
         )
         Text(
             "${person.name} · ${strings["people_movies"]}",
@@ -2062,9 +2472,7 @@ private fun SeriesEpisodesBlock(
 
     Column(
         verticalArrangement =
-            Arrangement.spacedBy(
-                12.dp,
-            ),
+            Arrangement.spacedBy(7.dp),
     ) {
         Text(
             strings["seasons_episodes"],
@@ -2074,14 +2482,12 @@ private fun SeriesEpisodesBlock(
             style =
                 MaterialTheme
                     .typography
-                    .headlineSmall,
+                    .titleSmall,
         )
 
         LazyRow(
             horizontalArrangement =
-                Arrangement.spacedBy(
-                    10.dp,
-                ),
+                Arrangement.spacedBy(7.dp),
         ) {
             itemsIndexed(
                 seasons,
@@ -2089,7 +2495,7 @@ private fun SeriesEpisodesBlock(
                 index,
                 season ->
 
-                ActionButton(
+                SeasonTab(
                     text =
                         "${strings["season"]} $season",
                     selected =
@@ -2154,6 +2560,9 @@ private fun SeriesEpisodesBlock(
                     savedId,
                 )
 
+            val progress =
+                store.progressFor(savedId)
+
             EpisodeCard(
                 title =
                     tmdb?.name
@@ -2186,10 +2595,11 @@ private fun SeriesEpisodesBlock(
                 description =
                     tmdb?.overview,
                 image =
-                    tmdb?.still
-                        ?: artwork,
+                    tmdb?.still,
                 watched =
                     watched,
+                progress =
+                    progress,
                 onToggleWatched = {
                     store.toggleWatched(
                         savedId,
@@ -2207,12 +2617,54 @@ private fun SeriesEpisodesBlock(
 }
 
 @Composable
+private fun SeasonTab(
+    text: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    var focused by remember(text) { mutableStateOf(false) }
+    Box(
+        modifier = modifier
+            .background(
+                if (selected || focused) Color(0x2216C7FF) else Color.Transparent,
+                RoundedCornerShape(12.dp),
+            )
+            .border(
+                1.dp,
+                if (selected || focused) TvDesignTokens.Focus else TvDesignTokens.CardBorder,
+                RoundedCornerShape(12.dp),
+            )
+            .onFocusChanged { focused = it.isFocused }
+            .onKeyEvent { event ->
+                if (event.type == KeyEventType.KeyUp &&
+                    (event.key == Key.DirectionCenter || event.key == Key.Enter || event.key == Key.NumPadEnter)
+                ) {
+                    onClick()
+                    true
+                } else false
+            }
+            .focusable()
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+    ) {
+        Text(
+            text,
+            color = if (selected || focused) Color.White else TvDesignTokens.TextSecondary,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            style = MaterialTheme.typography.labelMedium,
+        )
+    }
+
+}
+
+@Composable
 private fun EpisodeCard(
     title: String,
     subtitle: String,
     description: String?,
     image: String?,
     watched: Boolean,
+    progress: TvSavedItem?,
     onToggleWatched: () -> Unit,
     onClick: () -> Unit,
 ) {
@@ -2222,21 +2674,19 @@ private fun EpisodeCard(
                 .fillMaxWidth()
                 .background(
                     Color(0xFF151C28),
-                    RoundedCornerShape(
-                        10.dp,
-                    ),
+                    RoundedCornerShape(7.dp),
                 )
-                .padding(10.dp),
+                    .padding(5.dp),
         horizontalArrangement =
             Arrangement.spacedBy(
-                14.dp,
+                7.dp,
             ),
     ) {
         TvPosterImage(
             image,
             modifier =
                 Modifier
-                    .width(210.dp)
+                    .width(96.dp)
                     .aspectRatio(
                         16f / 9f,
                     ),
@@ -2247,30 +2697,43 @@ private fun EpisodeCard(
                 Modifier.weight(1f),
             verticalArrangement =
                 Arrangement.spacedBy(
-                    6.dp,
+                    2.dp,
                 ),
         ) {
             Text(
                 title,
                 color = Color.White,
-                fontWeight =
-                    FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.bodyMedium,
             )
 
             Text(
                 subtitle,
                 color =
                     Color(0xFF94A3B8),
+                style = MaterialTheme.typography.bodySmall,
             )
 
             Text(
                 description.orEmpty(),
                 color =
                     Color(0xFFCBD5E1),
-                maxLines = 3,
+                maxLines = 1,
                 overflow =
                     TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodySmall,
             )
+
+            progress
+                ?.takeIf {
+                    it.positionMs >= 15_000L
+                }
+                ?.let {
+                    PlaybackProgressSummary(
+                        positionMs = it.positionMs,
+                        durationMs = it.durationMs,
+                    )
+                }
 
             Row(
                 horizontalArrangement =
@@ -2303,6 +2766,42 @@ private fun EpisodeCard(
 }
 
 @Composable
+private fun PlaybackProgressSummary(
+    positionMs: Long,
+    durationMs: Long,
+) {
+    val watchedMinutes =
+        (positionMs / 60_000L)
+            .coerceAtLeast(1L)
+    val progress =
+        if (durationMs > 0L) {
+            (positionMs.toFloat() / durationMs.toFloat())
+                .coerceIn(0f, 1f)
+        } else {
+            0f
+        }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            text = "$watchedMinutes dk izlendi · kaldığın yer",
+            color = Color(0xFF60A5FA),
+            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.labelMedium,
+        )
+
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier.fillMaxWidth(),
+            color = Color(0xFF22D3EE),
+            trackColor = Color(0xFF263449),
+        )
+    }
+}
+
+@Composable
 private fun PeopleLine(
     title: String,
     rows: List<TvTmdbPerson>,
@@ -2311,7 +2810,7 @@ private fun PeopleLine(
     if (rows.isEmpty()) return
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(title, color = Color(0xFF94A3B8), fontWeight = FontWeight.Bold)
+        Text(title, color = TvDesignTokens.TextSecondary, fontWeight = FontWeight.Medium, style = MaterialTheme.typography.labelMedium)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(rows, key = { it.id }) { person ->
                 ActionButton(person.name) { onClick(person) }
@@ -2336,17 +2835,17 @@ private fun TmdbRail(
             title,
             color = Color.White,
             fontWeight = FontWeight.Bold,
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.titleMedium,
         )
 
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
             items(rows, key = { "${it.kind}-${it.id}" }) { media ->
                 val local = index.findByTitle(provider, media.kind, media.name)
                 MediaCard(
                     title = media.name,
                     artwork = media.poster,
                     subtitle = availabilityText(strings, local != null),
-                    modifier = Modifier.width(170.dp),
+                    modifier = Modifier.width(132.dp),
                 ) {
                     onOpen(
                         ContentTarget(
@@ -3241,7 +3740,7 @@ fun TvMyListScreen(
                     rows,
                 ) {
                     rows.chunked(
-                        5,
+                        6,
                     )
                 }
 
@@ -3360,7 +3859,7 @@ fun TvMyListScreen(
                         }
 
                         repeat(
-                            5 - chunk.size,
+                            6 - chunk.size,
                         ) {
                             Box(
                                 Modifier
@@ -3762,26 +4261,368 @@ fun TvHistoryScreen(
 }
 
 @Composable
+private fun HomeFeaturedHero(
+    mediaRows: List<TvTmdbMedia>,
+    onOpen: (TvTmdbMedia) -> Unit,
+) {
+    var selectedIndex by remember(mediaRows) { mutableIntStateOf(0) }
+    val media = mediaRows[selectedIndex.coerceIn(0, mediaRows.lastIndex)]
+    var clock by remember { mutableStateOf("") }
+    var buttonFocused by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            clock = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+            delay(30_000)
+        }
+    }
+    Box(
+        modifier = Modifier.fillMaxWidth().height(TvDesignTokens.HeroHeight)
+            .clip(RoundedCornerShape(7.dp)).background(TvDesignTokens.Background),
+    ) {
+        TvPosterImage(media.backdrop ?: media.poster, Modifier.fillMaxSize())
+        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color(0xFF020B12), Color(0xF0020B12), Color.Transparent))))
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xB3020B12)))))
+        Column(
+            modifier = Modifier.align(Alignment.CenterStart).fillMaxWidth(0.57f).padding(start = 24.dp, end = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Text(media.name, color = TvDesignTokens.TextPrimary, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(listOfNotNull(media.kind.takeIf { it.isNotBlank() }?.replaceFirstChar { c -> c.uppercase() }, media.year, media.rating?.let { "★ %.1f".format(it) }).joinToString("  •  "), color = TvDesignTokens.TextSecondary, style = MaterialTheme.typography.bodySmall)
+            media.overview?.let { Text(it, color = TvDesignTokens.TextSecondary, maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall) }
+            Box(
+                modifier = Modifier.width(132.dp).height(36.dp)
+                    .background(if (buttonFocused) Color(0x3322D3EE) else Color(0x99101A22), RoundedCornerShape(5.dp))
+                    .border(1.dp, if (buttonFocused) TvDesignTokens.Focus else TvDesignTokens.TextTertiary, RoundedCornerShape(5.dp))
+                    .onFocusChanged { buttonFocused = it.isFocused }
+                    .onKeyEvent { event ->
+                        when {
+                            event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft -> { selectedIndex = (selectedIndex - 1 + mediaRows.size) % mediaRows.size; true }
+                            event.type == KeyEventType.KeyDown && event.key == Key.DirectionRight -> { selectedIndex = (selectedIndex + 1) % mediaRows.size; true }
+                            event.type == KeyEventType.KeyUp && (event.key == Key.Enter || event.key == Key.DirectionCenter || event.key == Key.NumPadEnter) -> { onOpen(media); true }
+                            else -> false
+                        }
+                    }.focusable(),
+                contentAlignment = Alignment.Center,
+            ) { Text("Detayları Gör", color = TvDesignTokens.TextPrimary, fontWeight = FontWeight.Medium, style = MaterialTheme.typography.labelLarge) }
+        }
+        Text(clock, modifier = Modifier.align(Alignment.TopEnd).padding(top = 16.dp, end = 22.dp), color = Color.White, fontWeight = FontWeight.Bold)
+        Row(
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 9.dp),
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            repeat(mediaRows.size) { index -> Box(Modifier.size(if (index == selectedIndex) 7.dp else 5.dp).background(if (index == selectedIndex) Color.White else Color(0xFF64748B), RoundedCornerShape(50))) }
+        }
+    }
+}
+
+@Composable
+private fun LiveHomeRail(
+    channels: List<NativeLiveChannel>,
+    epgLabels: Map<String, Pair<String, String>>,
+    onClick: (NativeLiveChannel) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth().background(TvDesignTokens.Background), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text("Canlı Şimdi", color = TvDesignTokens.TextPrimary, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(channels, key = { it.id }) { channel ->
+                var focused by remember(channel.id) { mutableStateOf(false) }
+                val epg = epgLabels[channel.id]
+                Column(
+                    modifier = Modifier.width(TvDesignTokens.LiveCardWidth).height(TvDesignTokens.LiveCardHeight)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(TvDesignTokens.Card)
+                        .border(1.dp, if (focused) TvDesignTokens.Focus else TvDesignTokens.CardBorder, RoundedCornerShape(6.dp))
+                        .onFocusChanged { focused = it.isFocused }
+                        .clickable { onClick(channel) }.padding(horizontal = 7.dp, vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(1.dp),
+                ) {
+                    TvLogoImage(channel.logo, Modifier.fillMaxWidth().height(40.dp))
+                    Text(cleanChannelName(channel.name), color = TvDesignTokens.TextPrimary, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+                    if (epg != null) {
+                        Text(epg.first, color = TvDesignTokens.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
+                        Text(epg.second, color = TvDesignTokens.TextTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+        }
+
+    }
+}
+
+@Composable
+private fun HomeSportsRail(
+    events: List<SportsEvent>,
+    channels: List<NativeLiveChannel>,
+    onClick: (SportsEvent) -> Unit,
+) {
+    val clock = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+    val channelIndex = remember(channels) { SportsChannelIndex.forChannels(channels) }
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text("Bugünün Sporları", color = TvDesignTokens.TextPrimary, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(events, key = { it.id }) { event ->
+                var focused by remember(event.id) { mutableStateOf(false) }
+                val matched = remember(event.id, event.broadcasts, channelIndex) {
+                    channelIndex.resolve(SportsBroadcastResolver.options(event))
+                }
+                Column(
+                    modifier = Modifier.width(242.dp).height(116.dp).clip(RoundedCornerShape(7.dp))
+                        .background(TvDesignTokens.Card)
+                        .border(1.dp, if (focused) TvDesignTokens.Focus else TvDesignTokens.CardBorder, RoundedCornerShape(7.dp))
+                        .onFocusChanged { focused = it.isFocused }.clickable { onClick(event) }.padding(9.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text("${sportsCountryFlag(event.country)} ${event.league}  •  ${clock.format(Date(event.startMs))}", color = TvDesignTokens.TextSecondary, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        TvLogoImage(event.homeBadge, Modifier.size(30.dp))
+                        Text(event.home, color = Color.White, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        Text(if (event.homeScore != null || event.awayScore != null) "${event.homeScore ?: "–"}:${event.awayScore ?: "–"}" else "vs", color = TvDesignTokens.Focus, fontWeight = FontWeight.Bold)
+                        Text(event.away, color = Color.White, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        TvLogoImage(event.awayBadge, Modifier.size(30.dp))
+                    }
+                    Text(
+                        matched.firstOrNull()?.let { "📺 ${it.canonicalName} · ${it.sources.size} kaynak${if (matched.size > 1) " +${matched.size - 1} kanal" else ""}" }
+                            ?: if (event.broadcasts.isEmpty()) "Yayın seçeneği bulunamadı" else "Kanal eşleşmedi",
+                        color = if (matched.isNotEmpty()) TvDesignTokens.Focus else TvDesignTokens.TextTertiary,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun sportsCountryFlag(country: String?): String = when (country?.lowercase(Locale.ROOT)) {
+    "turkey", "türkiye" -> "🇹🇷"
+    "england" -> "🇬🇧"
+    "spain" -> "🇪🇸"
+    "germany" -> "🇩🇪"
+    "italy" -> "🇮🇹"
+    "france" -> "🇫🇷"
+    "portugal" -> "🇵🇹"
+    "netherlands" -> "🇳🇱"
+    "brazil" -> "🇧🇷"
+    else -> "🌍"
+}
+
+@Composable
+private fun PosterHomeRail(
+    title: String,
+    cards: List<HomeCard>,
+    onClick: (HomeCard) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth().background(TvDesignTokens.Background), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(title, color = TvDesignTokens.TextPrimary, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(cards.take(10), key = { it.id }) { card ->
+                var focused by remember(card.id) { mutableStateOf(false) }
+                Box(
+                    modifier = Modifier.width(96.dp).height(144.dp).clip(RoundedCornerShape(6.dp))
+                        .background(if (focused) Color(0xFF009BFF) else Color.Transparent, RoundedCornerShape(7.dp))
+                        .padding(if (focused) 3.dp else 0.dp)
+                        .onFocusChanged { focused = it.isFocused }
+                        .clickable { onClick(card) },
+                ) { TvPosterImage(card.artwork, Modifier.fillMaxSize().clip(RoundedCornerShape(6.dp))) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ContinueHomeRail(
+    rows: List<TvSavedItem>,
+    onClick: (TvSavedItem) -> Unit,
+    onRemoveContinue: (TvSavedItem) -> Unit,
+    onRemoveHistory: (TvSavedItem) -> Unit,
+) {
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var menuItem by remember { mutableStateOf<TvSavedItem?>(null) }
+    menuItem?.let { row ->
+        AlertDialog(
+            onDismissRequest = { menuItem = null },
+            title = { Text(row.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            text = { Text("Bu içerik için yapmak istediğiniz işlemi seçin.") },
+            confirmButton = {
+                TextButton(onClick = { onRemoveContinue(row); menuItem = null }) { Text("Bu listeden kaldır") }
+            },
+            dismissButton = {
+                TextButton(onClick = { onRemoveHistory(row); menuItem = null }) { Text("Oynatma geçmişinden kaldır") }
+            },
+        )
+    }
+    Column(modifier = Modifier.fillMaxWidth().background(TvDesignTokens.Background), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text("Kaldığın Yerden Devam Et", color = TvDesignTokens.TextPrimary, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(rows, key = { it.id }) { row ->
+                var focused by remember(row.id) { mutableStateOf(false) }
+                var longPressed by remember(row.id) { mutableStateOf(false) }
+                var longPressJob by remember(row.id) { mutableStateOf<Job?>(null) }
+                Column(
+                    modifier = Modifier.width(154.dp).height(88.dp).clip(RoundedCornerShape(6.dp))
+                        .background(TvDesignTokens.Card).border(1.dp, if (focused) TvDesignTokens.Focus else TvDesignTokens.CardBorder, RoundedCornerShape(6.dp))
+                        .onFocusChanged {
+                            focused = it.isFocused
+                            if (!it.isFocused) {
+                                longPressJob?.cancel()
+                                longPressJob = null
+                                longPressed = false
+                            }
+                        }
+                        .onKeyEvent { event ->
+                            val center = event.key == Key.DirectionCenter || event.key == Key.Enter || event.key == Key.NumPadEnter
+                            when {
+                                center && event.type == KeyEventType.KeyDown && longPressJob == null -> {
+                                    longPressJob = scope.launch {
+                                        delay(700)
+                                        longPressed = true
+                                        menuItem = row
+                                    }
+                                    true
+                                }
+                                center && event.type == KeyEventType.KeyUp -> {
+                                    longPressJob?.cancel()
+                                    longPressJob = null
+                                    if (!longPressed) onClick(row)
+                                    longPressed = false
+                                    true
+                                }
+                                else -> false
+                            }
+                        }
+                        .focusable(),
+                ) {
+                    Box(Modifier.fillMaxWidth().weight(1f)) {
+                        TvPosterImage(row.artwork, Modifier.fillMaxSize().clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp)))
+                        Text(row.subtitle ?: row.name, Modifier.align(Alignment.BottomStart).background(Color(0xB3020A10)).padding(horizontal = 6.dp, vertical = 2.dp), color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
+                    }
+                    val progress = if (row.durationMs > 0L) (row.positionMs.toFloat() / row.durationMs).coerceIn(0f, 1f) else 0f
+                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(3.dp), color = TvDesignTokens.Focus, trackColor = Color(0xFF26333D))
+                }
+            }
+        }
+    }
+}
+
+private fun cleanChannelName(name: String): String =
+    name.replace(Regex("[\\*|_]+"), " ")
+        .replace(Regex("^(TR|TURKEY|TURKIYE)\\s*[:.-]?\\s*", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("\\b(UHD|FHD|FULL\\s*HD|HD|4K|SD|HEVC|H265|RAW)\\b", RegexOption.IGNORE_CASE), " ")
+        .replace(Regex("\\s+"), " ").trim()
+
+private fun liveChannelPriority(name: String): Int {
+    val normalized = cleanChannelName(name).uppercase(Locale.ROOT).replace(" ", "")
+    return when {
+        normalized.contains("TRT1") -> 0
+        normalized.contains("SHOWTV") -> 1
+        normalized.startsWith("ATV") -> 2
+        normalized.contains("BEINSPORTS1") -> 3
+        normalized.contains("TV8") -> 4
+        normalized.contains("KANALD") -> 5
+        else -> 100
+    }
+}
+
+private fun liveChannelGroup(name: String): String {
+    val normalized = cleanChannelName(name).uppercase(Locale.ROOT).replace(" ", "")
+    return when {
+        normalized.contains("TRT1") -> "trt1"
+        normalized.contains("SHOWTV") -> "showtv"
+        normalized.startsWith("ATV") -> "atv"
+        normalized.contains("BEINSPORTS1") -> "beinsports1"
+        normalized.contains("TV8") -> "tv8"
+        normalized.contains("KANALD") -> "kanald"
+        else -> normalized.replace(Regex("(UHD|FHD|HD|HEVC|H265|RAW|4K)$"), "")
+    }
+}
+
+@Composable
+private fun BrowsePreviewPanel(
+    item: TvIndexedMedia,
+    kind: String,
+    locale: TvLocale,
+    isFavorite: Boolean,
+    modifier: Modifier = Modifier,
+    onOpen: () -> Unit,
+    onToggleFavorite: () -> Unit,
+) {
+    var favorite by remember(item.localId, isFavorite) { mutableStateOf(isFavorite) }
+    var detail by remember(item.localId) { mutableStateOf<TvTmdbDetail?>(null) }
+    val tmdb = remember { TvTmdbClient() }
+    LaunchedEffect(item.localId, locale) {
+        delay(180)
+        Thread {
+            val loaded = tmdb.detail(item.name, kind, locale).getOrNull()
+            Handler(Looper.getMainLooper()).post { detail = loaded }
+        }.start()
+    }
+    val media = detail?.media
+    Column(
+        modifier = modifier
+            .padding(top = 16.dp, end = 16.dp, bottom = 16.dp)
+            .background(Color(0xFF0B1420), RoundedCornerShape(12.dp))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        TvPosterImage(
+            media?.poster ?: item.artwork,
+            modifier =
+                Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .width(108.dp)
+                    .aspectRatio(2f / 3f),
+        )
+        Text(media?.name ?: item.name, color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        val metadata = listOfNotNull(
+            media?.year,
+            media?.genres?.take(2)?.joinToString(" • ")?.takeIf { it.isNotBlank() },
+            media?.rating?.let { "★ %.1f".format(it) },
+            media?.seasonCount?.let { "$it Sezon" },
+        ).joinToString(" • ")
+        if (metadata.isNotBlank()) Text(metadata, color = Color(0xFF60A5FA), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        media?.overview?.takeIf { it.isNotBlank() }?.let {
+            Text(
+                it,
+                color = Color(0xFFD1D8E3),
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 9,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+        }
+        ActionButton(text = "Detaya Git", selected = true, modifier = Modifier.fillMaxWidth(), onClick = onOpen)
+        ActionButton(
+            text = if (favorite) "✓  Listemde" else "♡  Listeme Ekle",
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            onToggleFavorite()
+            favorite = !favorite
+        }
+    }
+}
+
+@Composable
 private fun HomeRail(
     title: String,
     cards: List<HomeCard>,
     onClick: (HomeCard) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
             title,
             color = Color.White,
             fontWeight = FontWeight.Bold,
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.titleMedium,
         )
 
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
             items(cards, key = { it.id }) { card ->
                 MediaCard(
                     title = card.title,
                     artwork = card.artwork,
                     subtitle = card.subtitle,
-                    modifier = Modifier.width(170.dp),
+                    modifier = Modifier.width(112.dp),
                 ) {
                     onClick(card)
                 }
@@ -3801,11 +4642,13 @@ private fun IndexedPosterGrid(
     loadingMore: Boolean,
     onNeedMore: () -> Unit,
     onFocus: (TvIndexedMedia) -> Unit,
+    onExitLeft: () -> Unit,
     onClick: (TvIndexedMedia) -> Unit,
 ) {
+    val columnCount = 4
     val chunks =
         remember(rows) {
-            rows.chunked(5)
+            rows.chunked(columnCount)
         }
 
     val scope =
@@ -3844,7 +4687,7 @@ private fun IndexedPosterGrid(
         val requester =
             requesterFor(target)
         val targetRow =
-            targetIndex / 5
+            targetIndex / columnCount
 
         scope.launch {
             runCatching {
@@ -3896,7 +4739,7 @@ private fun IndexedPosterGrid(
                     media ->
 
                     val globalIndex =
-                        rowIndex * 5 +
+                        rowIndex * columnCount +
                             itemIndex
 
                     val ownRequester =
@@ -3920,6 +4763,7 @@ private fun IndexedPosterGrid(
                         modifier =
                             Modifier
                                 .weight(1f)
+                                .focusRequester(ownRequester)
                                 .then(
                                     when {
                                         media.localId ==
@@ -3984,16 +4828,15 @@ private fun IndexedPosterGrid(
                                                 1,
                                         )
                                     } else {
-                                        // Let Compose leave the grid
-                                        // and return to categories.
-                                        false
+                                        onExitLeft()
+                                        true
                                     }
                                 }
 
                                 Key.DirectionDown -> {
                                     val nextRowStart =
                                         (rowIndex + 1) *
-                                            5
+                                            columnCount
 
                                     if (
                                         nextRowStart >=
@@ -4021,8 +4864,8 @@ private fun IndexedPosterGrid(
                                         false
                                     } else {
                                         val target =
-                                            (rowIndex - 1) *
-                                                5 +
+                                        (rowIndex - 1) *
+                                            columnCount +
                                                 itemIndex
 
                                         moveTo(
@@ -4044,7 +4887,7 @@ private fun IndexedPosterGrid(
                 }
 
                 repeat(
-                    5 - row.size,
+                    columnCount - row.size,
                 ) {
                     Box(
                         Modifier.weight(
@@ -4150,7 +4993,7 @@ private fun MediaCard(
                     }
                 }
                 .focusable()
-                .padding(7.dp),
+                .padding(5.dp),
         verticalArrangement =
             Arrangement.spacedBy(
                 6.dp,
@@ -4202,9 +5045,11 @@ private fun MediaCard(
 private fun FocusRow(
     title: String,
     selected: Boolean,
+    modifier: Modifier = Modifier,
     onFocus: () -> Unit,
     onClick: () -> Unit,
     onRight: (() -> Unit)? = null,
+    onLeft: (() -> Unit)? = null,
 ) {
     var focused by
         remember(title) {
@@ -4213,18 +5058,18 @@ private fun FocusRow(
 
     Box(
         modifier =
-            Modifier
+            modifier
                 .fillMaxWidth()
                 .background(
                     when {
                         focused ->
                             Color(
-                                0xFF2563EB,
+                                0xFF0E7490,
                             )
 
                         selected ->
                             Color(
-                                0xFF172554,
+                                0xFF134E4A,
                             )
 
                         else ->
@@ -4258,6 +5103,14 @@ private fun FocusRow(
                                 Key.NumPadEnter
                             ) -> {
                             onClick()
+                            true
+                        }
+
+                        event.type ==
+                            KeyEventType.KeyDown &&
+                            event.key == Key.DirectionLeft &&
+                            onLeft != null -> {
+                            onLeft()
                             true
                         }
 
@@ -4319,12 +5172,12 @@ private fun ActionButton(
                     when {
                         focused ->
                             Color(
-                                0xFF2563EB,
+                                0xFF0E7490,
                             )
 
                         selected ->
                             Color(
-                                0xFF1D4ED8,
+                                0xFF0F766E,
                             )
 
                         else ->
@@ -4332,9 +5185,7 @@ private fun ActionButton(
                                 0xFF1E293B,
                             )
                     },
-                    RoundedCornerShape(
-                        9.dp,
-                    ),
+                    RoundedCornerShape(6.dp),
                 )
                 .onFocusChanged { state ->
                     focused =
@@ -4362,9 +5213,9 @@ private fun ActionButton(
                 .focusable()
                 .padding(
                     horizontal =
-                        16.dp,
+                        12.dp,
                     vertical =
-                        11.dp,
+                        8.dp,
                 ),
     ) {
         Text(
@@ -4372,8 +5223,8 @@ private fun ActionButton(
                 text,
             color =
                 Color.White,
-            fontWeight =
-                FontWeight.Bold,
+            fontWeight = FontWeight.Medium,
+            style = MaterialTheme.typography.bodySmall,
             maxLines = 1,
             overflow =
                 TextOverflow.Ellipsis,

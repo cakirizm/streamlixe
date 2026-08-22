@@ -3,6 +3,8 @@ package com.streamlivex.android.tv.profile
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,12 +15,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,7 +33,12 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import com.streamlivex.android.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -70,6 +79,15 @@ fun TvProfileSelectScreen(
             mutableStateOf(false)
         }
 
+    val firstProfileRequester = remember { FocusRequester() }
+
+    LaunchedEffect(profiles, managing, pending) {
+        if (!managing && pending == null && profiles.isNotEmpty()) {
+            kotlinx.coroutines.delay(120)
+            runCatching { firstProfileRequester.requestFocus() }
+        }
+    }
+
     if (managing) {
         TvProfileManagerScreen(
             onBack = {
@@ -98,18 +116,18 @@ fun TvProfileSelectScreen(
                 Alignment.CenterHorizontally,
             verticalArrangement =
                 Arrangement.spacedBy(
-                    24.dp,
+                    14.dp,
                 ),
         ) {
             Text(
                 "Kim izliyor?",
                 color = Color.White,
                 fontWeight =
-                    FontWeight.Bold,
+                    FontWeight.SemiBold,
                 style =
                     MaterialTheme
                         .typography
-                        .displaySmall,
+                        .headlineSmall,
             )
 
             Row(
@@ -120,11 +138,18 @@ fun TvProfileSelectScreen(
                 verticalAlignment =
                     Alignment.CenterVertically,
             ) {
-                profiles.forEach {
+                profiles.forEachIndexed {
+                    index,
                     profile ->
 
                     ProfileCard(
                         profile = profile,
+                        modifier =
+                            if (index == 0) {
+                                Modifier.focusRequester(firstProfileRequester)
+                            } else {
+                                Modifier
+                            },
                     ) {
                         if (
                             profile.pinHash ==
@@ -145,6 +170,23 @@ fun TvProfileSelectScreen(
                 AddProfileCard {
                     managing = true
                 }
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_launcher_foreground),
+                    contentDescription = "StreamLiveX logo",
+                    modifier = Modifier.size(38.dp),
+                )
+                Text(
+                    "StreamLiveX",
+                    color = Color.White,
+                    fontWeight = FontWeight.ExtraBold,
+                    style = MaterialTheme.typography.titleMedium,
+                )
             }
 
             Row(
@@ -1057,6 +1099,7 @@ private fun TvCreateProfileScreen(
 @Composable
 private fun ProfileCard(
     profile: TvProfile,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     var focused by
@@ -1066,7 +1109,7 @@ private fun ProfileCard(
 
     Column(
         modifier =
-            Modifier
+            modifier
                 .width(180.dp)
                 .background(
                     if (focused) {
@@ -1097,12 +1140,10 @@ private fun ProfileCard(
                 10.dp,
             ),
     ) {
-        Text(
-            profile.avatar,
-            style =
-                MaterialTheme
-                    .typography
-                    .displayMedium,
+        ProfileVectorAvatar(
+            seed = profile.id + profile.name,
+            focused = focused,
+            modifier = Modifier.size(82.dp),
         )
         Text(
             profile.name,
@@ -1130,6 +1171,63 @@ private fun ProfileCard(
                     ),
             )
         }
+    }
+}
+
+@Composable
+private fun ProfileVectorAvatar(
+    seed: String,
+    focused: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val palettes = listOf(
+        Color(0xFF006C8F) to Color(0xFF16B8C8),
+        Color(0xFF49358A) to Color(0xFF9B71E8),
+        Color(0xFF8A3B55) to Color(0xFFE46B8B),
+        Color(0xFF236A55) to Color(0xFF51C49B),
+        Color(0xFF8A5424) to Color(0xFFE5A14B),
+    )
+    val palette = palettes[(seed.hashCode() and Int.MAX_VALUE) % palettes.size]
+    Canvas(modifier) {
+        val center = Offset(size.width / 2f, size.height / 2f)
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(palette.second, palette.first),
+                center = Offset(size.width * .34f, size.height * .25f),
+                radius = size.width * .78f,
+            ),
+            radius = size.minDimension * .49f,
+            center = center,
+        )
+        drawCircle(
+            color = if (focused) Color(0xFF7DE3FF) else Color(0x55FFFFFF),
+            radius = size.minDimension * .47f,
+            center = center,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                width = if (focused) 3.dp.toPx() else 1.dp.toPx(),
+            ),
+        )
+        drawCircle(
+            color = Color(0xFFF1C7A5),
+            radius = size.width * .145f,
+            center = Offset(size.width * .50f, size.height * .38f),
+        )
+        drawOval(
+            color = Color(0xFF12212B),
+            topLeft = Offset(size.width * .27f, size.height * .57f),
+            size = Size(size.width * .46f, size.height * .31f),
+        )
+        drawArc(
+            color = Color(0xFFF7D5B7),
+            startAngle = 205f,
+            sweepAngle = 130f,
+            useCenter = false,
+            topLeft = Offset(size.width * .405f, size.height * .38f),
+            size = Size(size.width * .19f, size.height * .15f),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.2.dp.toPx()),
+        )
+        drawCircle(Color(0xFF24313A), size.width * .012f, Offset(size.width * .455f, size.height * .36f))
+        drawCircle(Color(0xFF24313A), size.width * .012f, Offset(size.width * .545f, size.height * .36f))
     }
 }
 

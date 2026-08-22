@@ -10,10 +10,12 @@ object TvContentCache {
 
     var movieCategoryId: String? = null
     var movieFocusedId: String? = null
+    val movieFocusedByCategory = LinkedHashMap<String, String>()
     var movieDetailId: String? = null
 
     var seriesCategoryId: String? = null
     var seriesFocusedId: String? = null
+    val seriesFocusedByCategory = LinkedHashMap<String, String>()
     var seriesDetailId: String? = null
 
     fun clear() {
@@ -25,9 +27,11 @@ object TvContentCache {
 
         movieCategoryId = null
         movieFocusedId = null
+        movieFocusedByCategory.clear()
         movieDetailId = null
         seriesCategoryId = null
         seriesFocusedId = null
+        seriesFocusedByCategory.clear()
         seriesDetailId = null
     }
 }

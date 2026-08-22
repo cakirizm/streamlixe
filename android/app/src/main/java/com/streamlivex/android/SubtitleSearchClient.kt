@@ -13,10 +13,12 @@ data class OnlineSubtitleResult(val fileId: String, val language: String, val re
 // OpenSubtitles.com uzerinden arama yapar. API anahtari sunucuda (.env / Worker secret) tutulur,
 // uygulama yalnizca kendi backend'imize (BuildConfig.WEB_APP_URL) istek atar, anahtari hic gormez.
 object SubtitleSearchClient {
+    private val apiBase = BuildConfig.WEB_APP_URL.trimEnd('/').removeSuffix("/app")
+
     suspend fun search(query: String, langs: String = "tr,en"): List<OnlineSubtitleResult> = withContext(Dispatchers.IO) {
         val encodedQuery = URLEncoder.encode(query, "UTF-8")
         val encodedLangs = URLEncoder.encode(langs, "UTF-8")
-        val url = "${BuildConfig.WEB_APP_URL}/api/subtitles?mode=search&query=$encodedQuery&langs=$encodedLangs"
+        val url = "$apiBase/api/subtitles?mode=search&query=$encodedQuery&langs=$encodedLangs"
         val json = getJson(url) ?: return@withContext emptyList()
         val results = json.optJSONArray("results") ?: return@withContext emptyList()
         buildList {
@@ -37,7 +39,7 @@ object SubtitleSearchClient {
 
     suspend fun resolveDownloadUrl(fileId: String): String? = withContext(Dispatchers.IO) {
         val encodedId = URLEncoder.encode(fileId, "UTF-8")
-        val url = "${BuildConfig.WEB_APP_URL}/api/subtitles?mode=download&fileId=$encodedId"
+        val url = "$apiBase/api/subtitles?mode=download&fileId=$encodedId"
         val json = getJson(url) ?: return@withContext null
         json.optString("url").ifBlank { null }
     }
