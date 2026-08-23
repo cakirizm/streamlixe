@@ -20,3 +20,8 @@ android/.idea/
 *.jks
 *.keystore
 android/keystore.properties
+
+# Smart TV paketleme çıktıları
+smart-tv/dist/
+*.ipk
+*.wgt

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  StreamLiveX — Samsung Tizen TV web uygulaması yapılandırması.
+  NOT: tizen:application@id ön eki (aşağıda "XXXXXXXXXX") Samsung author
+  sertifikası oluşturulunca atanır; Tizen Studio'da sertifika üretince buraya
+  gerçek paket kimliği yazılacak. Paketleme/imzalama Tizen CLI + sertifika ister.
+-->
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets"
+        id="http://streamlivex.com/app" version="1.0.0" viewmodes="maximized">
+    <tizen:application id="XXXXXXXXXX.StreamLiveX" package="XXXXXXXXXX" required_version="6.0"/>
+    <content src="index.html"/>
+    <feature name="http://tizen.org/feature/screen.size.all"/>
+    <icon src="icon.png"/>
+    <name>StreamLiveX</name>
+    <tizen:profile name="tv"/>
+    <tizen:privilege name="http://tizen.org/privilege/internet"/>
+    <tizen:privilege name="http://developer.samsung.com/privilege/network.public"/>
+    <tizen:setting screen-orientation="landscape" context-menu="disable"
+                   background-support="disable" encryption="disable"
+                   install-location="auto" hwkey-event="enable"/>
+</widget>
