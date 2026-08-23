@@ -4,6 +4,8 @@
 // API anahtarı olmadan da bugünün maçları (futbol, basketbol, tenis, motor)
 // ve yayın kanalları gelir. Çıktı, TV SportsEvent modeliyle aynı şekildedir.
 
+import { collectFootballBody } from "../route";
+
 const TSDB_BASE = "https://www.thesportsdb.com/api/v1/json/123";
 
 type SportsBroadcast = { id: string; eventId: string; country: string; channelName: string; channelLogo: string | null };
@@ -102,12 +104,11 @@ async function theSportsDbEvents(date: string): Promise<SportsEvent[]> {
   return events.filter(e => (seen.has(e.id) ? false : (seen.add(e.id), true))).sort((a, b) => a.startMs - b.startMs);
 }
 
-async function apiFootballEvents(date: string, origin: string): Promise<SportsEvent[]> {
-  // TV'deki ApiFootballProvider gibi mevcut /api/sports proxy'sini çağırır.
+async function apiFootballEvents(date: string): Promise<SportsEvent[]> {
+  // Futbol fikstürlerini DOĞRUDAN çekirdek fonksiyondan alır (HTTP self-fetch
+  // yok — Cloudflare Worker kendi origin'ine fetch yapınca boş dönüyordu).
   try {
-    const response = await fetch(`${origin}/api/sports?date=${date}`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(20000) });
-    if (!(response.status >= 200 && response.status < 300)) return [];
-    const root: any = await response.json();
+    const root: any = await collectFootballBody(date, false, null);
     if (!root?.configured) return [];
     const rows: any[] = Array.isArray(root?.fixtures) ? root.fixtures : [];
     return rows.map(row => {
@@ -181,7 +182,7 @@ export async function GET(request: Request) {
   }
 
   const [football, fallback] = await Promise.all([
-    apiFootballEvents(date, input.origin),
+    apiFootballEvents(date).catch(() => [] as SportsEvent[]),
     theSportsDbEvents(date).catch(() => [] as SportsEvent[]),
   ]);
 

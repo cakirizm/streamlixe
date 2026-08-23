@@ -258,62 +258,46 @@ async function targetFixtures(league: DiscoveredLeague, date: string, key: strin
   };
 }
 
-export async function GET(request: Request) {
-  const input = new URL(request.url);
-  const date = validDate(input.searchParams.get("date"));
-  const debugMode = input.searchParams.get("debug") === "1";
-  const targetKey = input.searchParams.get("target")?.trim() || null;
-  const statusMode = input.searchParams.get("status") === "1";
-  if (!date) return Response.json({ error: "Geçerli tarih gerekli" }, { status: 400 });
+// Futbol fikstürlerini hesaplayan çekirdek. Hem GET hem de /api/sports/hub
+// bunu DOĞRUDAN çağırır; böylece Cloudflare Worker'ın kendi origin'ine HTTP
+// self-fetch yapması (Worker'da boş dönüyor) gereği ortadan kalkar.
+export async function collectFootballBody(date: string, debugMode = false, targetKey: string | null = null): Promise<any> {
   const key = process.env.API_FOOTBALL_KEY?.trim();
   const footballDataKey = process.env.FOOTBALL_DATA_KEY?.trim();
   const footballDataTarget = targetKey ? TARGET_LEAGUES.find(target => target.key === targetKey) : null;
 
-  if (statusMode) {
-    const footballDataStatus = footballDataKey ? await footballDataGet("/competitions", footballDataKey) : null;
-    return Response.json({
-      footballDataConfigured: Boolean(footballDataKey),
-      footballDataStatus: !footballDataKey ? "NOT_CONFIGURED" : footballDataStatus?.ok ? "AVAILABLE" : "API_ERROR",
-      footballDataHttpStatus: footballDataStatus?.status ?? null,
-      footballDataError: footballDataStatus?.error ?? null,
-      apiFootballConfigured: Boolean(key),
-    }, { headers: { "cache-control": "no-store" } });
-  }
-
   if (footballDataKey && (!targetKey || footballDataTarget)) {
     const cacheKey = `football-data:${date}`;
     const cached = dailyCache.get(cacheKey);
-    if (!debugMode && cached && cached.expiresAt > Date.now()) return Response.json(cached.body, { headers: { "cache-control": "public, max-age=3600" } });
+    if (!debugMode && cached && cached.expiresAt > Date.now()) return cached.body;
     const snapshot = await footballDataSnapshot(date, footballDataKey);
     if (snapshot.ok) {
       const turkey = !targetKey ? await turkeyFixtureSnapshot(date) : null;
-      const filteredDiagnostics = snapshot.diagnostics;
-      const filteredFixtures = snapshot.fixtures;
       const body = {
         configured: true, footballDataConfigured: true, provider: "football-data.org",
-        fixtures: turkey ? [...turkey.fixtures, ...filteredFixtures] : filteredFixtures,
-        diagnostics: turkey ? [turkey.diagnostic, ...filteredDiagnostics] : filteredDiagnostics,
+        fixtures: turkey ? [...turkey.fixtures, ...snapshot.fixtures] : snapshot.fixtures,
+        diagnostics: turkey ? [turkey.diagnostic, ...snapshot.diagnostics] : snapshot.diagnostics,
         accessibleCompetitionCount: snapshot.accessibleCompetitionCount,
         raw: debugMode ? snapshot.raw : undefined,
         cache: { coverageNetwork: snapshot.coverageNetwork, fixtureNetwork: snapshot.fixtureNetwork },
       };
       if (!debugMode && !targetKey) dailyCache.set(cacheKey, { expiresAt: Date.now() + 6 * 60 * 60 * 1000, body });
-      return Response.json(body, { headers: { "cache-control": debugMode ? "no-store" : "public, max-age=3600, stale-while-revalidate=86400" } });
+      return body;
     }
     console.error("FootballData primary failed; API-Football fallback may be used", snapshot.error);
   }
 
-  if (!key) return Response.json({
+  if (!key) return {
     configured: false, footballDataConfigured: Boolean(footballDataKey), provider: "API-Football", fixtures: [],
     diagnostics: TARGET_LEAGUES.map(target => ({ competition: target.names[0], provider: "API-Football", status: "API_ERROR", errors: { configuration: "API_FOOTBALL_KEY yapılandırılmamış" } })),
-  }, { headers: { "cache-control": "no-store" } });
+  };
 
   const cacheKey = `targets:${date}`;
   const cached = dailyCache.get(cacheKey);
-  if (!debugMode && cached && cached.expiresAt > Date.now()) return Response.json(cached.body, { headers: { "cache-control": "public, max-age=3600" } });
+  if (!debugMode && cached && cached.expiresAt > Date.now()) return cached.body;
   try {
     const selectedTargets = targetKey ? TARGET_LEAGUES.filter(target => target.key === targetKey) : TARGET_LEAGUES;
-    if (selectedTargets.length === 0) return Response.json({ configured: true, error: "Bilinmeyen hedef lig" }, { status: 400 });
+    if (selectedTargets.length === 0) return { configured: true, provider: "API-Football", fixtures: [], diagnostics: [] };
     const discoveries = [];
     for (const target of selectedTargets) discoveries.push({ target, ...(await discover(target, key)) });
     const fixtureGroups = [];
@@ -332,9 +316,34 @@ export async function GET(request: Request) {
     });
     const body = { configured: true, provider: "API-Football", fixtures, diagnostics: fixtureGroups.map(group => group.diagnostic), discovery: debugMode ? discoveries.map(item => item.debug) : undefined };
     if (!debugMode) dailyCache.set(cacheKey, { expiresAt: Date.now() + 6 * 60 * 60 * 1000, body });
-    return Response.json(body, { headers: { "cache-control": debugMode ? "no-store" : "public, max-age=3600, stale-while-revalidate=86400" } });
+    return body;
   } catch (error) {
     console.error("Target league fetch failed", error);
-    return Response.json({ configured: true, provider: "API-Football", fixtures: [], diagnostics: [{ status: "API_ERROR", errors: String(error) }] }, { status: 502 });
+    return { configured: true, provider: "API-Football", fixtures: [], diagnostics: [{ status: "API_ERROR", errors: String(error) }] };
   }
+}
+
+export async function GET(request: Request) {
+  const input = new URL(request.url);
+  const date = validDate(input.searchParams.get("date"));
+  const debugMode = input.searchParams.get("debug") === "1";
+  const targetKey = input.searchParams.get("target")?.trim() || null;
+  const statusMode = input.searchParams.get("status") === "1";
+  if (!date) return Response.json({ error: "Geçerli tarih gerekli" }, { status: 400 });
+
+  if (statusMode) {
+    const key = process.env.API_FOOTBALL_KEY?.trim();
+    const footballDataKey = process.env.FOOTBALL_DATA_KEY?.trim();
+    const footballDataStatus = footballDataKey ? await footballDataGet("/competitions", footballDataKey) : null;
+    return Response.json({
+      footballDataConfigured: Boolean(footballDataKey),
+      footballDataStatus: !footballDataKey ? "NOT_CONFIGURED" : footballDataStatus?.ok ? "AVAILABLE" : "API_ERROR",
+      footballDataHttpStatus: footballDataStatus?.status ?? null,
+      footballDataError: footballDataStatus?.error ?? null,
+      apiFootballConfigured: Boolean(key),
+    }, { headers: { "cache-control": "no-store" } });
+  }
+
+  const body = await collectFootballBody(date, debugMode, targetKey);
+  return Response.json(body, { headers: { "cache-control": debugMode ? "no-store" : "public, max-age=3600, stale-while-revalidate=86400" } });
 }
