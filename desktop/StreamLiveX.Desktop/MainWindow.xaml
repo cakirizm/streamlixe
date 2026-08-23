@@ -5,6 +5,7 @@
         xmlns:vlc="clr-namespace:LibVLCSharp.WPF;assembly=LibVLCSharp.WPF"
         xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
         Title="StreamLiveX"
+        Icon="streamlivex.ico"
         Width="1280"
         Height="800"
         MinWidth="960"

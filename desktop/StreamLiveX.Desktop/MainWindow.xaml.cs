@@ -2,11 +2,13 @@ using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Threading;
@@ -56,6 +58,10 @@ public partial class MainWindow : Window
     private bool _updatingPlayerOptions;
     private long _pendingResumeTime;
     private long _lastProgressNotification;
+    // Yanlış (erken) EndReached olaylarını gerçek bitişten ayırmak ve VOD'da
+    // kaldığı yerden devam edebilmek için son bilinen konum/uzunluk.
+    private long _lastKnownTimeMs;
+    private long _lastKnownLengthMs;
     private bool _pauseAfterResume;
     private int _appliedSubtitleSize = 100;
     private string _appliedSubtitleColor = "#ffffff";
@@ -171,22 +177,49 @@ public partial class MainWindow : Window
         {
             if (ReferenceEquals(player, _mediaPlayer))
             {
-                _ = RecoverLivePlaybackAsync(player);
+                _ = RecoverPlaybackAsync(player);
             }
         });
         player.EndReached += (_, _) => Dispatcher.InvokeAsync(() =>
         {
-            if (ReferenceEquals(player, _mediaPlayer))
+            if (!ReferenceEquals(player, _mediaPlayer))
+            {
+                return;
+            }
+
+            var isLive = string.Equals(
+                _activeRequest?.Item?.Kind, "live", StringComparison.OrdinalIgnoreCase);
+
+            // Gerçekten sona ulaşıldı mı? VLC canlı/HLS kopmalarında veya ağ
+            // hıçkırığında film bitmediği hâlde EndReached tetikleyebiliyor;
+            // bu durumda oynatıcıyı kapatmak kullanıcıyı "geri" atıyor. Yalnızca
+            // VOD'da ve konum gerçekten sona yakınsa kapat; aksi hâlde kaldığı
+            // yerden devam etmeyi dene.
+            var reachedRealEnd =
+                !isLive &&
+                _lastKnownLengthMs > 0 &&
+                _lastKnownTimeMs >= _lastKnownLengthMs - 15_000;
+
+            if (reachedRealEnd)
             {
                 CloseNativePlayer();
+            }
+            else
+            {
+                _ = RecoverPlaybackAsync(player);
             }
         });
         player.TimeChanged += (_, args) => Dispatcher.InvokeAsync(() =>
         {
             if (ReferenceEquals(player, _mediaPlayer))
             {
+                _lastKnownTimeMs = args.Time;
                 UpdateTime(args.Time);
                 var length = player.Length;
+                if (length > 0)
+                {
+                    _lastKnownLengthMs = length;
+                }
                 if (_activeRequest?.Item is not null &&
                     !string.Equals(_activeRequest.Item.Kind, "live", StringComparison.OrdinalIgnoreCase) &&
                     length > 0 && args.Time >= 5_000 &&
@@ -205,6 +238,10 @@ public partial class MainWindow : Window
         {
             if (ReferenceEquals(player, _mediaPlayer))
             {
+                if (args.Length > 0)
+                {
+                    _lastKnownLengthMs = args.Length;
+                }
                 PositionSlider.Maximum = Math.Max(1, args.Length);
             }
         });
@@ -329,6 +366,8 @@ public partial class MainWindow : Window
         _playbackRecoveryInProgress = false;
         _pendingResumeTime = Math.Max(0, resumeTime);
         _lastProgressNotification = 0;
+        _lastKnownTimeMs = Math.Max(0, resumeTime);
+        _lastKnownLengthMs = 0;
         _pauseAfterResume = pauseAfterResume;
         var activeMedia = OpenActiveMedia(mediaUri, request);
 
@@ -447,12 +486,10 @@ public partial class MainWindow : Window
         return _activeMedia;
     }
 
-    private async Task RecoverLivePlaybackAsync(VlcMediaPlayer player)
+    private async Task RecoverPlaybackAsync(VlcMediaPlayer player)
     {
-        if (_playbackRecoveryInProgress || !ReferenceEquals(player, _mediaPlayer) || !_nativePlayerOpen ||
-            !string.Equals(_activeRequest?.Item?.Kind, "live", StringComparison.OrdinalIgnoreCase))
+        if (_playbackRecoveryInProgress || !ReferenceEquals(player, _mediaPlayer) || !_nativePlayerOpen)
         {
-            PlaybackStatus.Text = "Yayın oynatılamadı";
             return;
         }
 
@@ -463,7 +500,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_playbackRetryCount < 1)
+        var isLive = string.Equals(request.Item?.Kind, "live", StringComparison.OrdinalIgnoreCase);
+
+        // Önce aynı kaynağı birkaç kez yeniden dene; olmazsa sıradaki adaya geç.
+        if (_playbackRetryCount < 2)
         {
             _playbackRetryCount++;
         }
@@ -479,9 +519,15 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Film/dizi (VOD) ise kaldığı yerden devam et.
+        if (!isLive && _lastKnownTimeMs > 3_000)
+        {
+            _pendingResumeTime = _lastKnownTimeMs;
+        }
+
         _playbackRecoveryInProgress = true;
         var generation = _playbackGeneration;
-        PlaybackStatus.Text = "Yayın yeniden deneniyor";
+        PlaybackStatus.Text = isLive ? "Yayın yeniden deneniyor" : "Bağlantı yeniden kuruluyor";
         try
         {
             _mediaPlayer.Stop();
@@ -1421,6 +1467,90 @@ public partial class MainWindow : Window
             ResizeMode = _preFullscreenResize;
             WindowState = _preFullscreenState;
         }
+    }
+
+    // Kenarlıksız (WindowStyle.None) bir pencere maximize edildiğinde WPF, pencereyi
+    // monitörü tam kaplayacak şekilde büyütmez; kenarlardan taşar ya da eksik kalır.
+    // WM_GETMINMAXINFO'yu ele alıp maximize boyutunu monitörün tam sınırlarına
+    // sabitliyoruz; böylece tam ekran gerçekten tüm ekranı (taskbar dahil) kaplar.
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        var handle = new WindowInteropHelper(this).Handle;
+        HwndSource.FromHwnd(handle)?.AddHook(WindowProc);
+    }
+
+    private const int WM_GETMINMAXINFO = 0x0024;
+    private const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
+
+    private IntPtr WindowProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        // Yalnızca tam ekran (kenarlıksız) modda müdahale et; normal maximize'da
+        // Windows taskbar'ı koruyarak zaten doğru davranır.
+        if (msg == WM_GETMINMAXINFO && _isFullscreen)
+        {
+            var monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            if (monitor != IntPtr.Zero)
+            {
+                var monitorInfo = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+                if (GetMonitorInfo(monitor, ref monitorInfo))
+                {
+                    var mmi = Marshal.PtrToStructure<MINMAXINFO>(lParam);
+                    var rc = monitorInfo.rcMonitor;
+                    // Konum monitörün sol-üstü, boyut monitörün tamamı (taskbar dahil).
+                    // Koordinatlar pencerenin bulunduğu monitöre görelidir.
+                    mmi.ptMaxPosition.X = 0;
+                    mmi.ptMaxPosition.Y = 0;
+                    mmi.ptMaxSize.X = rc.right - rc.left;
+                    mmi.ptMaxSize.Y = rc.bottom - rc.top;
+                    Marshal.StructureToPtr(mmi, lParam, true);
+                    handled = true;
+                }
+            }
+        }
+        return IntPtr.Zero;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT
+    {
+        public int left;
+        public int top;
+        public int right;
+        public int bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MINMAXINFO
+    {
+        public POINT ptReserved;
+        public POINT ptMaxSize;
+        public POINT ptMaxPosition;
+        public POINT ptMinTrackSize;
+        public POINT ptMaxTrackSize;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct MONITORINFO
+    {
+        public int cbSize;
+        public RECT rcMonitor;
+        public RECT rcWork;
+        public uint dwFlags;
     }
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
