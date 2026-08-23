@@ -100,6 +100,7 @@ import com.streamlivex.android.tv.i18n.TvStrings
 import com.streamlivex.android.tv.player.TvNativePlayer
 import com.streamlivex.android.tv.TvDesignTokens
 import com.streamlivex.android.tv.TvPerformanceTrace
+import com.streamlivex.android.tv.profile.TvActiveScope
 import com.streamlivex.android.tv.profile.TvProfilePolicy
 import com.streamlivex.android.tv.sports.SportsBroadcastResolver
 import com.streamlivex.android.tv.sports.SportsChannelIndex
@@ -2882,6 +2883,41 @@ fun TvSearchScreen(
             )
         }
 
+    // Çocuk profilinde aramayı da yalnızca çocuk kategorilerine kısıtla.
+    val kidsMovieCategoryIds =
+        remember(provider.server, provider.username) {
+            if (!TvActiveScope.kidsMode) {
+                emptySet()
+            } else {
+                index.loadVodCategories(provider)
+                    .filter { TvProfilePolicy.isKidsCategory(it.name) }
+                    .map { it.id }
+                    .toSet()
+            }
+        }
+    val kidsSeriesCategoryIds =
+        remember(provider.server, provider.username) {
+            if (!TvActiveScope.kidsMode) {
+                emptySet()
+            } else {
+                index.loadSeriesCategories(provider)
+                    .filter { TvProfilePolicy.isKidsCategory(it.name) }
+                    .map { it.id }
+                    .toSet()
+            }
+        }
+
+    fun kidsAllowsResult(media: TvIndexedMedia): Boolean {
+        if (!TvActiveScope.kidsMode) return true
+        val allowed =
+            if (media.kind == "series") {
+                kidsSeriesCategoryIds
+            } else {
+                kidsMovieCategoryIds
+            }
+        return media.categoryId != null && allowed.contains(media.categoryId)
+    }
+
     var query by remember { mutableStateOf("") }
     var selectedType by remember { mutableStateOf("movie") }
     var results by remember { mutableStateOf<List<TvUnifiedResult>>(emptyList()) }
@@ -2892,6 +2928,10 @@ fun TvSearchScreen(
     }
     var target by remember { mutableStateOf<ContentTarget?>(null) }
     var playing by remember { mutableStateOf<TvSavedItem?>(null) }
+    var searchPlaylist by remember {
+        mutableStateOf<List<Pair<TvSavedItem, PlaybackItem>>>(emptyList())
+    }
+    var searchPlaylistIndex by remember { mutableIntStateOf(0) }
     var liveChannel by remember {
         mutableStateOf<com.streamlivex.android.tv.data.NativeLiveChannel?>(null)
     }
@@ -3009,7 +3049,8 @@ fun TvSearchScreen(
                         rows.filter {
                             TvProfilePolicy.allow(
                                 it.media.name,
-                            )
+                            ) &&
+                                kidsAllowsResult(it.media)
                         }
                     channelResults =
                         emptyList()
@@ -3069,6 +3110,8 @@ fun TvSearchScreen(
             onClose = {
                 playing = null
             },
+            playlist = searchPlaylist,
+            playlistStartIndex = searchPlaylistIndex,
         )
         return
     }
@@ -3084,7 +3127,20 @@ fun TvSearchScreen(
             store = store,
             index = index,
             onPlay = {
+                searchPlaylist = emptyList()
+                searchPlaylistIndex = 0
                 playing = it
+            },
+            onEpisodePlaylist = {
+                playlist,
+                indexPosition ->
+
+                searchPlaylist = playlist
+                searchPlaylistIndex = indexPosition
+                playing =
+                    playlist
+                        .getOrNull(indexPosition)
+                        ?.first
             },
             onOpen = {
                 target = it
@@ -3360,9 +3416,22 @@ private fun SearchResultRow(
                     focused =
                         it.isFocused
                 }
-                .clickable(
-                    onClick = onClick,
-                )
+                .onKeyEvent { event ->
+                    if (
+                        event.type == KeyEventType.KeyUp &&
+                        (
+                            event.key == Key.DirectionCenter ||
+                            event.key == Key.Enter ||
+                            event.key == Key.NumPadEnter
+                        )
+                    ) {
+                        onClick()
+                        true
+                    } else {
+                        false
+                    }
+                }
+                .focusable()
                 .padding(10.dp),
         verticalAlignment =
             Alignment.CenterVertically,

@@ -625,14 +625,11 @@ fun TvNativePlayer(
     ) {
         if (controlsVisible && panel == TrackPanel.None) {
             delay(90)
+            // Kontroller her açıldığında odak daima orta (oynat/durdur) butonunda
+            // olsun; kullanıcı en son hangi kontrolü kullanmış olursa olsun oraya
+            // dönmesin.
             runCatching {
-                when (lastControl) {
-                    LastPlayerControl.Play -> pauseFocusRequester
-                    LastPlayerControl.Audio -> audioFocusRequester
-                    LastPlayerControl.Subtitle -> subtitleFocusRequester
-                    LastPlayerControl.SubtitleStyle -> subtitleStyleFocusRequester
-                    LastPlayerControl.Fit -> fitFocusRequester
-                }.requestFocus()
+                pauseFocusRequester.requestFocus()
             }
         }
     }
@@ -693,6 +690,8 @@ fun TvNativePlayer(
             panel !=
             TrackPanel.None
         ) {
+            // Bir alt panel (ses/altyazı/görünüm) açıkken geri tuşu yalnızca
+            // paneli kapatıp oynatıcıya döner; içeriği kapatmaz.
             panel =
                 TrackPanel.None
             controlsVisible =
@@ -701,13 +700,14 @@ fun TvNativePlayer(
                 1
 
             runCatching {
-                when (lastControl) {
-                    LastPlayerControl.Play -> pauseFocusRequester
-                    LastPlayerControl.Audio -> audioFocusRequester
-                    LastPlayerControl.Subtitle -> subtitleFocusRequester
-                    LastPlayerControl.SubtitleStyle -> subtitleStyleFocusRequester
-                    LastPlayerControl.Fit -> fitFocusRequester
-                }.requestFocus()
+                pauseFocusRequester.requestFocus()
+            }
+        } else if (controlsVisible) {
+            // Kontroller görünürken geri tuşu içeriği kapatmasın; sadece
+            // kontrolleri gizleyip oynatmaya dönsün.
+            controlsVisible = false
+            runCatching {
+                playerRootFocusRequester.requestFocus()
             }
         } else {
             onClose()

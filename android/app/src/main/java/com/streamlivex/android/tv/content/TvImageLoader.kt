@@ -1,5 +1,6 @@
 package com.streamlivex.android.tv.content
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Handler
@@ -16,8 +17,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.viewinterop.AndroidView
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -26,7 +29,8 @@ private class TvNetworkImageView(context: android.content.Context) : ImageView(c
 }
 
 private object TvImageLoader {
-    private val executor = Executors.newFixedThreadPool(3)
+    // (B) Daha fazla eşzamanlı poster indirmesi için havuz 3 -> 6.
+    private val executor = Executors.newFixedThreadPool(6)
     private val main = Handler(Looper.getMainLooper())
 
     // Hard cap: poster bitmap cache max ~14 MB.
@@ -36,6 +40,16 @@ private object TvImageLoader {
     }
 
     private val token = AtomicInteger(0)
+
+    // (C) Disk önbelleği: indirilen ham poster baytları cacheDir/tv_posters
+    // altında saklanır; kaydırma ve yeniden açılışta ağ gerekmez.
+    private const val DISK_MAX_BYTES = 120L * 1024 * 1024
+    private const val MAX_DOWNLOAD_BYTES = 4 * 1024 * 1024
+    private val diskLock = Any()
+    private val putCounter = AtomicInteger(0)
+
+    @Volatile
+    private var diskDir: File? = null
 
     fun load(
         url: String,
@@ -59,9 +73,11 @@ private object TvImageLoader {
             return
         }
 
+        val appContext = imageView.context.applicationContext
         executor.execute {
             val bitmap = runCatching {
                 fetchAndDecode(
+                    context = appContext,
                     url = url,
                     reqWidth = widthBucket.coerceAtLeast(180),
                     reqHeight = heightBucket.coerceAtLeast(270),
@@ -71,24 +87,45 @@ private object TvImageLoader {
             if (bitmap != null) cache.put(cacheKey, bitmap)
 
             main.post {
-                if (imageView.tag == requestToken && bitmap != null) {
-                    imageView.setImageBitmap(bitmap)
+                if (bitmap != null) {
+                    if (imageView.tag == requestToken) {
+                        imageView.setImageBitmap(bitmap)
+                    }
+                } else {
+                    // (A) İndirme başarısızsa işareti temizle ki poster tekrar
+                    // görünür olduğunda yeniden denensin (kalıcı boş poster olmasın).
+                    if (networkView?.requestedKey == cacheKey) {
+                        networkView.requestedKey = null
+                    }
                 }
             }
         }
     }
 
     /*
-     * One HTTP request per poster.
-     * The previous V2 loader opened the same URL twice (bounds + decode).
-     * Here bytes are downloaded once with a hard size cap, then sampled locally.
+     * Ham baytlar önce diskten okunur; yoksa ağdan indirilip (D: bir kez tekrar
+     * denemeyle) diske yazılır, sonra yerel olarak örneklenir.
      */
     private fun fetchAndDecode(
+        context: Context,
         url: String,
         reqWidth: Int,
         reqHeight: Int,
     ): Bitmap? {
-        val bytes = downloadLimited(url, 4 * 1024 * 1024)
+        val bytes = diskGet(context, url)
+            ?: run {
+                // (D) Başarısız indirmede kısa bir bekleme sonrası bir kez daha dene.
+                var downloaded = downloadLimited(url, MAX_DOWNLOAD_BYTES)
+                if (downloaded.isEmpty()) {
+                    Thread.sleep(300)
+                    downloaded = downloadLimited(url, MAX_DOWNLOAD_BYTES)
+                }
+                if (downloaded.isNotEmpty()) {
+                    diskPut(context, url, downloaded)
+                }
+                downloaded
+            }
+
         if (bytes.isEmpty()) return null
 
         val bounds = BitmapFactory.Options().apply {
@@ -112,6 +149,67 @@ private object TvImageLoader {
             bytes.size,
             options,
         )
+    }
+
+    private fun ensureDiskDir(context: Context): File? {
+        diskDir?.let { return it }
+        return synchronized(diskLock) {
+            diskDir ?: runCatching {
+                File(context.cacheDir, "tv_posters").apply { mkdirs() }
+            }.getOrNull()?.also { diskDir = it }
+        }
+    }
+
+    private fun diskKey(url: String): String =
+        runCatching {
+            MessageDigest.getInstance("MD5")
+                .digest(url.toByteArray())
+                .joinToString("") { "%02x".format(it) }
+        }.getOrElse { Integer.toHexString(url.hashCode()) }
+
+    private fun diskGet(context: Context, url: String): ByteArray? {
+        val dir = ensureDiskDir(context) ?: return null
+        val file = File(dir, diskKey(url))
+        if (!file.exists() || file.length() == 0L) return null
+        return runCatching { file.readBytes() }
+            .getOrNull()
+            ?.also {
+                // LRU için son erişim zamanını güncelle.
+                runCatching { file.setLastModified(System.currentTimeMillis()) }
+            }
+    }
+
+    private fun diskPut(context: Context, url: String, bytes: ByteArray) {
+        val dir = ensureDiskDir(context) ?: return
+        runCatching {
+            val key = diskKey(url)
+            val file = File(dir, key)
+            val tmp = File(dir, "$key.tmp")
+            tmp.writeBytes(bytes)
+            if (!tmp.renameTo(file)) {
+                tmp.delete()
+            }
+        }
+        // Her 20 yazımda bir disk boyutunu sınırla.
+        if (putCounter.incrementAndGet() % 20 == 0) {
+            trimDisk(dir)
+        }
+    }
+
+    private fun trimDisk(dir: File) {
+        synchronized(diskLock) {
+            runCatching {
+                val files = dir.listFiles()?.filter { it.isFile } ?: return
+                var total = files.sumOf { it.length() }
+                if (total <= DISK_MAX_BYTES) return
+                val target = (DISK_MAX_BYTES * 0.8).toLong()
+                files.sortedBy { it.lastModified() }.forEach { file ->
+                    if (total <= target) return@forEach
+                    val len = file.length()
+                    if (file.delete()) total -= len
+                }
+            }
+        }
     }
 
     private fun downloadLimited(

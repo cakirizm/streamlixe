@@ -36,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -665,6 +666,11 @@ private fun TvMainScreen(
                     .onFocusChanged { state ->
                         if (state.hasFocus) menuExpanded = false
                     }
+                    // İçerik alanını bir odak grubu yap: içeride odaktaki bir öğe
+                    // (buton/diyalog) kaybolunca odak sol menüye kaçmasın, içerik
+                    // alanının içinde kalsın. Menüye ancak geri tuşu veya kumandayla
+                    // sola giderek geçilir.
+                    .focusGroup()
                     .background(TvDesignTokens.Background),
         ) {
             val fullscreenCallback:

@@ -73,6 +73,43 @@ object TvProfilePolicy {
             "porno",
         )
 
+    // Çocuk profilinde yalnızca bu anahtar kelimeleri içeren kategoriler
+    // gösterilir (çok dilli). Kategori adları IPTV sağlayıcılarında genelde
+    // açıkça bu şekilde etiketlenir.
+    private val kidsTokens =
+        listOf(
+            "çocuk",
+            "cocuk",
+            "kids",
+            "kid",
+            "child",
+            "cartoon",
+            "çizgi",
+            "cizgi",
+            "animasyon",
+            "animation",
+            "anime",
+            "aile",
+            "family",
+            "disney",
+            "pixar",
+            "nick",
+            "nickelodeon",
+            "cartoon network",
+            "baby",
+            "bebek",
+            "junior",
+            "toon",
+        )
+
+    fun isKidsCategory(name: String?): Boolean {
+        val value = name?.lowercase() ?: return false
+        if (blockedTokens.any { value.contains(it) }) {
+            return false
+        }
+        return kidsTokens.any { value.contains(it) }
+    }
+
     fun allow(
         title: String?,
         category: String? = null,
@@ -89,9 +126,19 @@ object TvProfilePolicy {
                 .joinToString(" ")
                 .lowercase()
 
-        return blockedTokens.none {
-            haystack.contains(it)
+        // Yetişkin içerik her durumda engellenir.
+        if (blockedTokens.any { haystack.contains(it) }) {
+            return false
         }
+
+        // Bir kategori verildiyse (kategori listeleri), çocuk modunda yalnızca
+        // çocuklara özel kategorilere izin ver. Başlık verilmişse (bir çocuk
+        // kategorisi içindeki öğeler / arama), yalnızca yetişkin engeli uygulanır.
+        if (category != null) {
+            return isKidsCategory(category)
+        }
+
+        return true
     }
 }
 

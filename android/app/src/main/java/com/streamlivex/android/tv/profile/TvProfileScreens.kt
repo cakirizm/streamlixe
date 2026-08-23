@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -37,9 +38,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import com.streamlivex.android.R
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 
@@ -80,11 +83,22 @@ fun TvProfileSelectScreen(
         }
 
     val firstProfileRequester = remember { FocusRequester() }
+    val pinFieldRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     LaunchedEffect(profiles, managing, pending) {
         if (!managing && pending == null && profiles.isNotEmpty()) {
             kotlinx.coroutines.delay(120)
             runCatching { firstProfileRequester.requestFocus() }
+        }
+    }
+
+    // PIN penceresi açıldığında alanı odakla ve ekran klavyesini göster.
+    LaunchedEffect(pending) {
+        if (pending != null) {
+            kotlinx.coroutines.delay(120)
+            runCatching { pinFieldRequester.requestFocus() }
+            runCatching { keyboardController?.show() }
         }
     }
 
@@ -281,8 +295,13 @@ fun TvProfileSelectScreen(
                         },
                         modifier =
                             Modifier
-                                .fillMaxWidth(),
+                                .fillMaxWidth()
+                                .focusRequester(pinFieldRequester),
                         singleLine = true,
+                        keyboardOptions =
+                            KeyboardOptions(
+                                keyboardType = KeyboardType.NumberPassword,
+                            ),
                         visualTransformation =
                             PasswordVisualTransformation(),
                     )
@@ -373,6 +392,17 @@ fun TvProfileManagerScreen(
             )
         }
 
+    val backFocusRequester = remember { FocusRequester() }
+
+    // Ekran açıldığında (ve alt ekranlardan dönünce) odağı ekranın kendi
+    // içinde tut; aksi hâlde odak soldaki ana menüye kayıyor.
+    LaunchedEffect(adding, editing) {
+        if (!adding && editing == null) {
+            kotlinx.coroutines.delay(120)
+            runCatching { backFocusRequester.requestFocus() }
+        }
+    }
+
     editing?.let {
         profile ->
 
@@ -426,6 +456,7 @@ fun TvProfileManagerScreen(
             ) {
                 ProfileButton(
                     "← Geri",
+                    modifier = Modifier.focusRequester(backFocusRequester),
                     onClick = onBack,
                 )
                 Text(
@@ -1297,6 +1328,7 @@ private fun AddProfileCard(
 private fun ProfileButton(
     text: String,
     selected: Boolean = false,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     var focused by
@@ -1306,7 +1338,7 @@ private fun ProfileButton(
 
     Box(
         modifier =
-            Modifier
+            modifier
                 .background(
                     if (
                         focused ||
