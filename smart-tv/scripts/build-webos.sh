@@ -11,6 +11,14 @@ spa_dist="${root}/smart-tv/spa/dist"
 stage="${root}/smart-tv/build/webos"
 out_dir="${root}/smart-tv/dist"
 
+# TV SPA'nın ihtiyaç duyduğu kök-mutlak varlıkları public/'ten gömme klasörüne senkronla.
+# PlayerApp/globals.css yalnızca /streamlivex-logo.jpeg'e başvuruyor; yeni kök varlık
+# eklenirse buraya da eklenmeli.
+echo "==> [0/3] TV varlıkları senkronlanıyor..."
+tv_public="${root}/smart-tv/spa/public"
+mkdir -p "${tv_public}"
+cp "${root}/public/streamlivex-logo.jpeg" "${tv_public}/"
+
 echo "==> [1/3] TV SPA derleniyor..."
 ( cd "${root}" && npx vite build --config vite.tv.config.ts )
 

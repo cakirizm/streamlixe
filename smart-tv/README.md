@@ -43,7 +43,8 @@ PlayerApp'te iki geriye-uyumlu kanca eklendi (global tanımsızsa davranış ayn
 - [x] webOS iskeleti + `.ipk` paketleme pipeline'ı çalışıyor.
 - [x] Tizen iskeleti (`config.xml`) hazır.
 - [x] Gerçek SPA build'i pakete gömülüyor (API tabanı streamlivex.com + doğrudan oynatma).
-- [ ] `/streamlivex-logo.jpeg` gibi kök varlıklarının TV'de çözümlenmesi (proxy/gömme).
+- [x] Kök-mutlak varlık (`/streamlivex-logo.jpeg`) `publicDir` ile paket köküne gömülüyor
+      (emülatörde origin şeması `file://` çıkarsa runtime yeniden yazma ile doğrulanacak).
 - [ ] Tizen `.wgt` paketleme (Tizen Studio + sertifika).
 - [ ] webOS TV Emulator / Tizen TV Emulator üzerinde test.
 - [ ] LG Seller Lounge / Samsung Seller Office gönderimi.

@@ -25,5 +25,6 @@ android/keystore.properties
 smart-tv/dist/
 smart-tv/build/
 smart-tv/spa/dist/
+smart-tv/spa/public/
 *.ipk
 *.wgt
