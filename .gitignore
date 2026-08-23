@@ -23,5 +23,7 @@ android/keystore.properties
 
 # Smart TV paketleme çıktıları
 smart-tv/dist/
+smart-tv/build/
+smart-tv/spa/dist/
 *.ipk
 *.wgt

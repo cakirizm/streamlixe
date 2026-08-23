@@ -28,13 +28,28 @@ TV sürümünde:
    olduğu gibi **ham yayın URL'si TV'nin kendi oynatıcısında** açılır; `/api/stream` proxy'si
    atlanır (proxy datacenter IP'den 404 veriyor).
 
+## SPA yapısı
+`smart-tv/spa/` — TV'ye özgü saf istemci girişi:
+- `main.tsx` — PlayerApp'i mount eder; `/api/*` çağrılarını `https://streamlivex.com`'a yönlendirir
+  ve doğrudan (ham URL) oynatma bayrağını açar.
+- `index.html` — SPA giriş sayfası.
+- Derleme: kökteki `vite.tv.config.ts` (Vinext/RSC'den ayrı, saf istemci Vite derlemesi).
+
+PlayerApp'te iki geriye-uyumlu kanca eklendi (global tanımsızsa davranış aynen korunur):
+`window.__SLX_PROXY_ORIGIN__` (proxy origin override) ve `window.__SLX_TV_DIRECT__` (doğrudan oynatma).
+
 ## Durum
 - [x] webOS CLI (`@webosose/ares-cli`) kuruldu.
-- [x] webOS iskeleti + `.ipk` paketleme pipeline'ı çalışıyor (placeholder önyükleme ekranı).
+- [x] webOS iskeleti + `.ipk` paketleme pipeline'ı çalışıyor.
 - [x] Tizen iskeleti (`config.xml`) hazır.
-- [ ] Gerçek SPA build'inin pakete gömülmesi (API tabanı + doğrudan oynatma adaptasyonu).
+- [x] Gerçek SPA build'i pakete gömülüyor (API tabanı streamlivex.com + doğrudan oynatma).
+- [ ] `/streamlivex-logo.jpeg` gibi kök varlıklarının TV'de çözümlenmesi (proxy/gömme).
+- [ ] Tizen `.wgt` paketleme (Tizen Studio + sertifika).
 - [ ] webOS TV Emulator / Tizen TV Emulator üzerinde test.
 - [ ] LG Seller Lounge / Samsung Seller Office gönderimi.
+
+## webOS paketi üretme (gerçek SPA ile)
+`build-webos.sh` artık önce SPA'yı derler, staging'de metadata ile birleştirir, sonra paketler.
 
 ## webOS paketi üretme
 ```bash
