@@ -67,6 +67,7 @@ import com.streamlivex.android.tv.data.TvLiveProfileStore
 import com.streamlivex.android.tv.data.TvProviderConfig
 import com.streamlivex.android.tv.data.XtreamClient
 import com.streamlivex.android.tv.data.XtreamLiveLibrary
+import com.streamlivex.android.tv.profile.TvProfilePolicy
 import com.streamlivex.android.tv.content.TvLogoImage
 import com.streamlivex.android.tv.profile.TvActiveScope
 import java.text.SimpleDateFormat
@@ -333,14 +334,45 @@ fun LiveTvScreen(
         return
     }
 
-    val currentLibrary = library
-    if (currentLibrary == null) {
+    val rawLibrary = library
+    if (rawLibrary == null) {
         LiveErrorScreen(message = "Canlı TV verisi bulunamadı.")
         return
     }
 
+    // Çocuk profilinde canlı TV'yi de yalnızca çocuk kategorilerine kısıtla.
+    // "all" (tüm kanallar) kategorisi çocuk modunda gizlenir; kanallar yalnızca
+    // çocuk kategorilerine ait ve yetişkin adı içermeyenlerle sınırlanır.
+    val currentLibrary =
+        remember(rawLibrary) {
+            if (!TvActiveScope.kidsMode) {
+                rawLibrary
+            } else {
+                val kidsCategories =
+                    rawLibrary.categories.filter {
+                        it.id != "all" && TvProfilePolicy.isKidsCategory(it.name)
+                    }
+                val kidsCategoryIds = kidsCategories.map { it.id }.toSet()
+                rawLibrary.copy(
+                    categories = kidsCategories,
+                    channels =
+                        rawLibrary.channels.filter {
+                            kidsCategoryIds.contains(it.categoryId) &&
+                                TvProfilePolicy.allow(it.name)
+                        },
+                )
+            }
+        }
+
     if (currentLibrary.categories.isEmpty()) {
-        LiveErrorScreen(message = "Canlı TV kategorisi bulunamadı.")
+        LiveErrorScreen(
+            message =
+                if (TvActiveScope.kidsMode) {
+                    "Çocuk profili için canlı TV kategorisi bulunamadı."
+                } else {
+                    "Canlı TV kategorisi bulunamadı."
+                },
+        )
         return
     }
 

@@ -158,8 +158,53 @@ fun TvHomeScreen(
     val store = remember { TvContentStore(context) }
     val tmdb = remember { TvTmdbClient() }
     val index = remember { TvLibraryIndex(context) }
-    val homeCacheKey = "${provider.server}|${provider.username}|${locale.name}"
+    // Profil kimliği önbellek anahtarına dahil edilir; aksi hâlde bir profilin
+    // ana ekran içeriği (izlemeye devam et dahil) başka profilde görünür.
+    val homeCacheKey =
+        "${provider.server}|${provider.username}|${locale.name}|${TvActiveScope.profileId}"
     val hasHomeCache = TvHomeMemoryCache.key == homeCacheKey
+
+    // Çocuk profilinde ana ekranı da yalnızca çocuk kategorilerinden derle.
+    val kidsMode = TvActiveScope.kidsMode
+    val kidsMovieCategoryIds =
+        remember(provider.server, provider.username, kidsMode) {
+            if (!kidsMode) {
+                emptySet()
+            } else {
+                index.loadVodCategories(provider)
+                    .filter { TvProfilePolicy.isKidsCategory(it.name) }
+                    .map { it.id }
+                    .toSet()
+            }
+        }
+    val kidsSeriesCategoryIds =
+        remember(provider.server, provider.username, kidsMode) {
+            if (!kidsMode) {
+                emptySet()
+            } else {
+                index.loadSeriesCategories(provider)
+                    .filter { TvProfilePolicy.isKidsCategory(it.name) }
+                    .map { it.id }
+                    .toSet()
+            }
+        }
+
+    // Bir yerel medyanın (film/dizi) çocuk kategorisine ait olup olmadığı.
+    fun kidsAllowsLocal(media: TvIndexedMedia?): Boolean {
+        if (!kidsMode) return true
+        if (media?.categoryId == null) return false
+        val set = if (media.kind == "series") kidsSeriesCategoryIds else kidsMovieCategoryIds
+        return set.contains(media.categoryId)
+    }
+
+    // İzlemeye devam et / geçmiş öğesinin çocuk kategorisine ait olup olmadığı.
+    fun kidsAllowsSaved(item: TvSavedItem): Boolean {
+        if (!kidsMode) return true
+        val lookupKind = if (item.kind == "episode") "series" else item.kind
+        val lookupName = if (item.kind == "episode") (item.subtitle ?: item.name) else item.name
+        val local = index.findByTitle(provider, lookupKind, lookupName) ?: return false
+        return kidsAllowsLocal(local)
+    }
 
     var trendingMovies by remember(homeCacheKey) { mutableStateOf(if (hasHomeCache) TvHomeMemoryCache.movies else emptyList()) }
     var trendingSeries by remember(homeCacheKey) { mutableStateOf(if (hasHomeCache) TvHomeMemoryCache.series else emptyList()) }
@@ -392,10 +437,15 @@ fun TvHomeScreen(
         return
     }
 
-    val continueRows = remember(homeRefresh) { store.continueWatching() }
+    val continueRows =
+        remember(homeRefresh, kidsMode) {
+            store.continueWatching().filter { kidsAllowsSaved(it) }
+        }
     val featuredRows = (trendingSeries + trendingMovies).mapNotNull { media ->
         if (!TvProfilePolicy.allow(media.name)) null
-        else index.findByTitle(provider, media.kind, media.name)?.let { media to it }
+        else index.findByTitle(provider, media.kind, media.name)
+            ?.takeIf { kidsAllowsLocal(it) }
+            ?.let { media to it }
     }.take(5)
 
     LazyColumn(
@@ -432,7 +482,7 @@ fun TvHomeScreen(
             }
         }
 
-        if (favoriteChannels.isNotEmpty()) {
+        if (favoriteChannels.isNotEmpty() && !kidsMode) {
             item {
                 LiveHomeRail(favoriteChannels, liveEpgLabels) { channel ->
                     TvLiveProfileStore(context).recordChannelView(channel.id)
@@ -560,6 +610,8 @@ fun TvHomeScreen(
                         media.name,
                     ) ?: return@mapNotNull null
 
+                if (!kidsAllowsLocal(local)) return@mapNotNull null
+
                 HomeCard(
                     id = "tmdb-m-${media.id}",
                     title = media.name,
@@ -603,6 +655,8 @@ fun TvHomeScreen(
                         media.name,
                     ) ?: return@mapNotNull null
 
+                if (!kidsAllowsLocal(local)) return@mapNotNull null
+
                 HomeCard(
                     id = "tmdb-s-${media.id}",
                     title = media.name,
@@ -633,10 +687,11 @@ fun TvHomeScreen(
             }
         }
 
-        if (forYou.isNotEmpty()) item {
+        val forYouRows = forYou.filter { kidsAllowsLocal(it) }
+        if (forYouRows.isNotEmpty()) item {
             PosterHomeRail(
                 title = "Sizin İçin",
-                cards = forYou.map {
+                cards = forYouRows.map {
                     HomeCard(
                         id = it.localId,
                         title = it.name,
@@ -656,7 +711,7 @@ fun TvHomeScreen(
 
         if (loading) {
             item { Text(strings["loading"], color = Color(0xFF94A3B8)) }
-        } else if (forYou.isEmpty()) {
+        } else if (forYouRows.isEmpty()) {
             item { Text(strings["library_preparing"], color = Color(0xFF64748B)) }
         }
     }
