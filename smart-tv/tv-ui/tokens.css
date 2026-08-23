@@ -1,0 +1,39 @@
+/* StreamLiveX TV — native Android TV (TvDesignTokens) ile birebir tasarım token'ları */
+:root {
+  --tv-bg: #080B12;            /* ana ekran arka planı (TvMainScreen) */
+  --tv-bg-deep: #020A10;       /* en koyu zemin */
+  --tv-sidebar: #03141F;       /* sol menü */
+  --tv-card: #101A22;
+  --tv-card-border: rgba(255,255,255,0.12);
+  --tv-primary: #008FFF;
+  --tv-focus: #00A4FF;
+  --tv-menu-focus: #0E7490;    /* menü öğesi odak arka planı */
+  --tv-menu-selected: #134E4A; /* menü öğesi seçili arka planı */
+  --tv-text: #F5F7F9;
+  --tv-text-2: #AEB7BF;
+  --tv-text-3: #7E8992;
+  --tv-sidebar-w: 230px;
+  --tv-sidebar-collapsed-w: 68px;
+  --tv-hero-h: 320px;
+  --tv-radius: 12px;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body {
+  background: var(--tv-bg);
+  color: var(--tv-text);
+  font-family: system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+/* TV 1080p referans: 1920x1080. Ölçek gerekiyorsa root font-size ile ayarlanır. */
+:root { font-size: 16px; }
+
+/* Odak halkası: TV'de görünür net bir çerçeve */
+.tv-focusable { outline: none; }
+.tv-focusable:focus-visible,
+.tv-focusable.tv-focused {
+  outline: 3px solid var(--tv-focus);
+  outline-offset: 2px;
+}

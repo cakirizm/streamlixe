@@ -1,0 +1,139 @@
+/* StreamLiveX TV — bileşen stilleri (native TvRoot/TvSideMenu tasarımına göre) */
+
+.tv-shell { display: flex; height: 100vh; width: 100vw; background: var(--tv-bg); }
+[dir="rtl"] .tv-shell { flex-direction: row-reverse; }
+
+/* ---------- Sidebar (TvSideMenu) ---------- */
+.tv-sidebar {
+  width: var(--tv-sidebar-collapsed-w);
+  flex: none;
+  height: 100%;
+  background: var(--tv-sidebar);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  transition: width .18s ease;
+  overflow: hidden;
+}
+.tv-sidebar.expanded { width: var(--tv-sidebar-w); }
+
+.tv-brand {
+  display: flex; align-items: center; gap: 10px;
+  padding: 4px 4px 12px; min-height: 40px;
+}
+.tv-brand img { width: 34px; height: 34px; border-radius: 8px; object-fit: cover; }
+.tv-brand b { font-size: 20px; white-space: nowrap; letter-spacing: .3px; }
+.tv-brand b i { color: var(--tv-primary); font-style: normal; }
+
+.tv-navitem {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 11px;
+  border-radius: 9px;
+  color: var(--tv-text-2);
+  background: transparent;
+  border: 0;
+  width: 100%;
+  cursor: pointer;
+  font-size: 15px;
+  transition: background .18s ease, color .18s ease;
+  white-space: nowrap;
+}
+.tv-navitem .tv-nav-ico {
+  width: 26px; text-align: center; font-size: 18px; flex: none;
+}
+.tv-navitem .tv-nav-label { opacity: 0; transition: opacity .12s ease; }
+.tv-sidebar.expanded .tv-navitem .tv-nav-label { opacity: 1; }
+.tv-navitem.selected { background: var(--tv-menu-selected); color: #fff; font-weight: 700; }
+.tv-navitem.tv-focused,
+.tv-navitem:focus-visible { background: var(--tv-menu-focus); color: #fff; font-weight: 700; outline: none; }
+.tv-sidebar:not(.expanded) .tv-navitem { justify-content: center; padding: 8px 4px; }
+
+/* ---------- İçerik alanı ---------- */
+.tv-content { flex: 1; height: 100%; overflow: hidden; position: relative; }
+.tv-page { height: 100%; overflow-y: auto; padding: 40px 48px; }
+.tv-page::-webkit-scrollbar { width: 0; }
+
+.tv-page-head h1 { font-size: 34px; margin: 0 0 6px; }
+.tv-page-head p { color: var(--tv-text-2); margin: 0 0 28px; font-size: 16px; }
+
+.tv-coming {
+  display: flex; align-items: center; justify-content: center;
+  height: 60%; color: var(--tv-text-3); font-size: 20px;
+}
+
+/* ---------- Setup ekranı ---------- */
+.tv-setup { height: 100vh; width: 100vw; display: grid; place-items: center;
+  background: radial-gradient(circle at 30% 20%, #10233a, var(--tv-bg-deep) 55%); }
+.tv-setup-card {
+  width: min(720px, 86vw);
+  background: rgba(10,16,24,.72);
+  border: 1px solid var(--tv-card-border);
+  border-radius: 18px;
+  padding: 40px 44px;
+  box-shadow: 0 30px 80px rgba(0,0,0,.5);
+}
+.tv-setup-card .tv-brand { padding-left: 0; }
+.tv-setup-card h1 { font-size: 30px; margin: 14px 0 6px; }
+.tv-setup-card .sub { color: var(--tv-text-2); margin: 0 0 24px; font-size: 15px; }
+
+.tv-tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+.tv-tab {
+  flex: 1; padding: 12px; border-radius: 10px; border: 1px solid var(--tv-card-border);
+  background: var(--tv-card); color: var(--tv-text-2); cursor: pointer; font-size: 15px; font-weight: 600;
+}
+.tv-tab.active { border-color: var(--tv-primary); color: #fff; background: #0e2233; }
+.tv-tab.tv-focused, .tv-tab:focus-visible { outline: 3px solid var(--tv-focus); outline-offset: 2px; }
+
+.tv-field { display: block; margin-bottom: 14px; }
+.tv-field span { display: block; color: var(--tv-text-2); font-size: 13px; margin-bottom: 6px; }
+.tv-field input {
+  width: 100%; height: 46px; padding: 0 14px; border-radius: 10px;
+  border: 1px solid var(--tv-card-border); background: #0a1017; color: #fff; font-size: 15px;
+}
+.tv-field input:focus, .tv-field input.tv-focused { outline: none; border-color: var(--tv-focus); box-shadow: 0 0 0 3px rgba(0,164,255,.25); }
+.tv-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+.tv-btn {
+  width: 100%; height: 50px; border: 0; border-radius: 11px; cursor: pointer;
+  background: linear-gradient(90deg, var(--tv-primary), #0066cc); color: #fff; font-size: 16px; font-weight: 700;
+  margin-top: 8px;
+}
+.tv-btn.tv-focused, .tv-btn:focus-visible { outline: 3px solid var(--tv-focus); outline-offset: 2px; }
+.tv-btn.ghost { background: transparent; border: 1px solid var(--tv-card-border); color: var(--tv-text-2); height: 44px; font-weight: 600; }
+
+.tv-error { color: #ff6b6b; font-size: 14px; margin: 8px 0 0; }
+.tv-progress { margin-top: 14px; }
+.tv-progress .bar { height: 8px; border-radius: 6px; background: #1a2634; overflow: hidden; }
+.tv-progress .bar i { display: block; height: 100%; background: linear-gradient(90deg,#008fff,#00e0ff); transition: width .3s; }
+.tv-progress small { display:block; margin-top:6px; color: var(--tv-text-3); font-size: 12px; }
+
+/* ---------- Profil seçimi ---------- */
+.tv-profiles { height: 100vh; display: grid; place-content: center; justify-items: center; gap: 34px;
+  background: radial-gradient(circle at 50% 30%, #10233a, var(--tv-bg-deep) 60%); }
+.tv-profiles h1 { font-size: 40px; margin: 0; }
+.tv-profile-row { display: flex; gap: 28px; flex-wrap: wrap; justify-content: center; }
+.tv-profile {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  background: transparent; border: 0; cursor: pointer; color: var(--tv-text-2);
+}
+.tv-profile .avatar {
+  width: 132px; height: 132px; border-radius: 20px;
+  background: linear-gradient(135deg,#0e7490,#134e4a); display: grid; place-items: center;
+  font-size: 52px; color: #fff; border: 3px solid transparent; transition: border-color .15s, transform .15s;
+}
+.tv-profile.tv-focused .avatar, .tv-profile:focus-visible .avatar {
+  border-color: var(--tv-focus); transform: scale(1.06); outline: none;
+}
+.tv-profile.tv-focused span, .tv-profile:focus-visible span { color: #fff; }
+.tv-profile span { font-size: 18px; }
+
+/* Dil seçici (sağ üst) */
+.tv-lang { position: fixed; top: 22px; right: 26px; z-index: 50; display: flex; gap: 8px; }
+.tv-lang button {
+  padding: 6px 12px; border-radius: 8px; border: 1px solid var(--tv-card-border);
+  background: rgba(0,0,0,.35); color: var(--tv-text-2); cursor: pointer; font-size: 13px;
+}
+.tv-lang button.active { color: #fff; border-color: var(--tv-primary); }
+.tv-lang button.tv-focused, .tv-lang button:focus-visible { outline: 3px solid var(--tv-focus); }
+[dir="rtl"] .tv-lang { right: auto; left: 26px; }

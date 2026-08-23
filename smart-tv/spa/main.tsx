@@ -1,21 +1,18 @@
 // StreamLiveX — Smart TV (webOS/Tizen) SPA girişi.
-// Mevcut PlayerApp'i saf istemci olarak mount eder ve TV'ye özgü iki ayarı uygular:
-//   1) Tüm /api/* çağrılarını streamlivex.com backend'ine yönlendirir.
+// Native Android TV arayüzünün web portu olan TvApp'i mount eder ve TV'ye özgü ayarları uygular:
+//   1) Tüm /api/* çağrılarını streamlivex.com backend'ine yönlendirir (Faz 2 içerik için).
 //   2) Yayınları doğrudan ham URL ile oynatmayı tercih ettiren global bayrağı açar.
 import { createRoot } from "react-dom/client";
-import "../../app/globals.css";
-import PlayerApp from "../../app/PlayerApp";
+import TvApp from "../tv-ui/TvApp";
 
 // TV backend'i. İleride farklı ortam için VITE_API_BASE ile override edilebilir.
 const API_BASE: string =
   (import.meta as any).env?.VITE_API_BASE?.replace(/\/$/, "") || "https://streamlivex.com";
 
-// PlayerApp'in okuduğu global ayarlar (bkz. proxyOrigin / preferDirectHttp).
 (window as any).__SLX_PROXY_ORIGIN__ = API_BASE;
 (window as any).__SLX_TV_DIRECT__ = true;
 
-// Göreli /api/* isteklerini uzak backend'e yönlendiren fetch köprüsü. Paket yerel bir
-// origin'den açıldığı için göreli yollar aksi halde çözülemez.
+// Göreli /api/* isteklerini uzak backend'e yönlendiren fetch köprüsü.
 const nativeFetch = window.fetch.bind(window);
 window.fetch = ((input: any, init?: any) => {
   try {
@@ -37,4 +34,4 @@ window.fetch = ((input: any, init?: any) => {
   return nativeFetch(input, init);
 }) as typeof fetch;
 
-createRoot(document.getElementById("root")!).render(<PlayerApp />);
+createRoot(document.getElementById("root")!).render(<TvApp />);
