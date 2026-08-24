@@ -1,18 +1,16 @@
-// StreamLiveX TV — bölüm ekranları. Home native TvHomeScreen tasarımına göre:
-// Kaldığın Yerden Devam Et → Bugünün Sporları → Sizin İçin (gerçek /api verisiyle).
-import { useEffect, useRef, useState } from "react";
+// StreamLiveX TV — bölüm ekranları (native TvHomeScreen/LiveTvScreen/TvMoviesScreen tasarımı).
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { TvLang } from "./i18n";
 import { makeT } from "./i18n";
 import type { Section } from "./Sidebar";
 import { fetchSports, fetchForYou, fetchGenres, fetchDiscover, countryFlag, hhmm, type SportsEvent, type PosterCard, type Genre } from "./data";
+import { groupsOf, type Library, type Media } from "./library";
+import type { Provider } from "./Setup";
 import { focusFirst } from "./dpad";
 
-// Kaldığın Yerden Devam Et — yerel geçmiş (henüz kütüphane yoksa boş → gizli).
-type ContinueItem = { id: string; name: string; image?: string; progress?: number };
-function loadContinue(): ContinueItem[] {
-  try { return JSON.parse(localStorage.getItem("slx-tv-continue") || "[]"); } catch { return []; }
-}
+type Common = { lang: TvLang; library: Library | null; provider: Provider | null; onOpen: (m: Media) => void };
 
+/* ---------------- Home ---------------- */
 function SportsCard({ e }: { e: SportsEvent }) {
   const score = e.homeScore != null || e.awayScore != null;
   return (
@@ -25,151 +23,164 @@ function SportsCard({ e }: { e: SportsEvent }) {
         <span className="name away">{e.away}</span>
         {e.awayBadge ? <img className="logo" src={e.awayBadge} alt="" /> : <span className="logo" />}
       </div>
-      <div className="tv-sports-bcast">
-        {(e.broadcasts && e.broadcasts.length) ? "📺 Yayın mevcut" : "Yayın seçeneği bulunamadı"}
-      </div>
+      <div className="tv-sports-bcast">{(e.broadcasts && e.broadcasts.length) ? "📺 Yayın mevcut" : "Yayın seçeneği bulunamadı"}</div>
     </button>
   );
 }
 
-function HomeScreen({ lang }: { lang: TvLang }) {
+function HomeScreen({ lang, library, onOpen }: Common) {
   const t = makeT(lang);
   const [sports, setSports] = useState<SportsEvent[] | null>(null);
   const [forYou, setForYou] = useState<PosterCard[] | null>(null);
-  const [cont] = useState<ContinueItem[]>(loadContinue());
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    fetchSports().then(setSports).catch(() => setSports([]));
-    fetchForYou("movie").then(setForYou).catch(() => setForYou([]));
-  }, []);
+  // Kütüphane varsa "Sizin İçin" yerine gerçek filmleri göster.
+  const libMovies = useMemo(() => (library ? library.movies.slice(0, 20) : null), [library]);
 
-  useEffect(() => {
-    if (sports !== null || forYou !== null) {
-      const id = setTimeout(() => focusFirst(ref.current), 80);
-      return () => clearTimeout(id);
-    }
-  }, [sports, forYou]);
+  useEffect(() => { fetchSports().then(setSports).catch(() => setSports([])); }, []);
+  useEffect(() => { if (!libMovies) fetchForYou("movie").then(setForYou).catch(() => setForYou([])); }, [libMovies]);
+  useEffect(() => { const id = setTimeout(() => focusFirst(ref.current), 80); return () => clearTimeout(id); }, [sports, forYou, libMovies]);
 
   return (
     <div className="tv-page" ref={ref}>
-      {cont.length > 0 && (
-        <section className="tv-rail">
-          <h2 className="tv-rail-title">{t("continue_watching")}</h2>
-          <div className="tv-rail-row">
-            {cont.map((c) => (
-              <button key={c.id} className="tv-continue-card tv-focusable">
-                {c.image && <img src={c.image} alt="" />}
-                <div className="cap">{c.name}</div>
-                {c.progress != null && <div className="prog"><i style={{ width: `${c.progress}%` }} /></div>}
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
       <section className="tv-rail">
         <h2 className="tv-rail-title">{t("todays_sports")}</h2>
-        {sports === null ? (
-          <div className="tv-rail-loading">{t("loading")}</div>
-        ) : sports.length === 0 ? (
-          <div className="tv-rail-loading">{t("no_matches")}</div>
-        ) : (
-          <div className="tv-rail-row">
-            {sports.map((e) => <SportsCard key={e.id} e={e} />)}
-          </div>
-        )}
+        {sports === null ? <div className="tv-rail-loading">{t("loading")}</div>
+          : sports.length === 0 ? <div className="tv-rail-loading">{t("no_matches")}</div>
+          : <div className="tv-rail-row">{sports.map((e) => <SportsCard key={e.id} e={e} />)}</div>}
       </section>
 
       <section className="tv-rail">
         <h2 className="tv-rail-title">{t("for_you")}</h2>
-        {forYou === null ? (
-          <div className="tv-rail-loading">{t("loading")}</div>
-        ) : (
+        {libMovies ? (
           <div className="tv-rail-row">
-            {forYou.map((p) => (
-              <button key={p.id} className="tv-poster-card tv-focusable" title={p.title}>
-                <img src={p.poster} alt={p.title} loading="lazy" />
+            {libMovies.map((m) => (
+              <button key={m.id} className="tv-poster-card tv-focusable" title={m.name} onClick={() => onOpen(m)}>
+                {m.logo ? <img src={m.logo} alt={m.name} loading="lazy" /> : <span className="tv-poster-ph">{m.name.slice(0, 2)}</span>}
               </button>
             ))}
           </div>
-        )}
+        ) : forYou === null ? <div className="tv-rail-loading">{t("loading")}</div>
+          : <div className="tv-rail-row">{forYou.map((p) => (
+              <button key={p.id} className="tv-poster-card tv-focusable" title={p.title}><img src={p.poster} alt={p.title} loading="lazy" /></button>
+            ))}</div>}
       </section>
     </div>
   );
 }
 
-// Filmler / Diziler — native TvMoviesScreen/TvSeriesScreen: kategori sütunu + poster ızgarası.
-// Demo/kütüphane yokken TMDB tür + keşif ile doldurulur (görünüş native ile aynı).
-function ContentScreen({ kind, lang }: { kind: "movie" | "series"; lang: TvLang }) {
+/* ---------------- Canlı TV ---------------- */
+function LiveScreen({ lang, library, onOpen }: Common) {
   const t = makeT(lang);
+  const channels = library?.live || [];
+  const cats = useMemo(() => groupsOf(channels), [channels]);
+  const [cat, setCat] = useState("Tümü");
+  const catRef = useRef<HTMLDivElement>(null);
+  const list = useMemo(() => cat === "Tümü" ? channels : channels.filter((c) => c.group === cat), [channels, cat]);
+
+  useEffect(() => { const id = setTimeout(() => focusFirst(catRef.current), 80); return () => clearTimeout(id); }, [library]);
+
+  if (!library) return <div className="tv-page"><div className="tv-page-head"><h1>{t("live")}</h1></div><div className="tv-coming">Canlı kanallar için Xtream hesabınla giriş yap.</div></div>;
+
+  return (
+    <div className="tv-content-screen">
+      <aside className="tv-cat-col" ref={catRef}>
+        <h1 className="tv-cat-title">{t("live")}</h1>
+        {cats.map((c) => (
+          <button key={c} className={`tv-cat tv-focusable${cat === c ? " active" : ""}`} onClick={() => setCat(c)} onFocus={() => setCat(c)}>{c}</button>
+        ))}
+      </aside>
+      <div className="tv-grid-wrap">
+        <div className="tv-live-grid">
+          {list.slice(0, 300).map((ch) => (
+            <button key={ch.id} className="tv-live-card tv-focusable" onClick={() => onOpen(ch)} title={ch.name}>
+              <div className="logo">{ch.logo ? <img src={ch.logo} alt="" loading="lazy" /> : <span>{ch.name.slice(0, 3)}</span>}</div>
+              <div className="name">{ch.name}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Filmler / Diziler ---------------- */
+function ContentScreen({ kind, lang, library, provider, onOpen }: Common & { kind: "movie" | "series" }) {
+  const t = makeT(lang);
+  const libItems = kind === "movie" ? library?.movies : library?.series;
+  const useLib = !!(libItems && libItems.length);
+
+  // Kütüphane modu
+  const [cat, setCat] = useState("Tümü");
+  const cats = useMemo(() => useLib ? groupsOf(libItems!) : [], [useLib, libItems]);
+  const libList = useMemo(() => !useLib ? [] : (cat === "Tümü" ? libItems! : libItems!.filter((m) => m.group === cat)).slice(0, 400), [useLib, libItems, cat]);
+
+  // TMDB modu (demo)
   const [genres, setGenres] = useState<Genre[] | null>(null);
   const [genre, setGenre] = useState<number | null>(null);
   const [cards, setCards] = useState<PosterCard[] | null>(null);
   const catRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetchGenres(kind).then((g) => {
-      setGenres(g);
-      if (g.length) setGenre(g[0].id);
-    });
-  }, [kind]);
+    if (useLib) return;
+    fetchGenres(kind).then((g) => { setGenres(g); if (g.length) setGenre(g[0].id); });
+  }, [kind, useLib]);
+  useEffect(() => { if (useLib || genre == null) return; setCards(null); fetchDiscover(kind, genre).then(setCards); }, [kind, genre, useLib]);
+  useEffect(() => { const id = setTimeout(() => focusFirst(catRef.current), 80); return () => clearTimeout(id); }, [genres, library]);
 
-  useEffect(() => {
-    if (genre == null) return;
-    setCards(null);
-    fetchDiscover(kind, genre).then(setCards);
-  }, [kind, genre]);
-
-  useEffect(() => {
-    if (genres && genres.length) { const id = setTimeout(() => focusFirst(catRef.current), 80); return () => clearTimeout(id); }
-  }, [genres]);
+  async function openMedia(m: Media) {
+    if (kind === "movie") { onOpen(m); return; }
+    // Dizi: ilk bölümü series_info ile çöz
+    if (!provider || provider.method !== "xtream" || !m.seriesId) return;
+    try {
+      const r = await fetch("/api/import", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ method: "series_info", server: provider.server, username: provider.username, password: provider.password, seriesId: m.seriesId }) });
+      const data = await r.json();
+      const seasons = Object.values(data.episodes || {}) as any[][];
+      const first = (seasons.find((s) => Array.isArray(s) && s.length) || [])[0];
+      if (!first) return;
+      const url = `${(provider.server || "").replace(/\/+$/, "")}/series/${provider.username}/${provider.password}/${first.id}.${first.container_extension || "mp4"}`;
+      onOpen({ ...m, url, name: `${m.name} · ${first.title || "1. Bölüm"}` });
+    } catch { /* yut */ }
+  }
 
   return (
     <div className="tv-content-screen">
       <aside className="tv-cat-col" ref={catRef}>
         <h1 className="tv-cat-title">{t(kind === "movie" ? "movies" : "series")}</h1>
-        {genres === null ? (
-          <div className="tv-rail-loading">{t("loading")}</div>
-        ) : (
-          genres.map((g) => (
-            <button
-              key={g.id}
-              className={`tv-cat tv-focusable${genre === g.id ? " active" : ""}`}
-              onClick={() => setGenre(g.id)}
-              onFocus={() => setGenre(g.id)}
-            >
-              {g.name}
-            </button>
-          ))
-        )}
+        {useLib ? (
+          cats.map((c) => <button key={c} className={`tv-cat tv-focusable${cat === c ? " active" : ""}`} onClick={() => setCat(c)} onFocus={() => setCat(c)}>{c}</button>)
+        ) : genres === null ? <div className="tv-rail-loading">{t("loading")}</div>
+          : genres.map((g) => <button key={g.id} className={`tv-cat tv-focusable${genre === g.id ? " active" : ""}`} onClick={() => setGenre(g.id)} onFocus={() => setGenre(g.id)}>{g.name}</button>)}
       </aside>
       <div className="tv-grid-wrap">
-        {cards === null ? (
-          <div className="tv-rail-loading">{t("loading")}</div>
-        ) : (
+        {useLib ? (
           <div className="tv-grid">
-            {cards.map((c) => (
-              <button key={c.id} className="tv-poster-card tv-focusable" title={c.title}>
-                <img src={c.poster} alt={c.title} loading="lazy" />
+            {libList.map((m) => (
+              <button key={m.id} className="tv-poster-card tv-focusable" title={m.name} onClick={() => openMedia(m)}>
+                {m.logo ? <img src={m.logo} alt={m.name} loading="lazy" /> : <span className="tv-poster-ph">{m.name.slice(0, 2)}</span>}
               </button>
             ))}
           </div>
-        )}
+        ) : cards === null ? <div className="tv-rail-loading">{t("loading")}</div>
+          : <div className="tv-grid">{cards.map((c) => (
+              <button key={c.id} className="tv-poster-card tv-focusable" title={c.title}><img src={c.poster} alt={c.title} loading="lazy" /></button>
+            ))}</div>}
       </div>
     </div>
   );
 }
 
-export function SectionPage({ section, lang }: { section: Section; lang: TvLang }) {
+/* ---------------- Router ---------------- */
+export function SectionPage({ section, lang, library, provider, onOpen }: { section: Section } & Common) {
   const t = makeT(lang);
   const titleKey: Record<Section, string> = {
     Home: "home", Live: "live", Sports: "sports", Movies: "movies",
     Series: "series", Search: "search", MyList: "my_list", Settings: "settings",
   };
-  if (section === "Home") return <HomeScreen lang={lang} />;
-  if (section === "Movies") return <ContentScreen kind="movie" lang={lang} />;
-  if (section === "Series") return <ContentScreen kind="series" lang={lang} />;
+  if (section === "Home") return <HomeScreen lang={lang} library={library} provider={provider} onOpen={onOpen} />;
+  if (section === "Live") return <LiveScreen lang={lang} library={library} provider={provider} onOpen={onOpen} />;
+  if (section === "Movies") return <ContentScreen kind="movie" lang={lang} library={library} provider={provider} onOpen={onOpen} />;
+  if (section === "Series") return <ContentScreen kind="series" lang={lang} library={library} provider={provider} onOpen={onOpen} />;
   return (
     <div className="tv-page">
       <div className="tv-page-head"><h1>{t(titleKey[section])}</h1></div>
