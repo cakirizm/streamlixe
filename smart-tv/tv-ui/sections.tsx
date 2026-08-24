@@ -159,27 +159,30 @@ function SearchScreen({ lang, library, provider, onOpen }: Common) {
   }
   const kindTag = (k: Media["kind"]) => k === "live" ? "CANLI" : k === "movie" ? "FİLM" : "DİZİ";
 
-  const tabs: { id: SearchFilter; label: string }[] = [
-    { id: "all", label: `Tümü (${counts.all})` },
-    { id: "movie", label: `Filmler (${counts.movie})` },
-    { id: "series", label: `Diziler (${counts.series})` },
-    { id: "live", label: `Kanallar (${counts.live})` },
+  const showCount = q.trim().length >= 2;
+  const tabs: { id: SearchFilter; base: string; n: number }[] = [
+    { id: "all", base: "Tümü", n: counts.all },
+    { id: "movie", base: "Filmler", n: counts.movie },
+    { id: "series", base: "Diziler", n: counts.series },
+    { id: "live", base: "Kanallar", n: counts.live },
   ];
 
   return (
     <div className="tv-page">
       <div className="tv-page-head"><h1>{t("search")}</h1></div>
-      <input ref={inputRef} className="tv-search-input tv-focusable" placeholder="Kanal, film veya dizi ara…" value={q} onChange={(e) => setQ(e.target.value)} />
 
-      {library && q.trim().length >= 2 && (
+      {/* Önce tür seç, sonra yaz — sekmeler yazma kutusunun tam üstünde ve her zaman görünür */}
+      {library && (
         <div className="tv-search-tabs">
           {tabs.map((tab) => (
             <button key={tab.id} className={`tv-search-tab tv-focusable${filter === tab.id ? " active" : ""}`} onClick={() => setFilter(tab.id)} onFocus={() => setFilter(tab.id)}>
-              {tab.label}
+              {tab.base}{showCount ? ` (${tab.n})` : ""}
             </button>
           ))}
         </div>
       )}
+
+      <input ref={inputRef} className="tv-search-input tv-focusable" placeholder={filter === "all" ? "Kanal, film veya dizi ara…" : filter === "movie" ? "Film ara…" : filter === "series" ? "Dizi ara…" : "Kanal ara…"} value={q} onChange={(e) => setQ(e.target.value)} />
 
       {!library ? <div className="tv-coming">Arama için Xtream hesabınla giriş yap.</div>
         : q.trim().length < 2 ? <div className="tv-rail-loading">Aramak için en az 2 harf yaz…</div>
