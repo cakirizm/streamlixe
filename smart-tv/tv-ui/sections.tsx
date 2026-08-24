@@ -4,12 +4,12 @@ import type { TvLang } from "./i18n";
 import { makeT } from "./i18n";
 import type { Section } from "./Sidebar";
 import { fetchSports, fetchForYou, fetchGenres, fetchDiscover, countryFlag, hhmm, type SportsEvent, type PosterCard, type Genre } from "./data";
-import { groupsOf, cleanCat, resolveSeriesFirstEpisode, type Library, type Media } from "./library";
+import { groupsOf, cleanCat, type Library, type Media } from "./library";
 import type { Provider } from "./Setup";
 import { focusFirst } from "./dpad";
 import { LiveScreen } from "./LiveScreen";
 
-type Common = { lang: TvLang; library: Library | null; provider: Provider | null; onOpen: (m: Media) => void };
+type Common = { lang: TvLang; library: Library | null; provider: Provider | null; onOpen: (m: Media) => void; onDetail?: (m: Media) => void };
 
 /* ---------------- Home ---------------- */
 function SportsCard({ e }: { e: SportsEvent }) {
@@ -71,7 +71,7 @@ function HomeScreen({ lang, library, onOpen }: Common) {
 }
 
 /* ---------------- Filmler / Diziler ---------------- */
-function ContentScreen({ kind, lang, library, provider, onOpen }: Common & { kind: "movie" | "series" }) {
+function ContentScreen({ kind, lang, library, provider, onOpen, onDetail }: Common & { kind: "movie" | "series" }) {
   const t = makeT(lang);
   const libItems = kind === "movie" ? library?.movies : library?.series;
   const useLib = !!(libItems && libItems.length);
@@ -94,11 +94,9 @@ function ContentScreen({ kind, lang, library, provider, onOpen }: Common & { kin
   useEffect(() => { if (useLib || genre == null) return; setCards(null); fetchDiscover(kind, genre).then(setCards); }, [kind, genre, useLib]);
   useEffect(() => { const id = setTimeout(() => focusFirst(catRef.current), 80); return () => clearTimeout(id); }, [genres, library]);
 
-  async function openMedia(m: Media) {
-    if (kind === "movie") { onOpen(m); return; }
-    if (!provider) return;
-    const ep = await resolveSeriesFirstEpisode(provider, m);
-    if (ep) onOpen(ep);
+  function openMedia(m: Media) {
+    if (kind === "movie") onOpen(m);
+    else onDetail?.(m); // dizi → sezon/bölüm ekranı
   }
 
   return (
@@ -165,7 +163,7 @@ function SportsScreen({ lang }: Common) {
 
 /* ---------------- Ara (Search) ---------------- */
 type SearchFilter = "all" | "movie" | "series" | "live";
-function SearchScreen({ lang, library, provider, onOpen }: Common) {
+function SearchScreen({ lang, library, provider, onOpen, onDetail }: Common) {
   const t = makeT(lang);
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<SearchFilter>("all");
@@ -188,8 +186,8 @@ function SearchScreen({ lang, library, provider, onOpen }: Common) {
 
   useEffect(() => { const id = setTimeout(() => inputRef.current?.focus(), 80); return () => clearTimeout(id); }, []);
 
-  async function open(m: Media) {
-    if (m.kind === "series") { if (provider) { const ep = await resolveSeriesFirstEpisode(provider, m); if (ep) onOpen(ep); } }
+  function open(m: Media) {
+    if (m.kind === "series") onDetail?.(m);
     else onOpen(m);
   }
   const kindTag = (k: Media["kind"]) => k === "live" ? "CANLI" : k === "movie" ? "FİLM" : "DİZİ";
@@ -237,7 +235,7 @@ function SearchScreen({ lang, library, provider, onOpen }: Common) {
 }
 
 /* ---------------- Router ---------------- */
-export function SectionPage({ section, lang, library, provider, onOpen }: { section: Section } & Common) {
+export function SectionPage({ section, lang, library, provider, onOpen, onDetail }: { section: Section } & Common) {
   const t = makeT(lang);
   const titleKey: Record<Section, string> = {
     Home: "home", Live: "live", Sports: "sports", Movies: "movies",
@@ -245,9 +243,9 @@ export function SectionPage({ section, lang, library, provider, onOpen }: { sect
   };
   if (section === "Home") return <HomeScreen lang={lang} library={library} provider={provider} onOpen={onOpen} />;
   if (section === "Live") return <LiveScreen lang={lang} library={library} provider={provider} onOpen={onOpen} />;
-  if (section === "Movies") return <ContentScreen kind="movie" lang={lang} library={library} provider={provider} onOpen={onOpen} />;
-  if (section === "Series") return <ContentScreen kind="series" lang={lang} library={library} provider={provider} onOpen={onOpen} />;
-  if (section === "Search") return <SearchScreen lang={lang} library={library} provider={provider} onOpen={onOpen} />;
+  if (section === "Movies") return <ContentScreen kind="movie" lang={lang} library={library} provider={provider} onOpen={onOpen} onDetail={onDetail} />;
+  if (section === "Series") return <ContentScreen kind="series" lang={lang} library={library} provider={provider} onOpen={onOpen} onDetail={onDetail} />;
+  if (section === "Search") return <SearchScreen lang={lang} library={library} provider={provider} onOpen={onOpen} onDetail={onDetail} />;
   if (section === "Sports") return <SportsScreen lang={lang} library={library} provider={provider} onOpen={onOpen} />;
   return (
     <div className="tv-page">

@@ -10,6 +10,7 @@ import { ProfileSelect, type Profile } from "./ProfileSelect";
 import { SectionPage } from "./sections";
 import { importXtream, type Library, type Media } from "./library";
 import { Player } from "./Player";
+import { SeriesDetail } from "./SeriesDetail";
 import { BrandFull } from "./Brand";
 
 const LANG_KEY = "slx-tv-lang";
@@ -43,6 +44,7 @@ export default function TvApp() {
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState("");
   const [playing, setPlaying] = useState<Media | null>(null);
+  const [detail, setDetail] = useState<Media | null>(null);
 
   useEffect(() => { setLang(loadLang()); setProvider(loadProvider()); }, []);
 
@@ -63,10 +65,10 @@ export default function TvApp() {
   }, [provider, library, importing]);
 
   const onBack = () => { if (profile) setProfile(null); };
-  useDpad(playing ? undefined : onBack);
+  useDpad(playing || detail ? undefined : onBack);
 
   useEffect(() => { const id = setTimeout(() => focusFirst(), 60); return () => clearTimeout(id); },
-    [provider, profile, section, library, playing]);
+    [provider, profile, section, library, playing, detail]);
 
   const langBar = (
     <div className="tv-lang">
@@ -97,12 +99,13 @@ export default function TvApp() {
   if (!profile) return (<>{langBar}<ProfileSelect lang={lang} onSelect={setProfile} /></>);
 
   if (playing) return <Player media={playing} onClose={() => setPlaying(null)} />;
+  if (detail) return <SeriesDetail media={detail} provider={provider} onOpen={(m) => { setDetail(null); setPlaying(m); }} onClose={() => setDetail(null)} />;
 
   return (
     <div className="tv-shell">
       <Sidebar selected={section} onSelect={setSection} lang={lang} />
       <div className="tv-content">
-        <SectionPage section={section} lang={lang} library={library} provider={provider} onOpen={setPlaying} />
+        <SectionPage section={section} lang={lang} library={library} provider={provider} onOpen={setPlaying} onDetail={setDetail} />
       </div>
     </div>
   );

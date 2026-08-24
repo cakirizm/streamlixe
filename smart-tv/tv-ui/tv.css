@@ -257,6 +257,31 @@
 .tv-loading h2 { font-size: 26px; margin: 6px 0 0; }
 .tv-loading p { color: var(--tv-text-2); margin: 0; }
 
+/* ---------- Dizi detay (sezon/bölüm) ---------- */
+.tv-series { height: 100%; overflow-y: auto; padding: 30px 44px; scrollbar-width: none; }
+.tv-series::-webkit-scrollbar { width: 0; }
+.tv-series-back { border: 1px solid var(--tv-card-border); background: #ffffff10; color: #fff; border-radius: 10px; padding: 9px 16px; font-size: 14px; cursor: pointer; margin-bottom: 18px; }
+.tv-series-back.tv-focused, .tv-series-back:focus-visible { outline: 3px solid var(--tv-focus); background: #ffffff20; }
+.tv-series-head { display: flex; gap: 24px; margin-bottom: 22px; }
+.tv-series-poster { width: 150px; height: 225px; flex: none; border-radius: 12px; overflow: hidden; background: var(--tv-card); display: grid; place-items: center; }
+.tv-series-poster img { width: 100%; height: 100%; object-fit: cover; }
+.tv-series-poster span { color: var(--tv-text-2); font-size: 30px; font-weight: 800; }
+.tv-series-meta h1 { font-size: 32px; margin: 0 0 10px; color: #fff; }
+.tv-series-sub { display: flex; gap: 16px; color: var(--tv-text-2); font-size: 15px; margin-bottom: 14px; }
+.tv-series-plot { color: var(--tv-text-2); font-size: 15px; line-height: 1.6; max-width: 860px; margin: 0; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+
+.tv-episodes { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
+.tv-episode { display: flex; gap: 16px; align-items: stretch; text-align: start; width: 100%; padding: 0; border: 1px solid var(--tv-card-border); border-radius: 12px; overflow: hidden; background: var(--tv-card); cursor: pointer; }
+.tv-episode.tv-focused, .tv-episode:focus-visible { outline: none; border-color: var(--tv-focus); transform: scale(1.005); }
+.tv-episode-still { position: relative; width: 200px; height: 112px; flex: none; background: #0a121b; display: grid; place-items: center; }
+.tv-episode-still img { width: 100%; height: 100%; object-fit: cover; }
+.tv-episode-still span { color: var(--tv-text-2); font-size: 24px; font-weight: 800; }
+.tv-episode-still i { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 26px; background: rgba(0,0,0,.25); opacity: 0; transition: opacity .15s; }
+.tv-episode.tv-focused .tv-episode-still i, .tv-episode:focus-visible .tv-episode-still i { opacity: 1; }
+.tv-episode-meta { padding: 12px 14px; min-width: 0; display: flex; flex-direction: column; gap: 6px; justify-content: center; }
+.tv-episode-meta b { color: #fff; font-size: 16px; }
+.tv-episode-meta small { color: var(--tv-text-2); font-size: 13px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
 /* ---------- Oynatıcı ---------- */
 .tv-player { position: fixed; inset: 0; background: #000; z-index: 100; }
 .tv-video { width: 100%; height: 100%; object-fit: contain; background: #000; }
