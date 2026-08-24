@@ -8,6 +8,7 @@ import { groupsOf, cleanCat, type Library, type Media } from "./library";
 import type { Provider } from "./Setup";
 import { focusFirst } from "./dpad";
 import { LiveScreen } from "./LiveScreen";
+import { getFavs } from "./favorites";
 
 type Common = { lang: TvLang; library: Library | null; provider: Provider | null; onOpen: (m: Media) => void; onDetail?: (m: Media) => void };
 
@@ -234,6 +235,30 @@ function SearchScreen({ lang, library, provider, onOpen, onDetail }: Common) {
   );
 }
 
+/* ---------------- Listem (favoriler) ---------------- */
+function MyListScreen({ lang, onOpen, onDetail }: Common) {
+  const t = makeT(lang);
+  const [favs] = useState<Media[]>(() => getFavs());
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (favs.length) { const id = setTimeout(() => focusFirst(ref.current), 80); return () => clearTimeout(id); } }, [favs.length]);
+  const kindTag = (k: Media["kind"]) => k === "live" ? "CANLI" : k === "movie" ? "FİLM" : "DİZİ";
+  function open(m: Media) { if (m.kind === "series") onDetail?.(m); else onOpen(m); }
+  return (
+    <div className="tv-page" ref={ref}>
+      <div className="tv-page-head"><h1>{t("my_list")}</h1></div>
+      {favs.length === 0 ? <div className="tv-coming">Listen boş. İçerik oynatırken ★ ile ekleyebilirsin.</div>
+        : <div className="tv-grid">
+            {favs.map((m) => (
+              <button key={m.id} className="tv-poster-card tv-focusable" title={m.name} onClick={() => open(m)}>
+                {m.logo ? <img src={m.logo} alt={m.name} loading="lazy" /> : <span className="tv-poster-ph">{m.name.slice(0, 2)}</span>}
+                <span className="tv-kind-tag">{kindTag(m.kind)}</span>
+              </button>
+            ))}
+          </div>}
+    </div>
+  );
+}
+
 /* ---------------- Router ---------------- */
 export function SectionPage({ section, lang, library, provider, onOpen, onDetail }: { section: Section } & Common) {
   const t = makeT(lang);
@@ -247,6 +272,7 @@ export function SectionPage({ section, lang, library, provider, onOpen, onDetail
   if (section === "Series") return <ContentScreen kind="series" lang={lang} library={library} provider={provider} onOpen={onOpen} onDetail={onDetail} />;
   if (section === "Search") return <SearchScreen lang={lang} library={library} provider={provider} onOpen={onOpen} onDetail={onDetail} />;
   if (section === "Sports") return <SportsScreen lang={lang} library={library} provider={provider} onOpen={onOpen} />;
+  if (section === "MyList") return <MyListScreen lang={lang} library={library} provider={provider} onOpen={onOpen} onDetail={onDetail} />;
   return (
     <div className="tv-page">
       <div className="tv-page-head"><h1>{t(titleKey[section])}</h1></div>

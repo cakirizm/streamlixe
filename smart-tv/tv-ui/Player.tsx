@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Hls from "hls.js";
 import type { Media } from "./library";
+import { isFav, toggleFav } from "./favorites";
 
 type Status = "loading" | "ready" | "error";
 
@@ -11,6 +12,7 @@ export function Player({ media, onClose }: { media: Media; onClose: () => void }
   const [status, setStatus] = useState<Status>("loading");
   const [engine, setEngine] = useState("");
   const [showBar, setShowBar] = useState(true);
+  const [fav, setFav] = useState(() => isFav(media.id));
 
   useEffect(() => {
     const video = videoRef.current;
@@ -92,6 +94,7 @@ export function Player({ media, onClose }: { media: Media; onClose: () => void }
       {showBar && (
         <div className="tv-player-bar">
           <button className="tv-player-back tv-focusable" onClick={onClose}>← Geri</button>
+          <button className="tv-player-back tv-focusable" onClick={() => setFav(toggleFav(media))}>{fav ? "★ Listede" : "☆ Listeme ekle"}</button>
           <div className="tv-player-meta">
             <b>{media.name}</b>
             {engine && <small>{engine}{status === "ready" ? " · Oynatılıyor" : ""}</small>}

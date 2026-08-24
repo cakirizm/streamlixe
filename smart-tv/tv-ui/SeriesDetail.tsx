@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Media } from "./library";
 import type { Provider } from "./Setup";
 import { focusFirst } from "./dpad";
+import { isFav, toggleFav } from "./favorites";
 
 type Episode = { id: string; title: string; episode_num: number; container_extension?: string; info?: any };
 
@@ -13,6 +14,7 @@ export function SeriesDetail({ media, provider, onOpen, onClose }: {
   const [episodes, setEpisodes] = useState<Record<string, Episode[]> | null>(null);
   const [season, setSeason] = useState<string>("");
   const [error, setError] = useState("");
+  const [fav, setFav] = useState(() => isFav(media.id));
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -63,7 +65,10 @@ export function SeriesDetail({ media, provider, onOpen, onClose }: {
 
   return (
     <div className="tv-series" ref={ref}>
-      <button className="tv-series-back tv-focusable" onClick={onClose}>← Geri</button>
+      <div className="tv-series-topbar">
+        <button className="tv-series-back tv-focusable" onClick={onClose}>← Geri</button>
+        <button className="tv-series-back tv-focusable" onClick={() => setFav(toggleFav(media))}>{fav ? "★ Listede" : "☆ Listeme ekle"}</button>
+      </div>
       <div className="tv-series-head">
         <div className="tv-series-poster">{cover ? <img src={cover} alt="" /> : <span>{media.name.slice(0, 2)}</span>}</div>
         <div className="tv-series-meta">
