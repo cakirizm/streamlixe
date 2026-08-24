@@ -4,7 +4,7 @@ import type { TvLang } from "./i18n";
 import { makeT } from "./i18n";
 import type { Section } from "./Sidebar";
 import { fetchSports, fetchForYou, fetchGenres, fetchDiscover, countryFlag, hhmm, type SportsEvent, type PosterCard, type Genre } from "./data";
-import { groupsOf, type Library, type Media } from "./library";
+import { groupsOf, cleanCat, type Library, type Media } from "./library";
 import type { Provider } from "./Setup";
 import { focusFirst } from "./dpad";
 import { LiveScreen } from "./LiveScreen";
@@ -114,7 +114,7 @@ function ContentScreen({ kind, lang, library, provider, onOpen }: Common & { kin
       <aside className="tv-cat-col" ref={catRef}>
         <h1 className="tv-cat-title">{t(kind === "movie" ? "movies" : "series")}</h1>
         {useLib ? (
-          cats.map((c) => <button key={c} className={`tv-cat tv-focusable${cat === c ? " active" : ""}`} onClick={() => setCat(c)} onFocus={() => setCat(c)}>{c}</button>)
+          cats.map((c) => <button key={c} className={`tv-cat tv-focusable${cat === c ? " active" : ""}`} onClick={() => setCat(c)} onFocus={() => setCat(c)}>{c === "Tümü" ? c : cleanCat(c)}</button>)
         ) : genres === null ? <div className="tv-rail-loading">{t("loading")}</div>
           : genres.map((g) => <button key={g.id} className={`tv-cat tv-focusable${genre === g.id ? " active" : ""}`} onClick={() => setGenre(g.id)} onFocus={() => setGenre(g.id)}>{g.name}</button>)}
       </aside>

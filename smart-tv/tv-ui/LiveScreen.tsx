@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Hls from "hls.js";
 import type { TvLang } from "./i18n";
 import { makeT } from "./i18n";
-import { groupsOf, type Library, type Media } from "./library";
+import { groupsOf, cleanCat, type Library, type Media } from "./library";
 import type { Provider } from "./Setup";
 import { fetchEpg, hhmm, type EpgProgram } from "./data";
 import { focusFirst } from "./dpad";
@@ -94,7 +94,7 @@ export function LiveScreen({ lang, library, provider, onOpen }: { lang: TvLang; 
       <aside className="tv-live-cats" ref={catRef}>
         <h1 className="tv-cat-title">{t("live")}</h1>
         {cats.map((c) => (
-          <button key={c} className={`tv-cat tv-focusable${cat === c ? " active" : ""}`} onClick={() => setCat(c)} onFocus={() => setCat(c)}>{c}</button>
+          <button key={c} className={`tv-cat tv-focusable${cat === c ? " active" : ""}`} onClick={() => setCat(c)} onFocus={() => setCat(c)}>{c === "Tümü" ? c : cleanCat(c)}</button>
         ))}
       </aside>
 
@@ -131,7 +131,7 @@ export function LiveScreen({ lang, library, provider, onOpen }: { lang: TvLang; 
             <span className="plogo">{selected?.logo ? <img src={selected.logo} alt="" /> : <b>{(selected?.name || "?").slice(0, 2)}</b>}</span>
             <div className="pmeta">
               <b>{selected?.name || "Kanal seç"}</b>
-              <small>{selected?.group || ""}</small>
+              <small>{selected?.group ? cleanCat(selected.group) : ""}</small>
             </div>
           </div>
           <div className="tv-epg">

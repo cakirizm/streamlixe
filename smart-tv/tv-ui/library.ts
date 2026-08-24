@@ -56,3 +56,8 @@ export function groupsOf(items: Media[]): string[] {
   for (const m of items) if (m.group) set.add(m.group);
   return ["Tümü", ...Array.from(set)];
 }
+
+// Kategori adındaki baştaki/sondaki "|" ve boşluk gürültüsünü temizler (görüntü için).
+export function cleanCat(s: string): string {
+  return s.replace(/^[\s|]+/, "").replace(/[\s|]+$/, "").replace(/\s*\|\s*/g, " · ").trim() || s;
+}
