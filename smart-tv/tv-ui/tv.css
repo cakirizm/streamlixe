@@ -124,9 +124,10 @@
 .tv-cat-col::-webkit-scrollbar { width: 0; }
 .tv-cat-title { font-size: 30px; margin: 0 0 20px; color: #fff; font-weight: 700; }
 .tv-cat {
-  text-align: start; padding: 11px 15px; border-radius: 10px; border: 0; cursor: pointer;
-  background: transparent; color: #c6cfdb; font-size: 15px; line-height: 1.32;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  display: block; width: 100%;
+  text-align: start; padding: 10px 14px; border-radius: 10px; border: 0; cursor: pointer;
+  background: transparent; color: #d6dde7; font-size: 15px; line-height: 1.34;
+  white-space: normal; word-break: break-word; overflow-wrap: anywhere;
   transition: background .15s, color .15s;
 }
 .tv-cat.active { background: var(--tv-menu-selected); color: #fff; font-weight: 700; }
