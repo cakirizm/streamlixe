@@ -1,5 +1,4 @@
 // StreamLiveX TV — sol menü (native TvSideMenu birebir: ikon+etiket, odakta genişler)
-import { useState } from "react";
 import type { TvLang } from "./i18n";
 import { makeT } from "./i18n";
 
@@ -25,27 +24,23 @@ export function Sidebar({
   lang: TvLang;
 }) {
   const t = makeT(lang);
-  const [expanded, setExpanded] = useState(false);
+  // Native tasarımda menü etiketleri her zaman görünür (ekran görüntüleriyle bire bir).
+  const expanded = true;
 
   return (
-    <nav
-      className={`tv-sidebar${expanded ? " expanded" : ""}`}
-      onFocusCapture={() => setExpanded(true)}
-      onBlurCapture={(e) => {
-        // menüden tamamen çıkıldıysa daralt
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) setExpanded(false);
-      }}
-    >
+    <nav className={`tv-sidebar${expanded ? " expanded" : ""}`}>
       <div className="tv-brand">
         <img src="/streamlivex-logo.jpeg" alt="StreamLiveX" />
-        <b>StreamLive<i>X</i></b>
+        <span className="tv-brand-text">
+          <b>StreamLive<i>X</i></b>
+          <small>{t("subtitle")}</small>
+        </span>
       </div>
       {ITEMS.map((it) => (
         <button
           key={it.id}
           className={`tv-navitem tv-focusable${selected === it.id ? " selected" : ""}`}
           onClick={() => onSelect(it.id)}
-          onFocus={() => setExpanded(true)}
         >
           <span className="tv-nav-ico">{it.ico}</span>
           <span className="tv-nav-label">{t(it.key)}</span>

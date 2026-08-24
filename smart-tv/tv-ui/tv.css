@@ -23,8 +23,11 @@
   padding: 4px 4px 12px; min-height: 40px;
 }
 .tv-brand img { width: 34px; height: 34px; border-radius: 8px; object-fit: cover; }
-.tv-brand b { font-size: 20px; white-space: nowrap; letter-spacing: .3px; }
+.tv-brand b { font-size: 20px; white-space: nowrap; letter-spacing: .3px; display: block; }
 .tv-brand b i { color: var(--tv-primary); font-style: normal; }
+.tv-brand-text { display: flex; flex-direction: column; gap: 1px; overflow: hidden; }
+.tv-brand-text small { color: var(--tv-primary); font-size: 10px; letter-spacing: 1.5px; font-weight: 700; white-space: nowrap; }
+.tv-sidebar:not(.expanded) .tv-brand-text { display: none; }
 
 .tv-navitem {
   display: flex; align-items: center; gap: 10px;
@@ -61,6 +64,52 @@
   display: flex; align-items: center; justify-content: center;
   height: 60%; color: var(--tv-text-3); font-size: 20px;
 }
+
+/* ---------- Home rafları ---------- */
+.tv-rail { margin-bottom: 30px; }
+.tv-rail-title { font-size: 22px; font-weight: 600; color: var(--tv-text); margin: 0 0 12px; }
+.tv-rail-row { display: flex; gap: 14px; overflow-x: auto; padding: 4px 2px 8px; scrollbar-width: none; }
+.tv-rail-row::-webkit-scrollbar { height: 0; }
+.tv-rail-loading { color: var(--tv-text-3); font-size: 15px; padding: 10px 2px; }
+
+/* Sports maç kartı (native: 242x116, ölçekli) */
+.tv-sports-card {
+  width: 360px; height: 132px; flex: none; border-radius: 10px;
+  background: var(--tv-card); border: 1px solid var(--tv-card-border);
+  padding: 13px 15px; display: flex; flex-direction: column; gap: 8px; cursor: pointer; text-align: start;
+}
+.tv-sports-card.tv-focused, .tv-sports-card:focus-visible { border-color: var(--tv-focus); outline: none; }
+.tv-sports-league { color: var(--tv-text-2); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-sports-teams { display: flex; align-items: center; gap: 10px; }
+.tv-sports-teams .logo { width: 30px; height: 30px; object-fit: contain; flex: none; }
+.tv-sports-teams .name { color: #fff; font-size: 15px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-sports-teams .vs { color: var(--tv-focus); font-weight: 800; font-size: 14px; }
+.tv-sports-teams .name.away { text-align: end; }
+.tv-sports-bcast { color: var(--tv-text-3); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Poster kartı (native 96x144, ölçekli) */
+.tv-poster-card {
+  width: 132px; height: 198px; flex: none; border-radius: 10px; overflow: hidden;
+  background: var(--tv-card); border: 2px solid transparent; cursor: pointer; padding: 0;
+}
+.tv-poster-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tv-poster-card.tv-focused, .tv-poster-card:focus-visible { border-color: #009BFF; outline: none; transform: scale(1.04); }
+
+/* Continue kartı (native 154x88, ölçekli) */
+.tv-continue-card {
+  width: 224px; height: 126px; flex: none; border-radius: 10px; overflow: hidden; position: relative;
+  background: var(--tv-card); border: 1px solid var(--tv-card-border); cursor: pointer; padding: 0;
+}
+.tv-continue-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tv-continue-card .cap {
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 8px 10px;
+  background: linear-gradient(transparent, rgba(0,0,0,.85)); color: #fff; font-size: 13px; text-align: start;
+}
+.tv-continue-card .prog { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(255,255,255,.2); }
+.tv-continue-card .prog i { display: block; height: 100%; background: var(--tv-primary); }
+.tv-continue-card.tv-focused, .tv-continue-card:focus-visible { border-color: var(--tv-focus); outline: none; }
+
+.tv-home-brandhead { display: none; }
 
 /* ---------- Setup ekranı ---------- */
 .tv-setup { height: 100vh; width: 100vw; display: grid; place-items: center;
