@@ -11,6 +11,7 @@ import { SectionPage } from "./sections";
 import { importXtream, type Library, type Media } from "./library";
 import { Player } from "./Player";
 import { SeriesDetail } from "./SeriesDetail";
+import { Settings } from "./Settings";
 import { BrandFull } from "./Brand";
 
 const LANG_KEY = "slx-tv-lang";
@@ -105,7 +106,16 @@ export default function TvApp() {
     <div className="tv-shell">
       <Sidebar selected={section} onSelect={setSection} lang={lang} />
       <div className="tv-content">
-        <SectionPage section={section} lang={lang} library={library} provider={provider} onOpen={setPlaying} onDetail={setDetail} />
+        {section === "Settings" ? (
+          <Settings
+            lang={lang} setLang={setLang} provider={provider}
+            onChangeProfile={() => setProfile(null)}
+            onLogout={() => { localStorage.removeItem(PROVIDER_KEY); setLibrary(null); setProfile(null); setProvider(null); }}
+            onReload={() => setLibrary(null)}
+          />
+        ) : (
+          <SectionPage section={section} lang={lang} library={library} provider={provider} onOpen={setPlaying} onDetail={setDetail} />
+        )}
       </div>
     </div>
   );

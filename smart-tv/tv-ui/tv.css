@@ -257,6 +257,21 @@
 .tv-loading h2 { font-size: 26px; margin: 6px 0 0; }
 .tv-loading p { color: var(--tv-text-2); margin: 0; }
 
+/* ---------- Ayarlar ---------- */
+.tv-settings { max-width: 900px; }
+.tv-set-block { margin-bottom: 30px; }
+.tv-set-block h2 { font-size: 19px; color: #fff; margin: 0 0 14px; }
+.tv-set-langs { display: flex; gap: 10px; flex-wrap: wrap; }
+.tv-set-lang { padding: 11px 20px; border-radius: 10px; border: 1px solid var(--tv-card-border); background: var(--tv-card); color: var(--tv-text-2); cursor: pointer; font-size: 15px; font-weight: 600; }
+.tv-set-lang.active { background: var(--tv-menu-selected); color: #fff; border-color: transparent; }
+.tv-set-lang.tv-focused, .tv-set-lang:focus-visible { background: var(--tv-menu-focus); color: #fff; border-color: transparent; outline: none; }
+.tv-set-info { display: flex; flex-direction: column; gap: 10px; background: var(--tv-card); border: 1px solid var(--tv-card-border); border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; max-width: 620px; }
+.tv-set-info > div { display: flex; gap: 16px; }
+.tv-set-info span { color: var(--tv-text-3); font-size: 14px; width: 90px; flex: none; }
+.tv-set-info b { color: #fff; font-size: 14px; font-weight: 500; word-break: break-all; }
+.tv-set-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.tv-set-about { color: var(--tv-text-2); font-size: 14px; }
+
 /* ---------- Dizi detay (sezon/bölüm) ---------- */
 .tv-series { height: 100%; overflow-y: auto; padding: 30px 44px; scrollbar-width: none; }
 .tv-series::-webkit-scrollbar { width: 0; }
