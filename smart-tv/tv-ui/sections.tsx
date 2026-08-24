@@ -7,6 +7,7 @@ import { fetchSports, fetchForYou, fetchGenres, fetchDiscover, countryFlag, hhmm
 import { groupsOf, type Library, type Media } from "./library";
 import type { Provider } from "./Setup";
 import { focusFirst } from "./dpad";
+import { LiveScreen } from "./LiveScreen";
 
 type Common = { lang: TvLang; library: Library | null; provider: Provider | null; onOpen: (m: Media) => void };
 
@@ -65,41 +66,6 @@ function HomeScreen({ lang, library, onOpen }: Common) {
               <button key={p.id} className="tv-poster-card tv-focusable" title={p.title}><img src={p.poster} alt={p.title} loading="lazy" /></button>
             ))}</div>}
       </section>
-    </div>
-  );
-}
-
-/* ---------------- Canlı TV ---------------- */
-function LiveScreen({ lang, library, onOpen }: Common) {
-  const t = makeT(lang);
-  const channels = library?.live || [];
-  const cats = useMemo(() => groupsOf(channels), [channels]);
-  const [cat, setCat] = useState("Tümü");
-  const catRef = useRef<HTMLDivElement>(null);
-  const list = useMemo(() => cat === "Tümü" ? channels : channels.filter((c) => c.group === cat), [channels, cat]);
-
-  useEffect(() => { const id = setTimeout(() => focusFirst(catRef.current), 80); return () => clearTimeout(id); }, [library]);
-
-  if (!library) return <div className="tv-page"><div className="tv-page-head"><h1>{t("live")}</h1></div><div className="tv-coming">Canlı kanallar için Xtream hesabınla giriş yap.</div></div>;
-
-  return (
-    <div className="tv-content-screen">
-      <aside className="tv-cat-col" ref={catRef}>
-        <h1 className="tv-cat-title">{t("live")}</h1>
-        {cats.map((c) => (
-          <button key={c} className={`tv-cat tv-focusable${cat === c ? " active" : ""}`} onClick={() => setCat(c)} onFocus={() => setCat(c)}>{c}</button>
-        ))}
-      </aside>
-      <div className="tv-grid-wrap">
-        <div className="tv-live-grid">
-          {list.slice(0, 300).map((ch) => (
-            <button key={ch.id} className="tv-live-card tv-focusable" onClick={() => onOpen(ch)} title={ch.name}>
-              <div className="logo">{ch.logo ? <img src={ch.logo} alt="" loading="lazy" /> : <span>{ch.name.slice(0, 3)}</span>}</div>
-              <div className="name">{ch.name}</div>
-            </button>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }

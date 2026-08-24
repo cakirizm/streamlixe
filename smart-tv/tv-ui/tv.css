@@ -157,6 +157,64 @@
   border-top: 1px solid rgba(255,255,255,.05);
 }
 
+/* ---------- Canlı TV (native 3 panel: kategori | kanal listesi | önizleme+EPG) ---------- */
+.tv-live3 { display: flex; height: 100%; }
+.tv-live-cats {
+  width: 220px; flex: none; height: 100%; overflow-y: auto;
+  padding: 34px 14px 34px 36px; display: flex; flex-direction: column; gap: 3px; scrollbar-width: none;
+  border-inline-end: 1px solid rgba(255,255,255,.05);
+}
+.tv-live-cats::-webkit-scrollbar { width: 0; }
+
+.tv-live-channels { flex: 0.42; min-width: 0; height: 100%; background: #0F141E; display: flex; flex-direction: column; padding: 22px 16px; }
+.tv-live-channels-head { display: flex; align-items: baseline; justify-content: space-between; padding: 0 6px 12px; }
+.tv-live-channels-head b { font-size: 18px; color: #fff; }
+.tv-live-channels-head span { color: var(--tv-text-3); font-size: 13px; }
+.tv-live-channels-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; scrollbar-width: none; }
+.tv-live-channels-list::-webkit-scrollbar { width: 0; }
+.tv-live-row {
+  display: flex; align-items: center; gap: 11px; width: 100%; text-align: start;
+  padding: 9px 10px; border-radius: 9px; border: 0; background: transparent; cursor: pointer;
+  transition: background .12s;
+}
+.tv-live-row.selected { background: #18233440; }
+.tv-live-row.playing { box-shadow: inset 3px 0 var(--tv-primary); background: #12202e; }
+.tv-live-row.tv-focused, .tv-live-row:focus-visible { background: var(--tv-menu-focus); outline: none; }
+.tv-live-row .clogo { width: 44px; height: 44px; flex: none; display: grid; place-items: center; background: #0a121b; border-radius: 8px; overflow: hidden; }
+.tv-live-row .clogo img { max-width: 84%; max-height: 78%; object-fit: contain; }
+.tv-live-row .clogo b { color: var(--tv-text-2); font-size: 14px; }
+.tv-live-row .cnum { width: 30px; flex: none; text-align: center; color: var(--tv-text-3); font-size: 13px; }
+.tv-live-row .cinfo { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.tv-live-row .cinfo b { color: #fff; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-live-row .cinfo small { color: var(--tv-text-3); font-size: 11px; }
+
+.tv-live-preview { flex: 0.58; min-width: 0; height: 100%; background: #0B1018; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.tv-preview-box { position: relative; flex: 0.62; border-radius: 14px; overflow: hidden; background: #05080d; display: grid; place-items: center; }
+.tv-preview-video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+.tv-preview-overlay, .tv-preview-empty { color: var(--tv-text-2); font-size: 17px; }
+.tv-preview-overlay { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.35); }
+.tv-live-badge { position: absolute; top: 12px; left: 12px; background: #e11d48; color: #fff; padding: 5px 11px; border-radius: 7px; font-size: 12px; font-weight: 800; letter-spacing: 1px; }
+
+.tv-preview-info { flex: 0.38; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+.tv-preview-head { display: flex; align-items: center; gap: 13px; }
+.tv-preview-head .plogo { width: 54px; height: 54px; flex: none; border-radius: 10px; background: #0a121b; display: grid; place-items: center; overflow: hidden; }
+.tv-preview-head .plogo img { max-width: 84%; max-height: 78%; object-fit: contain; }
+.tv-preview-head .plogo b { color: var(--tv-text-2); }
+.tv-preview-head .pmeta b { font-size: 20px; color: #fff; display: block; }
+.tv-preview-head .pmeta small { color: var(--tv-text-2); font-size: 13px; }
+.tv-epg { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+.tv-epg::-webkit-scrollbar { width: 0; }
+.tv-epg-loading { color: var(--tv-text-3); font-size: 15px; padding: 8px 0; }
+.tv-epg-now .tag { color: var(--tv-focus); font-size: 11px; font-weight: 800; letter-spacing: 1.5px; }
+.tv-epg-now > b { display: block; font-size: 18px; color: #fff; margin: 5px 0; }
+.tv-epg-now small { color: var(--tv-text-2); font-size: 13px; }
+.tv-epg-bar { height: 6px; border-radius: 4px; background: #1a2634; margin-top: 10px; overflow: hidden; }
+.tv-epg-bar i { display: block; height: 100%; background: linear-gradient(90deg, #008fff, #00e0ff); }
+.tv-epg-next { margin-top: 16px; display: flex; flex-direction: column; gap: 9px; }
+.tv-epg-item { display: flex; gap: 12px; align-items: baseline; }
+.tv-epg-item span { color: var(--tv-focus); width: 48px; flex: none; font-size: 13px; }
+.tv-epg-item b { color: #cdd6e2; font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 /* ---------- Yükleme ekranı ---------- */
 .tv-loading {
   height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;

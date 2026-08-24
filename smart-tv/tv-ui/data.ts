@@ -75,6 +75,33 @@ export async function fetchDiscover(kind: "movie" | "series", genre: number): Pr
   } catch { return []; }
 }
 
+export type EpgProgram = { title: string; description: string; start: number; stop: number };
+
+function b64(s?: string): string {
+  if (!s) return "";
+  try { return decodeURIComponent(escape(atob(s))); } catch { try { return atob(s); } catch { return s; } }
+}
+
+// Xtream short_epg — bir kanalın program rehberi (şimdi/sonraki).
+export async function fetchEpg(server?: string, username?: string, password?: string, streamId?: string): Promise<EpgProgram[]> {
+  if (!server || !streamId) return [];
+  try {
+    const r = await fetch("/api/import", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ method: "short_epg", server, username, password, streamId }),
+    });
+    if (!r.ok) return [];
+    const data = await r.json();
+    const rows = data.epg_listings || data.epg || [];
+    return rows.map((x: any) => ({
+      title: b64(x.title) || "Program",
+      description: b64(x.description),
+      start: Number(x.start_timestamp || 0) * 1000,
+      stop: Number(x.stop_timestamp || 0) * 1000,
+    })).filter((p: EpgProgram) => p.stop > Date.now() - 3600000).sort((a: EpgProgram, b: EpgProgram) => a.start - b.start);
+  } catch { return []; }
+}
+
 export function countryFlag(country?: string | null): string {
   switch ((country || "").toLowerCase()) {
     case "turkey": case "türkiye": return "🇹🇷";
