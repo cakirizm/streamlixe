@@ -11,35 +11,47 @@ function visible(el: HTMLElement) {
     r.top < innerHeight && r.left < innerWidth;
 }
 
-function center(el: Element) {
-  const r = el.getBoundingClientRect();
-  return { x: r.left + r.width / 2, y: r.top + r.height / 2, r };
-}
+// Dikey hareketlerde yatay örtüşme, yatay hareketlerde dikey örtüşme aranır.
+// Böylece sütun sonunda "aşağı" basınca çapraz olarak başka panele atlamaz —
+// hizalı öğe yoksa hareket etmez (yerinde kalır). Native TV davranışı.
+const overlapX = (a: DOMRect, b: DOMRect) => a.left < b.right - 4 && a.right > b.left + 4;
+const overlapY = (a: DOMRect, b: DOMRect) => a.top < b.bottom - 4 && a.bottom > b.top + 4;
 
 function findNext(dir: "up" | "down" | "left" | "right"): HTMLElement | null {
   const active = document.activeElement as HTMLElement | null;
   const all = Array.from(document.querySelectorAll<HTMLElement>(SELECTOR)).filter(visible);
   if (!active || !all.includes(active)) return all[0] || null;
-  const a = center(active);
-  let best: HTMLElement | null = null;
-  let bestScore = Infinity;
-  for (const el of all) {
-    if (el === active) continue;
-    const c = center(el);
-    const dx = c.x - a.x;
-    const dy = c.y - a.y;
-    // Yön filtresi
-    if (dir === "left" && dx > -6) continue;
-    if (dir === "right" && dx < 6) continue;
-    if (dir === "up" && dy > -6) continue;
-    if (dir === "down" && dy < 6) continue;
-    const primary = dir === "left" || dir === "right" ? Math.abs(dx) : Math.abs(dy);
-    const cross = dir === "left" || dir === "right" ? Math.abs(dy) : Math.abs(dx);
-    // Ana eksende yakın + çapraz sapması az olanı seç
-    const score = primary + cross * 2;
-    if (score < bestScore) { bestScore = score; best = el; }
-  }
-  return best;
+  const a = active.getBoundingClientRect();
+  const aCx = a.left + a.width / 2;
+  const aCy = a.top + a.height / 2;
+
+  const pick = (requireOverlap: boolean): HTMLElement | null => {
+    let best: HTMLElement | null = null;
+    let bestScore = Infinity;
+    for (const el of all) {
+      if (el === active) continue;
+      const r = el.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      let primary: number, cross: number, ok: boolean, overlap: boolean;
+      if (dir === "down") { ok = r.top >= a.bottom - 6; primary = r.top - a.bottom; cross = Math.abs(cx - aCx); overlap = overlapX(a, r); }
+      else if (dir === "up") { ok = r.bottom <= a.top + 6; primary = a.top - r.bottom; cross = Math.abs(cx - aCx); overlap = overlapX(a, r); }
+      else if (dir === "right") { ok = r.left >= a.right - 6; primary = r.left - a.right; cross = Math.abs(cy - aCy); overlap = overlapY(a, r); }
+      else { ok = r.right <= a.left + 6; primary = a.left - r.right; cross = Math.abs(cy - aCy); overlap = overlapY(a, r); }
+      if (!ok) continue;
+      if (requireOverlap && !overlap) continue;
+      const score = Math.max(0, primary) + cross * (requireOverlap ? 0.25 : 3);
+      if (score < bestScore) { bestScore = score; best = el; }
+    }
+    return best;
+  };
+
+  // Önce aynı sütun/satırda (örtüşen) öğe ara; yoksa HAREKET ETME (null).
+  // Sadece hiç örtüşen yoksa ve yön yataysa gevşek aramaya izin ver (paneller arası geçiş).
+  const strict = pick(true);
+  if (strict) return strict;
+  if (dir === "left" || dir === "right") return pick(false);
+  return null;
 }
 
 export function useDpad(onBack?: () => void) {
