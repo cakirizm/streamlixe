@@ -202,25 +202,38 @@
 .tv-xtream { width: 100%; display: flex; flex-direction: column; gap: 12px; }
 .tv-xtream-title { font-size: 20px; color: #fff; margin: 0 0 6px; }
 
-/* ---------- Profil seçimi ---------- */
-.tv-profiles { height: 100vh; display: grid; place-content: center; justify-items: center; gap: 34px;
-  background: radial-gradient(circle at 50% 30%, #10233a, var(--tv-bg-deep) 60%); }
-.tv-profiles h1 { font-size: 40px; margin: 0; }
-.tv-profile-row { display: flex; gap: 28px; flex-wrap: wrap; justify-content: center; }
-.tv-profile {
-  display: flex; flex-direction: column; align-items: center; gap: 12px;
-  background: transparent; border: 0; cursor: pointer; color: var(--tv-text-2);
+/* ---------- Profil seçimi (native TvProfileSelectScreen) ---------- */
+.tv-profiles {
+  height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 30px;
+  background: var(--tv-bg);
 }
-.tv-profile .avatar {
-  width: 132px; height: 132px; border-radius: 20px;
-  background: linear-gradient(135deg,#0e7490,#134e4a); display: grid; place-items: center;
-  font-size: 52px; color: #fff; border: 3px solid transparent; transition: border-color .15s, transform .15s;
+.tv-profiles h1 { font-size: 40px; margin: 0; color: #fff; }
+.tv-profile-row { display: flex; gap: 26px; flex-wrap: wrap; justify-content: center; }
+
+.tv-profile-card, .tv-addprofile {
+  width: 180px; display: flex; flex-direction: column; align-items: center; gap: 12px;
+  padding: 20px; border-radius: 16px; border: 0; cursor: pointer;
+  background: #151C28; transition: background .15s, transform .15s;
 }
-.tv-profile.tv-focused .avatar, .tv-profile:focus-visible .avatar {
-  border-color: var(--tv-focus); transform: scale(1.06); outline: none;
+.tv-profile-card.tv-focused, .tv-profile-card:focus-visible,
+.tv-addprofile.tv-focused, .tv-addprofile:focus-visible {
+  background: #2563EB; outline: none; transform: scale(1.03);
 }
-.tv-profile.tv-focused span, .tv-profile:focus-visible span { color: #fff; }
-.tv-profile span { font-size: 18px; }
+.tv-profile-card .pname, .tv-addprofile .pname { color: #fff; font-weight: 700; font-size: 17px; }
+.tv-addprofile .plus {
+  width: 82px; height: 82px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 44px; color: #cfe0ff; background: rgba(255,255,255,.06); border: 2px dashed rgba(255,255,255,.35);
+}
+
+.tv-profile-brand { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.tv-profile-brand img { width: 30px; height: 30px; border-radius: 7px; object-fit: cover; }
+.tv-profile-brand b { font-size: 19px; color: #fff; }
+.tv-profile-brand b i { color: var(--tv-primary); font-style: normal; }
+.tv-profile-manage {
+  padding: 11px 26px; border-radius: 10px; border: 0; cursor: pointer;
+  background: #1b2536; color: #cdd6e6; font-size: 15px; font-weight: 600;
+}
+.tv-profile-manage.tv-focused, .tv-profile-manage:focus-visible { background: #2563EB; color: #fff; outline: none; }
 
 /* Dil seçici (sağ üst) */
 .tv-lang { position: fixed; top: 22px; right: 26px; z-index: 50; display: flex; gap: 8px; }
