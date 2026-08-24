@@ -128,6 +128,41 @@ function ContentScreen({ kind, lang, library, provider, onOpen }: Common & { kin
   );
 }
 
+/* ---------------- Spor ---------------- */
+function SportsScreen({ lang }: Common) {
+  const t = makeT(lang);
+  const [events, setEvents] = useState<SportsEvent[] | null>(null);
+  const [league, setLeague] = useState<string | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { fetchSports().then(setEvents).catch(() => setEvents([])); }, []);
+  useEffect(() => { if (events) { const id = setTimeout(() => focusFirst(ref.current), 80); return () => clearTimeout(id); } }, [events]);
+
+  const leagues = useMemo(() => events ? Array.from(new Set(events.map((e) => e.league))) : [], [events]);
+  const visible = useMemo(() => !events ? [] : (league ? events.filter((e) => e.league === league) : events), [events, league]);
+  const dateStr = new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "long" }).format(new Date());
+
+  return (
+    <div className="tv-page" ref={ref}>
+      <div className="tv-sports-head">
+        <h1>{t("todays_sports")}</h1>
+        <span>{dateStr}</span>
+      </div>
+      {events && leagues.length > 0 && (
+        <div className="tv-search-tabs">
+          <button className={`tv-search-tab tv-focusable${league === null ? " active" : ""}`} onClick={() => setLeague(null)} onFocus={() => setLeague(null)}>Tüm Ligler</button>
+          {leagues.map((l) => (
+            <button key={l} className={`tv-search-tab tv-focusable${league === l ? " active" : ""}`} onClick={() => setLeague(l)} onFocus={() => setLeague(l)}>{l}</button>
+          ))}
+        </div>
+      )}
+      {events === null ? <div className="tv-rail-loading">{t("loading")}</div>
+        : visible.length === 0 ? <div className="tv-coming">{t("no_matches")}</div>
+        : <div className="tv-sports-grid">{visible.map((e) => <SportsCard key={e.id} e={e} />)}</div>}
+    </div>
+  );
+}
+
 /* ---------------- Ara (Search) ---------------- */
 type SearchFilter = "all" | "movie" | "series" | "live";
 function SearchScreen({ lang, library, provider, onOpen }: Common) {
@@ -213,6 +248,7 @@ export function SectionPage({ section, lang, library, provider, onOpen }: { sect
   if (section === "Movies") return <ContentScreen kind="movie" lang={lang} library={library} provider={provider} onOpen={onOpen} />;
   if (section === "Series") return <ContentScreen kind="series" lang={lang} library={library} provider={provider} onOpen={onOpen} />;
   if (section === "Search") return <SearchScreen lang={lang} library={library} provider={provider} onOpen={onOpen} />;
+  if (section === "Sports") return <SportsScreen lang={lang} library={library} provider={provider} onOpen={onOpen} />;
   return (
     <div className="tv-page">
       <div className="tv-page-head"><h1>{t(titleKey[section])}</h1></div>
