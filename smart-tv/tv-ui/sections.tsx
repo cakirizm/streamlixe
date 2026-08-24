@@ -129,16 +129,27 @@ function ContentScreen({ kind, lang, library, provider, onOpen }: Common & { kin
 }
 
 /* ---------------- Ara (Search) ---------------- */
+type SearchFilter = "all" | "movie" | "series" | "live";
 function SearchScreen({ lang, library, provider, onOpen }: Common) {
   const t = makeT(lang);
   const [q, setQ] = useState("");
+  const [filter, setFilter] = useState<SearchFilter>("all");
   const inputRef = useRef<HTMLInputElement>(null);
   const all = useMemo(() => library ? [...library.live, ...library.movies, ...library.series] : [], [library]);
-  const results = useMemo(() => {
+
+  // Sorguya uyan tüm sonuçlar (sayımlar için) ve filtreye göre gösterilenler.
+  const matched = useMemo(() => {
     const query = q.trim().toLocaleLowerCase("tr");
-    if (query.length < 2) return [];
-    return all.filter((m) => m.name.toLocaleLowerCase("tr").includes(query)).slice(0, 60);
+    if (query.length < 2) return [] as Media[];
+    return all.filter((m) => m.name.toLocaleLowerCase("tr").includes(query));
   }, [all, q]);
+  const counts = useMemo(() => ({
+    all: matched.length,
+    live: matched.filter((m) => m.kind === "live").length,
+    movie: matched.filter((m) => m.kind === "movie").length,
+    series: matched.filter((m) => m.kind === "series").length,
+  }), [matched]);
+  const results = useMemo(() => (filter === "all" ? matched : matched.filter((m) => m.kind === filter)).slice(0, 80), [matched, filter]);
 
   useEffect(() => { const id = setTimeout(() => inputRef.current?.focus(), 80); return () => clearTimeout(id); }, []);
 
@@ -146,18 +157,35 @@ function SearchScreen({ lang, library, provider, onOpen }: Common) {
     if (m.kind === "series") { if (provider) { const ep = await resolveSeriesFirstEpisode(provider, m); if (ep) onOpen(ep); } }
     else onOpen(m);
   }
-
   const kindTag = (k: Media["kind"]) => k === "live" ? "CANLI" : k === "movie" ? "FİLM" : "DİZİ";
+
+  const tabs: { id: SearchFilter; label: string }[] = [
+    { id: "all", label: `Tümü (${counts.all})` },
+    { id: "movie", label: `Filmler (${counts.movie})` },
+    { id: "series", label: `Diziler (${counts.series})` },
+    { id: "live", label: `Kanallar (${counts.live})` },
+  ];
 
   return (
     <div className="tv-page">
       <div className="tv-page-head"><h1>{t("search")}</h1></div>
       <input ref={inputRef} className="tv-search-input tv-focusable" placeholder="Kanal, film veya dizi ara…" value={q} onChange={(e) => setQ(e.target.value)} />
+
+      {library && q.trim().length >= 2 && (
+        <div className="tv-search-tabs">
+          {tabs.map((tab) => (
+            <button key={tab.id} className={`tv-search-tab tv-focusable${filter === tab.id ? " active" : ""}`} onClick={() => setFilter(tab.id)} onFocus={() => setFilter(tab.id)}>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {!library ? <div className="tv-coming">Arama için Xtream hesabınla giriş yap.</div>
         : q.trim().length < 2 ? <div className="tv-rail-loading">Aramak için en az 2 harf yaz…</div>
         : results.length === 0 ? <div className="tv-rail-loading">Sonuç bulunamadı.</div>
         : (
-          <div className="tv-grid" style={{ marginTop: 22 }}>
+          <div className="tv-grid" style={{ marginTop: 20 }}>
             {results.map((m) => (
               <button key={m.id} className="tv-poster-card tv-focusable" title={m.name} onClick={() => open(m)}>
                 {m.logo ? <img src={m.logo} alt={m.name} loading="lazy" /> : <span className="tv-poster-ph">{m.name.slice(0, 2)}</span>}

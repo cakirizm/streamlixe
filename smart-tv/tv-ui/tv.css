@@ -150,6 +150,14 @@
 }
 .tv-search-input:focus, .tv-search-input.tv-focused { outline: none; border-color: var(--tv-focus); box-shadow: 0 0 0 3px rgba(0,164,255,.25); }
 .tv-search-input::placeholder { color: var(--tv-text-3); }
+.tv-search-tabs { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+.tv-search-tab {
+  padding: 10px 18px; border-radius: 999px; border: 1px solid var(--tv-card-border);
+  background: var(--tv-card); color: var(--tv-text-2); cursor: pointer; font-size: 14.5px; font-weight: 600;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.tv-search-tab.active { background: var(--tv-menu-selected); color: #fff; border-color: transparent; }
+.tv-search-tab.tv-focused, .tv-search-tab:focus-visible { background: var(--tv-menu-focus); color: #fff; border-color: transparent; outline: none; }
 
 /* Canlı kanal ızgarası */
 .tv-live-grid { display: grid; grid-template-columns: repeat(auto-fill, 182px); gap: 18px; justify-content: start; }
