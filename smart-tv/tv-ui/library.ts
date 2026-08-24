@@ -50,11 +50,17 @@ export async function importXtream(p: Provider): Promise<Library> {
   return { live, movies, series };
 }
 
-// Bir Kind için kategori listesi ("Tümü" + gruplar).
+// Bir Kind için kategori listesi ("Tümü" en üstte; önce TR grupları alfabetik, sonra diğerleri alfabetik).
+const isTR = (s: string) => /^\s*tr\b/i.test(s);
 export function groupsOf(items: Media[]): string[] {
   const set = new Set<string>();
   for (const m of items) if (m.group) set.add(m.group);
-  return ["Tümü", ...Array.from(set)];
+  const rest = Array.from(set).sort((a, b) => {
+    const ta = isTR(a), tb = isTR(b);
+    if (ta !== tb) return ta ? -1 : 1;            // TR grupları en üstte
+    return a.localeCompare(b, "tr", { sensitivity: "base", numeric: true }); // alfabetik (Türkçe)
+  });
+  return ["Tümü", ...rest];
 }
 
 // Kategori adındaki baştaki/sondaki "|" ve boşluk gürültüsünü temizler (görüntü için).
