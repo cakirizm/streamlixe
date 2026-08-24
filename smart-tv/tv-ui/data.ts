@@ -49,6 +49,32 @@ export async function fetchForYou(kind: "movie" | "series" = "movie"): Promise<P
   return out;
 }
 
+export type Genre = { id: number; name: string };
+
+export async function fetchGenres(kind: "movie" | "series"): Promise<Genre[]> {
+  try {
+    const r = await fetch(`/api/tmdb?mode=genres&kind=${kind}`);
+    if (!r.ok) return [];
+    const data = await r.json();
+    return (data.genres || []).map((g: any) => ({ id: g.id, name: g.name }));
+  } catch { return []; }
+}
+
+export async function fetchDiscover(kind: "movie" | "series", genre: number): Promise<PosterCard[]> {
+  try {
+    const r = await fetch(`/api/tmdb?mode=discover&kind=${kind}&genre=${genre}`);
+    if (!r.ok) return [];
+    const data = await r.json();
+    const out: PosterCard[] = [];
+    for (const x of data.results || []) {
+      const poster = x.poster_path ? `${TMDB_IMG}${x.poster_path}` : "";
+      if (!poster) continue;
+      out.push({ id: String(x.id), title: x.title || x.name || "", poster, kind });
+    }
+    return out;
+  } catch { return []; }
+}
+
 export function countryFlag(country?: string | null): string {
   switch ((country || "").toLowerCase()) {
     case "turkey": case "türkiye": return "🇹🇷";

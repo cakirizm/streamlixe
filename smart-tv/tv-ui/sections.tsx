@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { TvLang } from "./i18n";
 import { makeT } from "./i18n";
 import type { Section } from "./Sidebar";
-import { fetchSports, fetchForYou, countryFlag, hhmm, type SportsEvent, type PosterCard } from "./data";
+import { fetchSports, fetchForYou, fetchGenres, fetchDiscover, countryFlag, hhmm, type SportsEvent, type PosterCard, type Genre } from "./data";
 import { focusFirst } from "./dpad";
 
 // Kaldığın Yerden Devam Et — yerel geçmiş (henüz kütüphane yoksa boş → gizli).
@@ -99,6 +99,68 @@ function HomeScreen({ lang }: { lang: TvLang }) {
   );
 }
 
+// Filmler / Diziler — native TvMoviesScreen/TvSeriesScreen: kategori sütunu + poster ızgarası.
+// Demo/kütüphane yokken TMDB tür + keşif ile doldurulur (görünüş native ile aynı).
+function ContentScreen({ kind, lang }: { kind: "movie" | "series"; lang: TvLang }) {
+  const t = makeT(lang);
+  const [genres, setGenres] = useState<Genre[] | null>(null);
+  const [genre, setGenre] = useState<number | null>(null);
+  const [cards, setCards] = useState<PosterCard[] | null>(null);
+  const catRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetchGenres(kind).then((g) => {
+      setGenres(g);
+      if (g.length) setGenre(g[0].id);
+    });
+  }, [kind]);
+
+  useEffect(() => {
+    if (genre == null) return;
+    setCards(null);
+    fetchDiscover(kind, genre).then(setCards);
+  }, [kind, genre]);
+
+  useEffect(() => {
+    if (genres && genres.length) { const id = setTimeout(() => focusFirst(catRef.current), 80); return () => clearTimeout(id); }
+  }, [genres]);
+
+  return (
+    <div className="tv-content-screen">
+      <aside className="tv-cat-col" ref={catRef}>
+        <h1 className="tv-cat-title">{t(kind === "movie" ? "movies" : "series")}</h1>
+        {genres === null ? (
+          <div className="tv-rail-loading">{t("loading")}</div>
+        ) : (
+          genres.map((g) => (
+            <button
+              key={g.id}
+              className={`tv-cat tv-focusable${genre === g.id ? " active" : ""}`}
+              onClick={() => setGenre(g.id)}
+              onFocus={() => setGenre(g.id)}
+            >
+              {g.name}
+            </button>
+          ))
+        )}
+      </aside>
+      <div className="tv-grid-wrap">
+        {cards === null ? (
+          <div className="tv-rail-loading">{t("loading")}</div>
+        ) : (
+          <div className="tv-grid">
+            {cards.map((c) => (
+              <button key={c.id} className="tv-poster-card tv-focusable" title={c.title}>
+                <img src={c.poster} alt={c.title} loading="lazy" />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function SectionPage({ section, lang }: { section: Section; lang: TvLang }) {
   const t = makeT(lang);
   const titleKey: Record<Section, string> = {
@@ -106,6 +168,8 @@ export function SectionPage({ section, lang }: { section: Section; lang: TvLang 
     Series: "series", Search: "search", MyList: "my_list", Settings: "settings",
   };
   if (section === "Home") return <HomeScreen lang={lang} />;
+  if (section === "Movies") return <ContentScreen kind="movie" lang={lang} />;
+  if (section === "Series") return <ContentScreen kind="series" lang={lang} />;
   return (
     <div className="tv-page">
       <div className="tv-page-head"><h1>{t(titleKey[section])}</h1></div>

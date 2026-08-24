@@ -111,6 +111,26 @@
 
 .tv-home-brandhead { display: none; }
 
+/* ---------- Filmler / Diziler (kategori + ızgara) ---------- */
+.tv-content-screen { display: flex; height: 100%; }
+.tv-cat-col {
+  width: 260px; flex: none; height: 100%; overflow-y: auto;
+  padding: 34px 16px 34px 40px; display: flex; flex-direction: column; gap: 6px; scrollbar-width: none;
+}
+.tv-cat-col::-webkit-scrollbar { width: 0; }
+.tv-cat-title { font-size: 26px; margin: 0 0 16px; color: #fff; }
+.tv-cat {
+  text-align: start; padding: 11px 14px; border-radius: 9px; border: 0; cursor: pointer;
+  background: transparent; color: var(--tv-text-2); font-size: 15px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; transition: background .15s, color .15s;
+}
+.tv-cat.active { background: var(--tv-menu-selected); color: #fff; font-weight: 700; }
+.tv-cat.tv-focused, .tv-cat:focus-visible { background: var(--tv-menu-focus); color: #fff; outline: none; }
+
+.tv-grid-wrap { flex: 1; height: 100%; overflow-y: auto; padding: 34px 40px; scrollbar-width: none; }
+.tv-grid-wrap::-webkit-scrollbar { width: 0; }
+.tv-grid { display: grid; grid-template-columns: repeat(auto-fill, 132px); gap: 18px 16px; justify-content: start; }
+
 /* ---------- Setup ekranı ---------- */
 .tv-setup { height: 100vh; width: 100vw; display: grid; place-items: center;
   background: radial-gradient(circle at 30% 20%, #10233a, var(--tv-bg-deep) 55%); }
