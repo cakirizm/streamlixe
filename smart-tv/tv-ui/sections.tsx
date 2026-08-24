@@ -4,7 +4,7 @@ import type { TvLang } from "./i18n";
 import { makeT } from "./i18n";
 import type { Section } from "./Sidebar";
 import { fetchSports, fetchForYou, fetchGenres, fetchDiscover, countryFlag, hhmm, type SportsEvent, type PosterCard, type Genre } from "./data";
-import { groupsOf, cleanCat, type Library, type Media } from "./library";
+import { groupsOf, cleanCat, resolveSeriesFirstEpisode, type Library, type Media } from "./library";
 import type { Provider } from "./Setup";
 import { focusFirst } from "./dpad";
 import { LiveScreen } from "./LiveScreen";
@@ -96,17 +96,9 @@ function ContentScreen({ kind, lang, library, provider, onOpen }: Common & { kin
 
   async function openMedia(m: Media) {
     if (kind === "movie") { onOpen(m); return; }
-    // Dizi: ilk bölümü series_info ile çöz
-    if (!provider || provider.method !== "xtream" || !m.seriesId) return;
-    try {
-      const r = await fetch("/api/import", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ method: "series_info", server: provider.server, username: provider.username, password: provider.password, seriesId: m.seriesId }) });
-      const data = await r.json();
-      const seasons = Object.values(data.episodes || {}) as any[][];
-      const first = (seasons.find((s) => Array.isArray(s) && s.length) || [])[0];
-      if (!first) return;
-      const url = `${(provider.server || "").replace(/\/+$/, "")}/series/${provider.username}/${provider.password}/${first.id}.${first.container_extension || "mp4"}`;
-      onOpen({ ...m, url, name: `${m.name} · ${first.title || "1. Bölüm"}` });
-    } catch { /* yut */ }
+    if (!provider) return;
+    const ep = await resolveSeriesFirstEpisode(provider, m);
+    if (ep) onOpen(ep);
   }
 
   return (
@@ -136,6 +128,48 @@ function ContentScreen({ kind, lang, library, provider, onOpen }: Common & { kin
   );
 }
 
+/* ---------------- Ara (Search) ---------------- */
+function SearchScreen({ lang, library, provider, onOpen }: Common) {
+  const t = makeT(lang);
+  const [q, setQ] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const all = useMemo(() => library ? [...library.live, ...library.movies, ...library.series] : [], [library]);
+  const results = useMemo(() => {
+    const query = q.trim().toLocaleLowerCase("tr");
+    if (query.length < 2) return [];
+    return all.filter((m) => m.name.toLocaleLowerCase("tr").includes(query)).slice(0, 60);
+  }, [all, q]);
+
+  useEffect(() => { const id = setTimeout(() => inputRef.current?.focus(), 80); return () => clearTimeout(id); }, []);
+
+  async function open(m: Media) {
+    if (m.kind === "series") { if (provider) { const ep = await resolveSeriesFirstEpisode(provider, m); if (ep) onOpen(ep); } }
+    else onOpen(m);
+  }
+
+  const kindTag = (k: Media["kind"]) => k === "live" ? "CANLI" : k === "movie" ? "FİLM" : "DİZİ";
+
+  return (
+    <div className="tv-page">
+      <div className="tv-page-head"><h1>{t("search")}</h1></div>
+      <input ref={inputRef} className="tv-search-input tv-focusable" placeholder="Kanal, film veya dizi ara…" value={q} onChange={(e) => setQ(e.target.value)} />
+      {!library ? <div className="tv-coming">Arama için Xtream hesabınla giriş yap.</div>
+        : q.trim().length < 2 ? <div className="tv-rail-loading">Aramak için en az 2 harf yaz…</div>
+        : results.length === 0 ? <div className="tv-rail-loading">Sonuç bulunamadı.</div>
+        : (
+          <div className="tv-grid" style={{ marginTop: 22 }}>
+            {results.map((m) => (
+              <button key={m.id} className="tv-poster-card tv-focusable" title={m.name} onClick={() => open(m)}>
+                {m.logo ? <img src={m.logo} alt={m.name} loading="lazy" /> : <span className="tv-poster-ph">{m.name.slice(0, 2)}</span>}
+                <span className="tv-kind-tag">{kindTag(m.kind)}</span>
+              </button>
+            ))}
+          </div>
+        )}
+    </div>
+  );
+}
+
 /* ---------------- Router ---------------- */
 export function SectionPage({ section, lang, library, provider, onOpen }: { section: Section } & Common) {
   const t = makeT(lang);
@@ -147,6 +181,7 @@ export function SectionPage({ section, lang, library, provider, onOpen }: { sect
   if (section === "Live") return <LiveScreen lang={lang} library={library} provider={provider} onOpen={onOpen} />;
   if (section === "Movies") return <ContentScreen kind="movie" lang={lang} library={library} provider={provider} onOpen={onOpen} />;
   if (section === "Series") return <ContentScreen kind="series" lang={lang} library={library} provider={provider} onOpen={onOpen} />;
+  if (section === "Search") return <SearchScreen lang={lang} library={library} provider={provider} onOpen={onOpen} />;
   return (
     <div className="tv-page">
       <div className="tv-page-head"><h1>{t(titleKey[section])}</h1></div>

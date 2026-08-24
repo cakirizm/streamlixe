@@ -63,6 +63,23 @@ export function groupsOf(items: Media[]): string[] {
   return ["Tümü", ...rest];
 }
 
+// Bir dizinin ilk bölümünü series_info ile çözüp oynatılabilir Media döndürür.
+export async function resolveSeriesFirstEpisode(p: Provider, m: Media): Promise<Media | null> {
+  if (!p || p.method !== "xtream" || !m.seriesId) return null;
+  try {
+    const r = await fetch("/api/import", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ method: "series_info", server: p.server, username: p.username, password: p.password, seriesId: m.seriesId }),
+    });
+    const data = await r.json();
+    const seasons = Object.values(data.episodes || {}) as any[][];
+    const first = (seasons.find((s) => Array.isArray(s) && s.length) || [])[0];
+    if (!first) return null;
+    const base = (p.server || "").replace(/\/+$/, "");
+    return { ...m, url: `${base}/series/${p.username}/${p.password}/${first.id}.${first.container_extension || "mp4"}`, name: `${m.name} · ${first.title || "1. Bölüm"}` };
+  } catch { return null; }
+}
+
 // Kategori adındaki baştaki/sondaki "|" ve boşluk gürültüsünü temizler (görüntü için).
 export function cleanCat(s: string): string {
   return s.replace(/^[\s|]+/, "").replace(/[\s|]+$/, "").replace(/\s*\|\s*/g, " · ").trim() || s;
