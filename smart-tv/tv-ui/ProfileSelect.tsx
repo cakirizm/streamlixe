@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { TvLang } from "./i18n";
 import { makeT } from "./i18n";
 import { focusFirst } from "./dpad";
+import { BrandFull } from "./Brand";
 
 export type Profile = { id: string; name: string };
 
@@ -87,10 +88,7 @@ export function ProfileSelect({ lang, onSelect }: { lang: TvLang; onSelect: (p: 
         )}
       </div>
 
-      <div className="tv-profile-brand">
-        <img src="/streamlivex-logo.jpeg" alt="StreamLiveX" />
-        <b>StreamLive<i>X</i></b>
-      </div>
+      <div className="tv-profile-brand"><BrandFull size={30} subtitle={false} /></div>
       <button className="tv-profile-manage tv-focusable">Profilleri Yönet</button>
     </main>
   );

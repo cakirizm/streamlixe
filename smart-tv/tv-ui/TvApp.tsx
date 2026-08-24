@@ -10,6 +10,7 @@ import { ProfileSelect, type Profile } from "./ProfileSelect";
 import { SectionPage } from "./sections";
 import { importXtream, type Library, type Media } from "./library";
 import { Player } from "./Player";
+import { BrandFull } from "./Brand";
 
 const LANG_KEY = "slx-tv-lang";
 const PROVIDER_KEY = "slx-tv-provider";
@@ -25,10 +26,7 @@ function loadProvider(): Provider | null {
 function LoadingScreen() {
   return (
     <main className="tv-loading">
-      <div className="tv-loading-brand">
-        <img src="/streamlivex-logo.jpeg" alt="StreamLiveX" />
-        <div><b>StreamLive<i>X</i></b><small>SMART IPTV PLAYER</small></div>
-      </div>
+      <div className="tv-loading-brand"><BrandFull size={44} /></div>
       <div className="tv-loading-spin" />
       <h2>Kütüphaneniz yükleniyor</h2>
       <p>Profil ve yerel kütüphane hazırlanıyor…</p>

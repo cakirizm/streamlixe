@@ -1,6 +1,7 @@
 // StreamLiveX TV — sol menü (native TvSideMenu birebir: ikon+etiket, odakta genişler)
 import type { TvLang } from "./i18n";
 import { makeT } from "./i18n";
+import { BrandFull } from "./Brand";
 
 export type Section = "Home" | "Live" | "Sports" | "Movies" | "Series" | "Search" | "MyList" | "Settings";
 
@@ -29,13 +30,7 @@ export function Sidebar({
 
   return (
     <nav className={`tv-sidebar${expanded ? " expanded" : ""}`}>
-      <div className="tv-brand">
-        <img src="/streamlivex-logo.jpeg" alt="StreamLiveX" />
-        <span className="tv-brand-text">
-          <b>StreamLive<i>X</i></b>
-          <small>{t("subtitle")}</small>
-        </span>
-      </div>
+      <div className="tv-brand"><BrandFull size={34} /></div>
       {ITEMS.map((it) => (
         <button
           key={it.id}
