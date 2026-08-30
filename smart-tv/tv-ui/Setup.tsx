@@ -4,25 +4,45 @@ import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import type { TvLang } from "./i18n";
 import { focusFirst } from "./dpad";
+import { importXtream } from "./library";
 
 export type Provider = {
   name: string;
   method: "xtream" | "pairing";
   server?: string; username?: string; password?: string; url?: string; mac?: string;
-  demo?: boolean;
 };
 
 const API_BASE = (window as any).__SLX_PROXY_ORIGIN__ || "https://streamlivex.com";
 
-export function Setup({ lang, onComplete }: { lang: TvLang; onComplete: (p: Provider) => void }) {
+// native: onBack yalnızca Playlist Manager'dan "yeni liste ekle" akışında verilir;
+// ana kurulum girişinde (TvRoot'tan ilk açılış) onBack yok — geri tuşu hiçbir şey yapmaz.
+export function Setup({ lang, onComplete, onBack }: { lang: TvLang; onComplete: (p: Provider) => void; onBack?: () => void }) {
   const [mode, setMode] = useState<"qr" | "xtream">("qr");
   const rtl = document.documentElement.dir === "rtl";
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => { const id = setTimeout(() => focusFirst(ref.current), 60); return () => clearTimeout(id); }, [mode]);
 
+  useEffect(() => {
+    if (!onBack) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" || e.key === "Backspace" || e.keyCode === 461 || e.keyCode === 10009) {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA") return;
+        e.preventDefault(); e.stopPropagation(); onBack();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [onBack]);
+
   return (
     <main className="tv-setup2" ref={ref}>
+      {onBack && (
+        <button className="tv-series-back tv-focusable" style={{ position: "absolute", top: 22, insetInlineStart: 26 }} onClick={onBack}>
+          ← Geri
+        </button>
+      )}
       <div className="tv-setup2-row">
         {/* Sol bilgi paneli */}
         <div className="tv-setup2-left">
@@ -38,9 +58,6 @@ export function Setup({ lang, onComplete }: { lang: TvLang; onComplete: (p: Prov
             <button className={`tv-setup2-tab tv-focusable${mode === "qr" ? " active" : ""}`} onClick={() => setMode("qr")}>QR ile Bağlan</button>
             <button className={`tv-setup2-tab tv-focusable${mode === "xtream" ? " active" : ""}`} onClick={() => setMode("xtream")}>Xtream Codes</button>
           </div>
-          <button className="tv-setup2-demo tv-focusable" onClick={() => onComplete({ name: "Demo", method: "pairing", demo: true })}>
-            Önce demo içerikle dene
-          </button>
         </div>
 
         {/* Sağ koyu kart */}
@@ -121,15 +138,27 @@ function XtreamForm({ onComplete }: { onComplete: (p: Provider) => void }) {
   const [busy, setBusy] = useState(false);
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: e.target.value });
 
-  function connect(e: React.FormEvent) {
+  async function connect(e: React.FormEvent) {
     e.preventDefault();
     if (!form.server.trim()) { setError("Sunucu adresini gir."); return; }
     if (!/^https?:\/\//i.test(form.server.trim())) { setError("Sunucu adresi http:// veya https:// ile başlamalı."); return; }
     if (!form.username.trim()) { setError("Kullanıcı adını gir."); return; }
     if (!form.password) { setError("Şifreyi gir."); return; }
     setError(""); setBusy(true);
-    // Faz 2: /api/import ile tam kütüphane. Şimdilik sağlayıcıyı saklayıp ilerliyoruz.
-    onComplete({ name: form.name || "Oynatma Listem", method: "xtream", ...form });
+    const provider: Provider = { ...form, name: form.name || "Oynatma Listem", method: "xtream" };
+    // native TvSetupScreen: XtreamClient().loadLiveLibrary(provider) ile doğrulanmadan kabul etmiyor.
+    try {
+      const lib = await importXtream(provider);
+      if (lib.live.length === 0) {
+        setError("Hesap doğrulandı ancak canlı kanal bulunamadı.");
+        setBusy(false);
+        return;
+      }
+      onComplete(provider);
+    } catch {
+      setError("Xtream hesabına bağlanılamadı.");
+      setBusy(false);
+    }
   }
 
   return (
@@ -140,7 +169,7 @@ function XtreamForm({ onComplete }: { onComplete: (p: Provider) => void }) {
       <label className="tv-field"><span>Kullanıcı adı</span><input className="tv-focusable" value={form.username} onChange={set("username")} /></label>
       <label className="tv-field"><span>Şifre</span><input className="tv-focusable" type="password" value={form.password} onChange={set("password")} /></label>
       {error && <p className="tv-error">{error}</p>}
-      <button className="tv-btn tv-focusable" disabled={busy}>{busy ? "Bağlanıyor…" : "Bağlan"}</button>
+      <button className="tv-btn tv-focusable" disabled={busy}>{busy ? "Xtream hesabına bağlanılıyor…" : "Bağlan"}</button>
     </form>
   );
 }

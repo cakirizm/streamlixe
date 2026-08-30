@@ -4,7 +4,7 @@ export type SportsEvent = {
   id: string; league: string; leagueBadge?: string | null;
   home: string; away: string; homeBadge?: string | null; awayBadge?: string | null;
   startMs: number; status: string; homeScore?: number | null; awayScore?: number | null;
-  country?: string | null; broadcasts?: unknown[];
+  country?: string | null; broadcasts?: unknown[]; venue?: string | null;
 };
 
 export type PosterCard = { id: string; title: string; poster: string; kind: "movie" | "series" };
@@ -121,4 +121,95 @@ export function hhmm(ms: number): string {
   const d = new Date(ms);
   const p = (n: number) => String(n).padStart(2, "0");
   return `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/* ---------------- GenericDetailScreen / Home hero için TMDB katmanı ---------------- */
+
+export type TmdbCard = {
+  id: number; title: string; poster?: string; backdrop?: string; overview?: string;
+  voteAverage?: number; releaseDate?: string; kind: "movie" | "series";
+};
+
+const TMDB_BACKDROP = "https://image.tmdb.org/t/p/w1280";
+
+function toCard(x: any, kind: "movie" | "series"): TmdbCard {
+  return {
+    id: x.id, title: x.title || x.name || "",
+    poster: x.poster_path ? `${TMDB_IMG}${x.poster_path}` : undefined,
+    backdrop: x.backdrop_path ? `${TMDB_BACKDROP}${x.backdrop_path}` : undefined,
+    overview: x.overview, voteAverage: x.vote_average,
+    releaseDate: x.release_date || x.first_air_date, kind,
+  };
+}
+
+export async function fetchTrending(kind: "movie" | "series"): Promise<TmdbCard[]> {
+  try {
+    const r = await fetch(`/api/tmdb?mode=trending&kind=${kind}`);
+    if (!r.ok) return [];
+    const data = await r.json();
+    return (data.results || []).map((x: any) => toCard(x, kind));
+  } catch { return []; }
+}
+
+export type LocalTmdbMatch = {
+  playlistId: string; kind: "movie" | "series"; tmdbId: number; title: string;
+  poster_path?: string; backdrop_path?: string; overview?: string; vote_average?: number;
+  release_date?: string;
+};
+
+// Yerel kütüphane öğelerini (id/isim/tür) TMDB'ye toplu eşleştirir (native "yerelde eşleşen trend" mantığı).
+export async function matchLocalToTmdb(items: { id: string; name: string; kind: "movie" | "series" }[]): Promise<LocalTmdbMatch[]> {
+  if (!items.length) return [];
+  try {
+    const r = await fetch("/api/tmdb", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ items }),
+    });
+    if (!r.ok) return [];
+    const data = await r.json();
+    return data.results || [];
+  } catch { return []; }
+}
+
+export type TmdbPerson = { id: number; name: string; profilePath?: string };
+export type TmdbDetail = {
+  id: number; title: string; overview?: string; tagline?: string;
+  backdrop?: string; poster?: string; voteAverage?: number; releaseDate?: string;
+  runtime?: number; genres?: string[]; directors: TmdbPerson[]; cast: TmdbPerson[];
+  recommendations: TmdbCard[]; trailerKey?: string;
+};
+
+const PROFILE_IMG = "https://image.tmdb.org/t/p/w185";
+
+// query (başlık) veya id ile tam TMDB detayını (yönetmen/oyuncu/öneri/fragman dahil) çeker.
+export async function fetchTmdbDetail(kind: "movie" | "series", query: string): Promise<TmdbDetail | null> {
+  try {
+    const r = await fetch(`/api/tmdb?kind=${kind}&query=${encodeURIComponent(query)}`);
+    if (!r.ok) return null;
+    const data = await r.json();
+    const x = data.result;
+    if (!x) return null;
+    const trailer = (x.videos?.results || []).find((v: any) => v.site === "YouTube" && (v.type === "Trailer" || v.type === "Teaser"));
+    return {
+      id: x.id, title: x.title || x.name || "", overview: x.overview, tagline: x.tagline,
+      backdrop: x.backdrop_path ? `${TMDB_BACKDROP}${x.backdrop_path}` : undefined,
+      poster: x.poster_path ? `${TMDB_IMG}${x.poster_path}` : undefined,
+      voteAverage: x.vote_average, releaseDate: x.release_date || x.first_air_date,
+      runtime: x.runtime || x.episode_run_time?.[0],
+      genres: (x.genres || []).map((g: any) => g.name),
+      directors: (x.directors || []).map((p: any) => ({ id: p.id, name: p.name, profilePath: p.profile_path ? `${PROFILE_IMG}${p.profile_path}` : undefined })),
+      cast: (x.cast || []).map((p: any) => ({ id: p.id, name: p.name, profilePath: p.profile_path ? `${PROFILE_IMG}${p.profile_path}` : undefined })),
+      recommendations: (x.recommendations || []).map((c: any) => toCard(c, kind)),
+      trailerKey: trailer?.key,
+    };
+  } catch { return null; }
+}
+
+export async function fetchPersonCredits(personId: number): Promise<TmdbCard[]> {
+  try {
+    const r = await fetch(`/api/tmdb?person=${personId}`);
+    if (!r.ok) return [];
+    const data = await r.json();
+    return (data.results || []).map((x: any) => toCard(x, x.media_type === "tv" ? "series" : "movie"));
+  } catch { return []; }
 }

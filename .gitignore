@@ -28,3 +28,14 @@ smart-tv/spa/dist/
 smart-tv/spa/public/
 *.ipk
 *.wgt
+
+# Tizen paket/imza çıktıları (config.xml ve icon.png kaynak olarak izlenir)
+smart-tv/tizen/assets/
+smart-tv/tizen/index.html
+smart-tv/tizen/streamlivex-logo.jpeg
+smart-tv/tizen/.manifest.tmp
+smart-tv/tizen/author-signature.xml
+smart-tv/tizen/signature*.xml
+
+# TypeScript artımlı derleme önbelleği
+tsconfig.tsbuildinfo

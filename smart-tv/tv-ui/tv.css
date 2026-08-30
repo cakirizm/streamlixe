@@ -13,7 +13,7 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
-  transition: width .18s ease;
+  transition: none; /* native: genişlik animasyonu kaldırıldı (poster/grid ağacı yeniden ölçülmesin diye), yalnızca renk animasyonu kalır */
   overflow: hidden;
 }
 .tv-sidebar.expanded { width: var(--tv-sidebar-w); }
@@ -46,10 +46,14 @@
   white-space: nowrap;
 }
 .tv-navitem .tv-nav-ico {
-  width: 26px; text-align: center; font-size: 18px; flex: none;
+  width: 26px; height: 22px; flex: none;
+  display: flex; align-items: center; justify-content: center;
 }
-.tv-navitem .tv-nav-label { opacity: 0; transition: opacity .12s ease; }
-.tv-sidebar.expanded .tv-navitem .tv-nav-label { opacity: 1; }
+.tv-navitem .tv-nav-ico svg { display: block; color: inherit; }
+.tv-navitem .tv-nav-label { opacity: 1; }
+/* Daraldığında etiket tamamen kaldırılır (opacity:0 değil) — aksi halde görünmez metin flex
+   satırında yer kaplamaya devam edip ikonu gerçek merkezden sola kaydırıyordu. */
+.tv-sidebar:not(.expanded) .tv-navitem .tv-nav-label { display: none; }
 .tv-navitem.selected { background: var(--tv-menu-selected); color: #fff; font-weight: 700; }
 .tv-navitem.tv-focused,
 .tv-navitem:focus-visible { background: var(--tv-menu-focus); color: #fff; font-weight: 700; outline: none; }
@@ -81,7 +85,9 @@
   background: var(--tv-card); border: 1px solid var(--tv-card-border);
   padding: 13px 15px; display: flex; flex-direction: column; gap: 8px; cursor: pointer; text-align: start;
 }
-.tv-sports-card.tv-focused, .tv-sports-card:focus-visible { border-color: var(--tv-focus); outline: none; }
+.tv-sports-card.tv-focused, .tv-sports-card:focus-visible { border-color: var(--tv-focus); outline: none; transform: scale(1.012); }
+/* native TvSportsScreen lig çipi odak animasyonu (animateFloatAsState 1.045f) */
+.tv-league-chip.tv-focused, .tv-league-chip:focus-visible { transform: scale(1.045); }
 .tv-sports-league { color: var(--tv-text-2); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tv-sports-teams { display: flex; align-items: center; gap: 10px; }
 .tv-sports-teams .logo { width: 30px; height: 30px; object-fit: contain; flex: none; }
@@ -121,11 +127,41 @@
 .tv-sports-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 14px; margin-top: 20px; }
 .tv-sports-grid .tv-sports-card { width: auto; }
 
+/* Spor: event detay + kaynak seçici (native SportsEventDetail / SportsSourcePicker) */
+.tv-sports-detail { height: 100%; overflow-y: auto; padding: 30px 44px; scrollbar-width: none; }
+.tv-sports-detail::-webkit-scrollbar { width: 0; }
+.tv-sports-detail-top { display: flex; align-items: center; gap: 16px; margin-bottom: 22px; }
+.tv-sports-detail-top h2 { color: #fff; font-size: 22px; margin: 0; }
+.tv-sports-detail-head { margin-bottom: 20px; }
+.tv-sports-detail-league { color: var(--tv-text-2); font-size: 15px; margin-bottom: 14px; }
+.tv-sports-detail-teams { display: flex; align-items: center; gap: 24px; }
+.tv-sports-detail-teams .team { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 160px; }
+.tv-sports-detail-teams .team img, .tv-sports-detail-teams .team .ph { width: 76px; height: 76px; object-fit: contain; border-radius: 12px; background: var(--tv-card); }
+.tv-sports-detail-teams .team b { color: #fff; font-size: 17px; text-align: center; }
+.tv-sports-detail-teams .score { color: var(--tv-focus); font-weight: 800; font-size: 26px; flex: none; }
+.tv-sports-detail-venue { color: var(--tv-text-3); font-size: 14px; margin-top: 10px; }
+.tv-sports-detail-sub { color: var(--tv-text-3); font-size: 13px; margin: 0 0 14px; }
+.tv-sports-group-list, .tv-sports-source-list { display: flex; flex-direction: column; gap: 8px; max-width: 520px; }
+.tv-sports-group-row, .tv-sports-source-row {
+  display: flex; align-items: center; justify-content: space-between; width: 100%; text-align: start;
+  padding: 13px 16px; border-radius: 8px; border: 1px solid var(--tv-card-border); background: var(--tv-card);
+  color: #fff; cursor: pointer; font-size: 15px;
+}
+.tv-sports-group-row span, .tv-sports-source-row span { color: var(--tv-text-3); font-size: 13px; }
+.tv-sports-group-row.tv-focused, .tv-sports-group-row:focus-visible,
+.tv-sports-source-row.tv-focused, .tv-sports-source-row:focus-visible { background: var(--tv-menu-focus); border-color: var(--tv-focus); outline: none; }
+
 /* ---------- Filmler / Diziler (kategori + ızgara) ---------- */
 .tv-content-screen { display: flex; height: 100%; }
+/* native TvMoviesScreen/TvSeriesScreen kategori rayı: 220dp odaklıyken / 0dp kapalıyken, animasyonsuz */
 .tv-cat-col {
-  width: 310px; flex: none; height: 100%; overflow-y: auto;
-  padding: 38px 18px 38px 40px; display: flex; flex-direction: column; gap: 4px; scrollbar-width: none;
+  width: 0; flex: none; height: 100%; overflow: hidden;
+  padding: 0; display: flex; flex-direction: column; gap: 4px; scrollbar-width: none;
+  transition: none;
+}
+.tv-cat-col.expanded {
+  width: 220px; overflow-y: auto;
+  padding: 38px 14px 38px 24px;
   border-inline-end: 1px solid rgba(255,255,255,.05);
 }
 .tv-cat-col::-webkit-scrollbar { width: 0; }
@@ -190,11 +226,25 @@
 /* ---------- Canlı TV (native 3 panel: kategori | kanal listesi | önizleme+EPG) ---------- */
 .tv-live3 { display: flex; height: 100%; }
 .tv-live-cats {
-  width: 268px; flex: none; height: 100%; overflow-y: auto;
-  padding: 34px 14px 34px 34px; display: flex; flex-direction: column; gap: 3px; scrollbar-width: none;
+  width: 140px; flex: none; height: 100%; overflow-y: auto; overflow-x: hidden;
+  padding: 22px 10px; display: flex; flex-direction: column; gap: 3px; scrollbar-width: none;
   border-inline-end: 1px solid rgba(255,255,255,.05);
+  background: #101722; transition: none; /* native: animasyonsuz anlık genişlik değişimi */
 }
+.tv-live-cats.expanded { width: 240px; }
 .tv-live-cats::-webkit-scrollbar { width: 0; }
+.tv-live-cats .tv-live-channels-head { padding: 0 4px 10px; }
+/* native LiveTvScreen kategori satırı paleti (sidebar/Movies'ten AYRI, ekrana özgü): normal #151C28, seçili #202A36, aktif(oynayan) #134E4A, focus #164E63 */
+.tv-live-cat {
+  display: block; width: 100%; text-align: start; padding: 10px 14px; border-radius: 10px; border: 0; cursor: pointer;
+  background: #151C28; color: #d6dde7; font-size: 15px; line-height: 1.34;
+  white-space: normal; word-break: break-word; overflow-wrap: anywhere; transition: background .12s;
+}
+.tv-live-cat.selected { background: #202A36; color: #fff; }
+.tv-live-cat.on-air { background: #134E4A; color: #fff; font-weight: 700; }
+.tv-live-cat.tv-focused, .tv-live-cat:focus-visible { background: #164E63; color: #fff; outline: none; }
+.tv-cat.on-air { box-shadow: inset 3px 0 #5EEAD4; }
+.on-air-dot { color: #5EEAD4; font-style: normal; font-size: 11px; white-space: nowrap; }
 
 .tv-live-channels { flex: 0.42; min-width: 0; height: 100%; background: #0F141E; display: flex; flex-direction: column; padding: 22px 16px; }
 .tv-live-channels-head { display: flex; align-items: baseline; justify-content: space-between; padding: 0 6px 12px; }
@@ -204,12 +254,12 @@
 .tv-live-channels-list::-webkit-scrollbar { width: 0; }
 .tv-live-row {
   display: flex; align-items: center; gap: 11px; width: 100%; text-align: start;
-  padding: 9px 10px; border-radius: 9px; border: 0; background: transparent; cursor: pointer;
+  padding: 9px 10px; border-radius: 9px; border: 0; background: #141B26; cursor: pointer;
   transition: background .12s;
 }
-.tv-live-row.selected { background: #18233440; }
-.tv-live-row.playing { box-shadow: inset 3px 0 var(--tv-primary); background: #12202e; }
-.tv-live-row.tv-focused, .tv-live-row:focus-visible { background: var(--tv-menu-focus); outline: none; }
+.tv-live-row.selected { background: #202A36; }
+.tv-live-row.playing { background: #134E4A; }
+.tv-live-row.tv-focused, .tv-live-row:focus-visible { background: #164E63; outline: none; }
 .tv-live-row .clogo { width: 44px; height: 44px; flex: none; display: grid; place-items: center; background: #0a121b; border-radius: 8px; overflow: hidden; }
 .tv-live-row .clogo img { max-width: 84%; max-height: 78%; object-fit: contain; }
 .tv-live-row .clogo b { color: var(--tv-text-2); font-size: 14px; }
@@ -217,21 +267,39 @@
 .tv-live-row .cinfo { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .tv-live-row .cinfo b { color: #fff; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tv-live-row .cinfo small { color: var(--tv-text-3); font-size: 11px; }
+.tv-live-row .cinfo small.on-air-dot { color: #5EEAD4; }
 
 .tv-live-preview { flex: 0.58; min-width: 0; height: 100%; background: #0B1018; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
 .tv-preview-box { position: relative; flex: 0.62; border-radius: 14px; overflow: hidden; background: #05080d; display: grid; place-items: center; }
 .tv-preview-video { width: 100%; height: 100%; object-fit: contain; background: #000; }
 .tv-preview-overlay, .tv-preview-empty { color: var(--tv-text-2); font-size: 17px; }
 .tv-preview-overlay { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.35); }
-.tv-live-badge { position: absolute; top: 12px; left: 12px; background: #e11d48; color: #fff; padding: 5px 11px; border-radius: 7px; font-size: 12px; font-weight: 800; letter-spacing: 1px; }
+.tv-live-badge { position: absolute; top: 12px; left: 12px; background: #D91E36; color: #fff; padding: 5px 11px; border-radius: 6px; font-size: 12px; font-weight: 800; letter-spacing: 1px; }
+.tv-live-quality { position: absolute; top: 12px; right: 12px; background: #0009; color: #60A5FA; padding: 4px 9px; border-radius: 6px; font-size: 11px; font-weight: 800; }
 
 .tv-preview-info { flex: 0.38; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
 .tv-preview-head { display: flex; align-items: center; gap: 13px; }
 .tv-preview-head .plogo { width: 54px; height: 54px; flex: none; border-radius: 10px; background: #0a121b; display: grid; place-items: center; overflow: hidden; }
 .tv-preview-head .plogo img { max-width: 84%; max-height: 78%; object-fit: contain; }
 .tv-preview-head .plogo b { color: var(--tv-text-2); }
+.tv-preview-head .pmeta { flex: 1; min-width: 0; }
 .tv-preview-head .pmeta b { font-size: 20px; color: #fff; display: block; }
 .tv-preview-head .pmeta small { color: var(--tv-text-2); font-size: 13px; }
+.tv-live-fav-btn { flex: none; background: #1E293B; border: 0; color: #fff; border-radius: 8px; padding: 8px 12px; font-size: 12px; cursor: pointer; }
+.tv-live-fav-btn.tv-focused, .tv-live-fav-btn:focus-visible { background: #2563EB; outline: none; }
+
+/* Canlı TV tam ekran (zapping) — native LiveTvScreen'in kendi fullscreen modu */
+.tv-live-fullscreen { position: fixed; inset: 0; background: #000; z-index: 100; }
+.tv-live-fs-overlay {
+  position: absolute; left: 34px; right: 34px; bottom: 30px; padding: 16px 22px; border-radius: 16px;
+  background: rgba(21,26,35,.9); display: flex; align-items: center; gap: 16px;
+}
+.tv-live-fs-num { font-size: 22px; font-weight: 800; color: #60A5FA; flex: none; }
+.tv-live-fs-info { min-width: 0; }
+.tv-live-fs-title-row { display: flex; align-items: center; gap: 10px; }
+.tv-live-fs-title-row b { font-size: 20px; color: #fff; }
+.tv-live-fs-quality { color: #60A5FA; font-size: 12px; font-weight: 800; }
+.tv-live-fs-info small { color: #CBD5E1; font-size: 13px; display: block; margin-top: 4px; }
 .tv-epg { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
 .tv-epg::-webkit-scrollbar { width: 0; }
 .tv-epg-loading { color: var(--tv-text-3); font-size: 15px; padding: 8px 0; }
@@ -259,18 +327,34 @@
 
 /* ---------- Ayarlar ---------- */
 .tv-settings { max-width: 900px; }
-.tv-set-block { margin-bottom: 30px; }
-.tv-set-block h2 { font-size: 19px; color: #fff; margin: 0 0 14px; }
-.tv-set-langs { display: flex; gap: 10px; flex-wrap: wrap; }
-.tv-set-lang { padding: 11px 20px; border-radius: 10px; border: 1px solid var(--tv-card-border); background: var(--tv-card); color: var(--tv-text-2); cursor: pointer; font-size: 15px; font-weight: 600; }
-.tv-set-lang.active { background: var(--tv-menu-selected); color: #fff; border-color: transparent; }
-.tv-set-lang.tv-focused, .tv-set-lang:focus-visible { background: var(--tv-menu-focus); color: #fff; border-color: transparent; outline: none; }
-.tv-set-info { display: flex; flex-direction: column; gap: 10px; background: var(--tv-card); border: 1px solid var(--tv-card-border); border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; max-width: 620px; }
-.tv-set-info > div { display: flex; gap: 16px; }
-.tv-set-info span { color: var(--tv-text-3); font-size: 14px; width: 90px; flex: none; }
-.tv-set-info b { color: #fff; font-size: 14px; font-weight: 500; word-break: break-all; }
-.tv-set-actions { display: flex; gap: 12px; flex-wrap: wrap; }
-.tv-set-about { color: var(--tv-text-2); font-size: 14px; }
+/* Ayarlar — native TvSettingsScreen (TvRoot.kt) birebir: mavi çubuklu bölüm başlığı + buton paleti. */
+.tv-settings { padding-bottom: 40px; }
+.tv-set-section-title { display: flex; align-items: center; gap: 8px; margin: 22px 0 10px; }
+.tv-set-section-title .bar { width: 3px; height: 18px; border-radius: 2px; background: #38BDF8; }
+.tv-set-section-title b { color: #DCE8F5; font-size: 13px; letter-spacing: .04em; }
+.tv-set-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.tv-set-btn {
+  padding: 9px 13px; border-radius: 8px; border: 0; cursor: pointer; font-size: 14px; font-weight: 600;
+  background: #1E293B; color: #fff;
+}
+.tv-set-btn.selected { background: #0F766E; }
+.tv-set-btn.focused { background: #0E7490; }
+.tv-set-btn.destructive { background: #7F1D1D; }
+.tv-set-btn.destructive.focused-destructive { background: #DC2626; }
+.tv-set-info-card {
+  display: flex; flex-direction: column; gap: 4px; background: #111827; border-radius: 11px;
+  padding: 14px; margin: 12px 0 4px; max-width: 620px;
+}
+.tv-set-info-card b { color: #fff; font-size: 15px; }
+.tv-set-info-card span { color: var(--tv-text-2); font-size: 13px; word-break: break-all; }
+
+/* ---------- Tanılama (native TvDiagnosticsScreen birebir kart stili) ---------- */
+.tv-diag-card {
+  display: flex; flex-direction: column; gap: 4px; background: #151C28; border-radius: 12px;
+  padding: 16px; max-width: 700px;
+}
+.tv-diag-card b { color: #fff; font-size: 15px; }
+.tv-diag-card span { color: var(--tv-text-2); font-size: 13px; word-break: break-all; }
 
 /* ---------- Dizi detay (sezon/bölüm) ---------- */
 .tv-series { height: 100%; overflow-y: auto; padding: 30px 44px; scrollbar-width: none; }
@@ -298,25 +382,69 @@
 .tv-episode-meta b { color: #fff; font-size: 16px; }
 .tv-episode-meta small { color: var(--tv-text-2); font-size: 13px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
-/* ---------- Oynatıcı ---------- */
-.tv-player { position: fixed; inset: 0; background: #000; z-index: 100; }
-.tv-video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+/* ---------- Oynatıcı (native TvNativePlayer.kt birebir kontrol çubuğu) ---------- */
+.tv-player { position: fixed; inset: 0; background: #000; z-index: 100; outline: none; }
+.tv-video { width: 100%; height: 100%; background: #000; }
 .tv-player-state {
   position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 20px;
-  background: rgba(0,0,0,.4);
+  background: rgba(0,0,0,.4); pointer-events: none;
 }
+
+.tv-player-topback {
+  position: absolute; top: 24px; left: 24px; z-index: 2; width: 42px; height: 42px; border-radius: 50%;
+  border: 1px solid #DCE8EF40; background: #0B1117C9; color: #F2F7FA; font-size: 20px; cursor: pointer;
+}
+.tv-player-topback.tv-focused, .tv-player-topback:focus-visible { border: 1.5px solid #38C9F2; background: #142630E6; color: #64D8F7; outline: none; }
+
+.tv-player-center { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 18px; z-index: 1; }
+.tv-player-icon {
+  border-radius: 50%; border: 1px solid #DCE8EF40; background: #0B1117C9; color: #F2F7FA; cursor: pointer;
+  width: 42px; height: 42px; font-size: 23px; display: grid; place-items: center;
+}
+.tv-player-icon.prominent { width: 48px; height: 48px; font-size: 30px; }
+.tv-player-icon.small { width: 42px; height: 42px; font-size: 20px; }
+.tv-player-icon.tv-focused, .tv-player-icon:focus-visible { border: 1.5px solid #38C9F2; background: #142630E6; color: #64D8F7; outline: none; }
+
 .tv-player-bar {
-  position: absolute; left: 0; right: 0; bottom: 0; padding: 20px 32px;
-  display: flex; align-items: center; gap: 18px;
-  background: linear-gradient(transparent, rgba(0,0,0,.85));
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 42px 42px 18px;
+  display: flex; flex-direction: column; gap: 10px; z-index: 1;
+  background: linear-gradient(to top, #00070BF5, #000508B8 60%, transparent);
 }
-.tv-player-back {
-  border: 1px solid #ffffff40; background: #ffffff14; color: #fff; border-radius: 10px;
-  padding: 10px 18px; font-size: 15px; cursor: pointer;
-}
-.tv-player-back.tv-focused, .tv-player-back:focus-visible { outline: 3px solid var(--tv-focus); background: #ffffff28; }
 .tv-player-meta b { font-size: 18px; color: #fff; display: block; }
-.tv-player-meta small { color: #cbd5e1; font-size: 13px; }
+.tv-player-meta small { color: #CBD5E1B3; font-size: 13px; }
+
+.tv-player-seekrow { display: flex; align-items: center; gap: 12px; }
+.tv-player-time { color: #CBD5E1; font-size: 13px; min-width: 42px; }
+.tv-seekbar { position: relative; flex: 1; padding: 8px 4px; border-radius: 8px; cursor: pointer; }
+.tv-seekbar.tv-focused, .tv-seekbar:focus-visible { background: #22D3EE33; outline: none; }
+.tv-seekbar-track { height: 5px; border-radius: 3px; background: #334155; overflow: hidden; }
+.tv-seekbar-track i { display: block; height: 100%; background: #3B82F6; }
+.tv-seekbar.tv-focused .tv-seekbar-track i, .tv-seekbar:focus-visible .tv-seekbar-track i { background: #22D3EE; }
+.tv-seekbar-hint { position: absolute; bottom: 100%; left: 0; margin-bottom: 8px; color: #BAE6FD; font-size: 12px; white-space: nowrap; }
+
+.tv-player-utility { display: flex; justify-content: flex-end; gap: 5px; }
+
+.tv-player-panel {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 390px; max-width: 92vw; z-index: 3;
+  background: #111827F2; padding: 18px; display: flex; flex-direction: column; gap: 9px; overflow-y: auto;
+}
+.tv-player-panel.wide { width: 410px; }
+.tv-player-panel h3 { color: #fff; margin: 0 0 4px; font-size: 17px; }
+.tv-player-panel b { color: var(--tv-text-2); font-size: 12px; margin-top: 6px; }
+.tv-player-panel-btn {
+  text-align: start; padding: 12px 15px; border-radius: 10px; border: 1px solid #4F667533; background: #111A22;
+  color: #fff; font-size: 14px; cursor: pointer;
+}
+.tv-player-panel-btn.ghost { background: transparent; }
+.tv-player-panel-btn.tv-focused, .tv-player-panel-btn:focus-visible { border: 1px solid #38C9F2; background: #123647; outline: none; }
+.tv-player-panel-empty { color: var(--tv-text-2); font-size: 13px; }
+.tv-player-panel-input { padding: 11px 14px; border-radius: 10px; border: 1px solid var(--tv-card-border); background: #0a1017; color: #fff; font-size: 14px; }
+.tv-player-panel-input.tv-focused, .tv-player-panel-input:focus-visible { border-color: var(--tv-focus); outline: none; }
+.tv-player-panel-langs, .tv-player-panel-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.tv-player-panel-chip { padding: 8px 13px; border-radius: 16px; border: 1px solid #4F667533; background: #111A22; color: var(--tv-text-2); font-size: 13px; cursor: pointer; }
+.tv-player-panel-chip.active { background: #123647; border-color: #38C9F2; color: #fff; }
+.tv-player-panel-chip.tv-focused, .tv-player-panel-chip:focus-visible { border-color: #38C9F2; color: #fff; outline: none; }
+.tv-player-panel-list { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
 
 /* ---------- Setup ekranı ---------- */
 .tv-setup { height: 100vh; width: 100vw; display: grid; place-items: center;
@@ -385,11 +513,6 @@
 }
 .tv-setup2-tab.active { border-color: var(--tv-primary); color: #fff; background: #0e2233; }
 .tv-setup2-tab.tv-focused, .tv-setup2-tab:focus-visible { outline: 3px solid var(--tv-focus); outline-offset: 2px; }
-.tv-setup2-demo {
-  align-self: flex-start; margin-top: 16px; background: transparent; border: 0;
-  color: var(--tv-text-3); cursor: pointer; font-size: 14px; text-decoration: underline;
-}
-.tv-setup2-demo.tv-focused, .tv-setup2-demo:focus-visible { color: #fff; outline: none; }
 
 .tv-setup2-card {
   flex: 1.22; background: #111827; border-radius: 18px; padding: 26px;
@@ -441,6 +564,131 @@
   background: #1b2536; color: #cdd6e6; font-size: 15px; font-weight: 600;
 }
 .tv-profile-manage.tv-focused, .tv-profile-manage:focus-visible { background: #2563EB; color: #fff; outline: none; }
+
+/* ---------- Home hero (native HomeFeaturedHero, 190dp yüksekliğe karşılık ölçekli) ---------- */
+.tv-hero {
+  position: relative; width: 100%; height: var(--tv-hero-h); border-radius: 12px; overflow: hidden;
+  margin-bottom: 28px; background-color: #0a121b; background-size: cover; background-position: center;
+  border: 0; padding: 0; cursor: pointer; display: block; text-align: start;
+}
+.tv-hero.tv-focused, .tv-hero:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--tv-focus) inset; }
+.tv-hero-gradient-h { position: absolute; inset: 0; background: linear-gradient(90deg, #020B12 0%, rgba(2,11,18,.94) 40%, transparent 75%); }
+.tv-hero-gradient-v { position: absolute; inset: 0; background: linear-gradient(180deg, transparent 55%, rgba(2,11,18,.7) 100%); }
+.tv-hero-time { position: absolute; top: 16px; inset-inline-end: 22px; color: #fff; font-weight: 700; }
+.tv-hero-info { position: absolute; left: 0; bottom: 26px; padding: 0 32px; max-width: 62%; }
+[dir="rtl"] .tv-hero-info { left: auto; right: 0; }
+.tv-hero-info h2 { font-size: 26px; color: var(--tv-text); font-weight: 600; margin: 0 0 6px; }
+.tv-hero-sub { display: flex; gap: 12px; color: var(--tv-text-2); font-size: 13px; margin-bottom: 6px; }
+.tv-hero-info p { color: var(--tv-text-2); font-size: 13px; margin: 0 0 10px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; max-width: 640px; }
+.tv-hero-cta {
+  display: inline-block; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600;
+  background: rgba(16,26,34,.6); border: 1px solid var(--tv-text-3); color: var(--tv-text);
+}
+.tv-hero.tv-focused .tv-hero-cta, .tv-hero:focus-visible .tv-hero-cta { background: rgba(34,211,238,.2); border-color: var(--tv-focus); }
+.tv-hero-dots { position: absolute; bottom: 9px; left: 0; right: 0; display: flex; justify-content: center; gap: 7px; }
+.tv-hero-dots i { width: 5px; height: 5px; border-radius: 50%; background: #64748B; display: block; }
+.tv-hero-dots i.on { width: 7px; height: 7px; background: #fff; }
+
+/* Continue-watching uzun-basma menüsü (native AlertDialog eşdeğeri) */
+.tv-continue-menu { display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 10px; background: #111827; }
+.tv-continue-menu button { background: #1E293B; color: #fff; border: 0; border-radius: 8px; padding: 8px 10px; font-size: 12px; cursor: pointer; }
+.tv-continue-menu button.tv-focused, .tv-continue-menu button:focus-visible { background: var(--tv-menu-focus); outline: none; }
+
+/* Home "Canlı Şimdi" rail kartı */
+.tv-live-fav-card {
+  position: relative; width: 142px; height: 112px; flex: none; border-radius: 8px; overflow: hidden;
+  background: var(--tv-card); border: 1px solid var(--tv-card-border); cursor: pointer; padding: 0;
+}
+.tv-live-fav-card img { width: 100%; height: 100%; object-fit: contain; padding: 10px; box-sizing: border-box; }
+.tv-live-fav-card.tv-focused, .tv-live-fav-card:focus-visible { border-color: var(--tv-focus); outline: none; }
+.tv-live-fav-card .badge { position: absolute; top: 6px; left: 6px; background: #D91E36; color: #fff; font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 6px; letter-spacing: .5px; }
+
+/* ---------- Movies/Series 3. panel: önizleme (native BrowsePreviewPanel) ---------- */
+.tv-browse-preview {
+  flex: none; width: 280px; overflow-y: auto; margin: 16px 16px 16px 0; padding: 12px;
+  display: flex; flex-direction: column; gap: 8px; background: #0B1420; border-radius: 12px; scrollbar-width: none;
+  align-self: flex-start;
+}
+.tv-browse-preview::-webkit-scrollbar { width: 0; }
+.tv-browse-preview-poster { width: 108px; align-self: center; aspect-ratio: 2/3; border-radius: 10px; overflow: hidden; background: var(--tv-card); display: grid; place-items: center; }
+.tv-browse-preview-poster img { width: 100%; height: 100%; object-fit: cover; }
+.tv-browse-preview-title { color: #fff; font-weight: 700; font-size: 17px; }
+.tv-browse-preview-meta { color: #60A5FA; font-size: 12px; }
+.tv-browse-preview-overview { color: #D1D8E3; font-size: 13px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 9; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* Sabit sütun sayılı ızgaralar (native: her zaman sabit, responsive değil) */
+.tv-grid-fixed4 { grid-template-columns: repeat(4, 132px); }
+.tv-grid-fixed6 { grid-template-columns: repeat(6, 132px); }
+
+/* ---------- MyList ---------- */
+.tv-mylist-cell { display: flex; flex-direction: column; gap: 6px; }
+.tv-mylist-remove {
+  background: #1E293B; border: 0; color: #fff; border-radius: 8px; padding: 7px 8px; font-size: 11px; cursor: pointer;
+}
+.tv-mylist-remove.tv-focused, .tv-mylist-remove:focus-visible { background: var(--tv-menu-focus); outline: none; }
+
+/* ---------- Arama: son aramalar ---------- */
+.tv-search-recent { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+
+/* ---------- Ortak film+dizi detay (native GenericDetailScreen) ---------- */
+.tv-detail { position: relative; height: 100%; overflow-y: auto; padding: 30px 44px; scrollbar-width: none; }
+.tv-detail::-webkit-scrollbar { width: 0; }
+.tv-detail-backdrop { position: absolute; inset: 0; height: 480px; background-size: cover; background-position: center top; z-index: -1; }
+.tv-detail-gradient-h { position: absolute; inset: 0; background: linear-gradient(90deg, #05090F 0%, rgba(5,9,15,.8) 40%, rgba(5,9,15,.4) 100%); }
+.tv-detail-gradient-v { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(5,9,15,.13) 0%, #05090F 100%); }
+.tv-detail-head { position: relative; }
+.tv-detail-progress { max-width: 500px; margin: 6px 0; }
+.tv-detail-progress small { color: var(--tv-text-2); font-size: 13px; }
+.tv-detail-actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0; }
+.tv-detail-btn {
+  border: 1px solid var(--tv-card-border); background: var(--tv-card); color: #fff; border-radius: 10px;
+  padding: 10px 16px; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.tv-detail-btn.primary { background: var(--tv-primary); border-color: transparent; }
+.tv-detail-btn.disabled { opacity: .5; }
+.tv-detail-btn.tv-focused, .tv-detail-btn:focus-visible { outline: 3px solid var(--tv-focus); outline-offset: 2px; }
+.tv-detail-people { margin-top: 12px; }
+.tv-detail-people > b { color: var(--tv-text-2); font-size: 13px; display: block; margin-bottom: 6px; }
+.tv-detail-people-row { display: flex; gap: 12px; overflow-x: auto; scrollbar-width: none; padding-bottom: 4px; }
+.tv-detail-people-row::-webkit-scrollbar { height: 0; }
+.tv-detail-person-chip {
+  flex: none; width: 76px; display: flex; flex-direction: column; align-items: center; gap: 5px;
+  background: transparent; border: 0; cursor: pointer; padding: 0;
+}
+.tv-detail-person-chip img, .tv-detail-person-chip .ph {
+  width: 62px; height: 62px; border-radius: 50%; object-fit: cover; background: var(--tv-card);
+  display: grid; place-items: center; color: var(--tv-text-2); font-weight: 700;
+}
+.tv-detail-person-chip small { color: var(--tv-text-2); font-size: 11px; text-align: center; }
+.tv-detail-person-chip.tv-focused, .tv-detail-person-chip:focus-visible { outline: none; }
+.tv-detail-person-chip.tv-focused img, .tv-detail-person-chip:focus-visible img { box-shadow: 0 0 0 3px var(--tv-focus); }
+.tv-detail-section-title { color: #fff; font-size: 19px; font-weight: 700; margin: 26px 0 14px; }
+.tv-detail-person-title { color: #fff; font-size: 26px; margin: 10px 0 20px; }
+.tv-detail-filmography { display: grid; grid-template-columns: repeat(5, 132px); gap: 16px; }
+
+.tv-episode-row { display: flex; align-items: center; gap: 10px; }
+.tv-episode-row .tv-episode { flex: 1; }
+.tv-episode-watch {
+  flex: none; background: #1E293B; border: 0; color: #fff; border-radius: 8px; padding: 8px 12px; font-size: 12px; cursor: pointer;
+}
+.tv-episode-watch.tv-focused, .tv-episode-watch:focus-visible { background: var(--tv-menu-focus); outline: none; }
+.tv-episode-sub { color: var(--tv-text-3); }
+
+/* ---------- İzleme Geçmişi ---------- */
+.tv-history-list { display: flex; flex-direction: column; gap: 10px; }
+.tv-history-row { display: flex; align-items: center; gap: 16px; background: #151C28; border-radius: 10px; padding: 10px; }
+.tv-history-poster { width: 100px; height: 150px; flex: none; }
+.tv-history-meta { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+.tv-history-meta b { color: #fff; font-size: 16px; }
+.tv-history-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* Arama içi hafif canlı oynatıcı (native SearchLivePlayer: yalnızca geri butonu) */
+.tv-search-live-back {
+  position: absolute; top: 20px; left: 20px; border: 1px solid #ffffff40; background: #ffffff14;
+  color: #fff; border-radius: 10px; padding: 10px 18px; font-size: 15px; cursor: pointer;
+}
+[dir="rtl"] .tv-search-live-back { left: auto; right: 20px; }
+.tv-search-live-back.tv-focused, .tv-search-live-back:focus-visible { outline: 3px solid var(--tv-focus); background: #ffffff28; }
 
 /* Dil seçici (sağ üst) */
 .tv-lang { position: fixed; top: 22px; right: 26px; z-index: 50; display: flex; gap: 8px; }

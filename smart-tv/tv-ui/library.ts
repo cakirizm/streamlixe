@@ -1,5 +1,16 @@
 // StreamLiveX TV — Xtream kütüphane import'u ve medya modeli (PlayerApp eşleştirmesiyle birebir).
 import type { Provider } from "./Setup";
+import { log } from "./diagnosticsLog";
+
+const LAST_INDEXED_KEY = "slx-tv-last-indexed";
+
+// Native "Son index" / "24 saatlik yenileme: Gerekli/Güncel" (TvDiagnosticsScreen) eşdeğeri.
+export function markIndexed(): void {
+  try { localStorage.setItem(LAST_INDEXED_KEY, String(Date.now())); } catch { /* göz ardı */ }
+}
+export function lastIndexedAtMs(): number | null {
+  try { const v = localStorage.getItem(LAST_INDEXED_KEY); return v ? Number(v) : null; } catch { return null; }
+}
 
 export type Kind = "live" | "movie" | "series";
 export type Media = {
@@ -22,9 +33,12 @@ export async function importXtream(p: Provider): Promise<Library> {
   });
   if (!res.ok) {
     const e = await res.json().catch(() => ({} as any));
-    throw new Error(e.error || `İçe aktarma başarısız (${res.status})`);
+    const msg = e.error || `İçe aktarma başarısız (${res.status})`;
+    log("import", msg);
+    throw new Error(msg);
   }
   const data = await res.json();
+  markIndexed();
   const base = norm(p.server);
   const u = p.username || "", pw = p.password || "";
   const liveMap = catMap(data.liveCategories), vodMap = catMap(data.vodCategories), seriesMap = catMap(data.seriesCategories);
@@ -83,4 +97,31 @@ export async function resolveSeriesFirstEpisode(p: Provider, m: Media): Promise<
 // Kategori adındaki baştaki/sondaki "|" ve boşluk gürültüsünü temizler (görüntü için).
 export function cleanCat(s: string): string {
   return s.replace(/^[\s|]+/, "").replace(/[\s|]+$/, "").replace(/\s*\|\s*/g, " · ").trim() || s;
+}
+
+export type SeriesEpisode = { id: string; title: string; episode_num: number; container_extension?: string; info?: any };
+export type SeriesInfoResult = { info: any; episodes: Record<string, SeriesEpisode[]> };
+
+// GenericDetailScreen ve arama sonuçlarında ortak kullanılan Xtream series_info çağrısı.
+export async function fetchSeriesInfo(p: Provider, seriesId: string): Promise<SeriesInfoResult | null> {
+  if (!p || p.method !== "xtream") return null;
+  try {
+    const r = await fetch("/api/import", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ method: "series_info", server: p.server, username: p.username, password: p.password, seriesId }),
+    });
+    const data = await r.json();
+    return { info: data.info || {}, episodes: data.episodes || {} };
+  } catch { return null; }
+}
+
+export function episodeStreamUrl(p: Provider, ep: SeriesEpisode): string {
+  const base = (p.server || "").replace(/\/+$/, "");
+  return `${base}/series/${p.username}/${p.password}/${ep.id}.${ep.container_extension || "mp4"}`;
+}
+
+// "{isim} · S{sezon} B{bölüm}" biçimindeki oynatma başlığından sezon/bölüm çözer (GenericDetailScreen + Player autoNext ortak kullanır).
+export function parseSeasonEpisode(name: string): { season: string; ep: number } | null {
+  const m = /S(\d+)\s*B(\d+)/.exec(name);
+  return m ? { season: m[1], ep: Number(m[2]) } : null;
 }
