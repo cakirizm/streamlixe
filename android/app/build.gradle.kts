@@ -12,6 +12,17 @@ val configuredWebUrl = providers.gradleProperty("STREAMLIVEX_WEB_URL")
     .get()
 val escapedWebUrl = configuredWebUrl.replace("\\", "\\\\").replace("\"", "\\\"")
 
+// Sürüm bilgisi: Play Console'a her yüklemede versionCode bir öncekinden BÜYÜK
+// olmalı. Değerler CI/betikten -PSTREAMLIVEX_VERSION_CODE / _NAME ile geçilebilir;
+// verilmezse aşağıdaki varsayılanlar kullanılır.
+val buildVersionCode = providers.gradleProperty("STREAMLIVEX_VERSION_CODE")
+    .map { it.toInt() }
+    .orElse(1)
+    .get()
+val buildVersionName = providers.gradleProperty("STREAMLIVEX_VERSION_NAME")
+    .orElse("1.0.0")
+    .get()
+
 // Yayın imzası bilgileri: önce android/keystore.properties dosyasından, yoksa
 // ortam değişkenlerinden (CI) okunur. Bu bilgiler ASLA depoya yazılmaz
 // (keystore.properties ve *.jks .gitignore ile hariç tutulur).
@@ -40,8 +51,8 @@ android {
         applicationId = "com.streamlivex.android"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = buildVersionCode
+        versionName = buildVersionName
         buildConfigField("String", "WEB_APP_URL", "\"$escapedWebUrl\"")
     }
 
@@ -60,6 +71,11 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            // Play Console'un istediği native (.so) hata ayıklama sembolleri AAB'ye
+            // gömülür; çökme/ANR dökümleri okunaklı olur. FULL = tam sembol tablosu.
+            ndk {
+                debugSymbolLevel = "FULL"
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

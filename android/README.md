@@ -17,6 +17,18 @@ cd android
 
 APK dosyası `android/app/build/outputs/apk/debug/app-debug.apk` altında oluşur.
 
+## Google Play yayını
+
+Telefon, tablet, Android TV ve Google TV için tek uygulamayla Play Console'a
+yükleme adımları: [`PUBLISHING.md`](PUBLISHING.md). Yayın paketini (AAB) üretmek için:
+
+```powershell
+cd android
+./scripts/build-release.ps1
+```
+
+Mağaza metinleri ve görsel gereksinimleri: [`play-store/`](play-store/).
+
 ## Yerel web arayüzüyle geliştirme
 
 Önce depo kökünde web sunucusunu çalıştırın. Doğrudan Vite geliştirme sunucusu varsayılan olarak `5173` portunu kullanır ve Android emülatörü ana bilgisayara `10.0.2.2` adresiyle ulaşır:

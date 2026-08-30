@@ -8,6 +8,7 @@ dist/
 
 .vinext/
 .vs/
+tsconfig.tsbuildinfo
 desktop/**/bin/
 desktop/**/obj/
 desktop/artifacts/
