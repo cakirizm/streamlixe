@@ -8,7 +8,6 @@ dist/
 
 .vinext/
 .vs/
-tsconfig.tsbuildinfo
 desktop/**/bin/
 desktop/**/obj/
 desktop/artifacts/
@@ -27,6 +26,7 @@ smart-tv/dist/
 smart-tv/build/
 smart-tv/spa/dist/
 smart-tv/spa/public/
+smart-tv/run/
 *.ipk
 *.wgt
 
