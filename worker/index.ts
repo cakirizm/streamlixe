@@ -25,6 +25,19 @@ interface ExecutionContext {
 // dangerouslyAllowSVG: true in next.config.js and uncomment below:
 // const imageConfig: ImageConfig = { dangerouslyAllowSVG: true };
 
+// TV (webOS/Tizen) paketi streamlivex.com'dan farklı bir origin olduğundan /api/* uçlarına
+// çapraz-origin erişim için CORS gerekir. Uçlar durum bilgisi tutmaz/çerez kullanmaz, bu yüzden
+// "*" güvenli. Native web (same-origin) davranışı değişmez.
+function corsHeaders(): Record<string, string> {
+  return {
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET, POST, OPTIONS",
+    "access-control-allow-headers": "content-type, range",
+    "access-control-expose-headers": "content-length, content-range, accept-ranges, x-streamlivex-attempts",
+    "access-control-max-age": "86400",
+  };
+}
+
 const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     if (env && typeof env === "object") {
@@ -48,6 +61,18 @@ const worker = {
           return result.response();
         },
       }, allowedWidths);
+    }
+
+    if (url.pathname.startsWith("/api/")) {
+      // Preflight'ı kısa devre yap.
+      if (request.method === "OPTIONS") {
+        return new Response(null, { status: 204, headers: corsHeaders() });
+      }
+      // Gerçek yanıta CORS başlıklarını ekle (yayın akışı dahil gövde korunur).
+      const response = await handler.fetch(request, env, ctx);
+      const headers = new Headers(response.headers);
+      for (const [key, value] of Object.entries(corsHeaders())) headers.set(key, value);
+      return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
     }
 
     return handler.fetch(request, env, ctx);

@@ -188,13 +188,19 @@ async function importRequest(payload:Record<string,string>){
 // adresi orada çözümlenemeyip anında "Failed to parse URL" hatası veriyordu — bölüm/kanal
 // oynatmanın sürekli başarısız motora düşüp yeniden denemesine (donarak yükleniyor hissi) sebep
 // oluyordu.
-const assetUrl=(url?:string)=>url?`${typeof window!=="undefined"?window.location.origin:""}/api/stream?url=${encodeURIComponent(url)}`:"";
+// TV (webOS/Tizen) paketinde uygulama yerel bir origin'den (ör. file://) açılır; bu yüzden
+// proxy origin'i global ile streamlivex.com'a yönlendirilebilir. Global tanımsızsa (normal web
+// derlemesi) davranış değişmez: window.location.origin kullanılır.
+const proxyOrigin=()=>(typeof window!=="undefined"&&(window as any).__SLX_PROXY_ORIGIN__)||(typeof window!=="undefined"?window.location.origin:"");
+const assetUrl=(url?:string)=>url?`${proxyOrigin()}/api/stream?url=${encodeURIComponent(url)}`:"";
 // Only initial playback requests receive short, status-aware retries at the
 // server. Playlist segments, images and subtitles deliberately do not, so a
 // failing upstream cannot multiply requests for every asset.
 const playbackUrl=(url?:string)=>{const proxied=assetUrl(url);return proxied?`${proxied}&startup=1`:""};
 type PlaybackCandidate={url:string;type:"transcode"|"hls"|"mpegts"|"native";label:string};
-const preferDirectHttp=(url:string)=>typeof window!=="undefined"&&window.location.protocol==="http:"&&/^http:\/\//i.test(url);
+// TV residential IP'de olduğundan yayınlar doğrudan ham URL ile oynatılır (proxy 404 veriyor).
+// __SLX_TV_DIRECT__ global'i TV paketinde ayarlanır; normal web'de tanımsız → eski davranış.
+const preferDirectHttp=(url:string)=>typeof window!=="undefined"&&(((window as any).__SLX_TV_DIRECT__===true&&/^https?:\/\//i.test(url))||(window.location.protocol==="http:"&&/^http:\/\//i.test(url)));
 const isMpegTsUrl=(url:string)=>/(?:\.|\/)ts(?:$|[?#])/i.test(url);
 const hlsAlternativeUrl=(url:string)=>url.replace(/(?:\.|\/)ts(?=$|[?#])/i,match=>match.startsWith("/")?"/m3u8":".m3u8");
 const vodHlsAlternativeUrl=(url:string)=>url.replace(/(?:\.|\/)(?:mkv|mp4|avi|mov|m4v)(?=$|[?#])/i,match=>match.startsWith("/")?"/m3u8":".m3u8");

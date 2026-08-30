@@ -1,0 +1,16 @@
+{
+  "id": "com.streamlivex.app",
+  "version": "1.0.0",
+  "vendor": "StreamLiveX",
+  "type": "web",
+  "main": "index.html",
+  "title": "StreamLiveX",
+  "appDescription": "Kendi IPTV aboneliğini getir, StreamLiveX ile izle.",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "iconColor": "#0b0f1a",
+  "bgColor": "#0b0f1a",
+  "disableBackHistoryAPI": true,
+  "supportPortraitMode": false,
+  "handlesRelaunch": true
+}

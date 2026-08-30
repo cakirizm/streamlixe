@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  StreamLiveX — Samsung Tizen TV web uygulaması yapılandırması.
+  NOT: tizen:application@id ön eki aşağıda GEÇİCİ/YEREL bir değer (SLX0000001) —
+  gerçek Samsung author sertifikası üretilip `tizen security-profiles add` çalışınca
+  Samsung'un atadığı gerçek 10 haneli önekle DEĞİŞTİRİLMELİ (mağaza gönderimi için zorunlu).
+  Bu değer yalnızca emülatörde yerel test amaçlıdır.
+-->
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets"
+        id="http://streamlivex.com/app" version="1.0.0" viewmodes="maximized">
+    <tizen:application id="SLX0000001.StreamLiveX" package="SLX0000001" required_version="6.0"/>
+    <content src="index.html"/>
+    <feature name="http://tizen.org/feature/screen.size.all"/>
+    <icon src="icon.png"/>
+    <name>StreamLiveX</name>
+    <tizen:profile name="tv"/>
+    <tizen:privilege name="http://tizen.org/privilege/internet"/>
+    <tizen:privilege name="http://developer.samsung.com/privilege/network.public"/>
+    <tizen:setting screen-orientation="landscape" context-menu="disable"
+                   background-support="disable" encryption="disable"
+                   install-location="auto" hwkey-event="enable"/>
+</widget>
