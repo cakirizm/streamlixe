@@ -15,8 +15,19 @@ function proxied(value: string, base: URL) { return `/api/stream?url=${encodeURI
 // deployment of this same app) that hits the upstream directly instead.
 // That origin's own /api/stream does the real fetch + playlist rewriting,
 // so this leg is a transparent pass-through — no double-processing.
-const RELAY_ORIGIN = process.env.STREAM_RELAY_ORIGIN?.trim().replace(/\/$/, "");
-const RELAY_HOST = process.env.STREAM_RELAY_HOST?.trim();
+async function getRelayConfig() {
+  let origin = (process.env.STREAM_RELAY_ORIGIN || "").trim().replace(/\/$/, "");
+  let host = (process.env.STREAM_RELAY_HOST || "").trim();
+  if (!origin) {
+    try {
+      const { env } = await import("cloudflare:workers");
+      const e = env as Record<string, unknown> | undefined;
+      if (typeof e?.STREAM_RELAY_ORIGIN === "string") origin = e.STREAM_RELAY_ORIGIN.trim().replace(/\/$/, "");
+      if (typeof e?.STREAM_RELAY_HOST === "string") host = e.STREAM_RELAY_HOST.trim();
+    } catch {}
+  }
+  return { origin: origin || null, host: host || null };
+}
 
 function resilientBody(body: ReadableStream<Uint8Array> | null) {
   if (!body) return null;
@@ -84,10 +95,15 @@ export async function GET(request: Request) {
     const headers = new Headers({ "user-agent": "VLC/3.0.21 LibVLC/3.0.21", accept: "*/*", "accept-language": "tr-TR,tr;q=0.9,en;q=0.7" });
     const range = request.headers.get("range"); if (range) headers.set("range", range);
 
-    if (RELAY_ORIGIN) {
+    const { origin: RELAY_ORIGIN, host: RELAY_HOST } = await getRelayConfig();
+    const isRelayedRequest = request.headers.has("x-streamlivex-relay");
+    const isRelayHost = RELAY_ORIGIN ? (requestUrl.host === new URL(RELAY_ORIGIN).host || request.headers.get("host") === new URL(RELAY_ORIGIN).host) : false;
+
+    if (RELAY_ORIGIN && !isRelayedRequest && !isRelayHost) {
       const relayHeaders = new Headers();
       if (range) relayHeaders.set("range", range);
       if (RELAY_HOST) relayHeaders.set("host", RELAY_HOST);
+      relayHeaders.set("x-streamlivex-relay", "1");
       const relayUrl = new URL("/api/stream", `${RELAY_ORIGIN}/`);
       relayUrl.searchParams.set("url", source.href);
       if (startup) relayUrl.searchParams.set("startup", "1");

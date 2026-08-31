@@ -5,8 +5,19 @@ const blocked = /^(localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2
 // set, forward the raw import request to another origin (e.g. a shared-
 // hosting deployment of this same app, which has no such per-request CPU
 // cap) and pass its response straight through.
-const IMPORT_RELAY_ORIGIN = process.env.IMPORT_RELAY_ORIGIN?.trim().replace(/\/$/, "");
-const IMPORT_RELAY_HOST = process.env.IMPORT_RELAY_HOST?.trim();
+async function getImportRelayConfig() {
+  let origin = (process.env.IMPORT_RELAY_ORIGIN || "").trim().replace(/\/$/, "");
+  let host = (process.env.IMPORT_RELAY_HOST || "").trim();
+  if (!origin) {
+    try {
+      const { env } = await import("cloudflare:workers");
+      const e = env as Record<string, unknown> | undefined;
+      if (typeof e?.IMPORT_RELAY_ORIGIN === "string") origin = e.IMPORT_RELAY_ORIGIN.trim().replace(/\/$/, "");
+      if (typeof e?.IMPORT_RELAY_HOST === "string") host = e.IMPORT_RELAY_HOST.trim();
+    } catch {}
+  }
+  return { origin: origin || null, host: host || null };
+}
 
 class ImportError extends Error {
   constructor(message: string, readonly status = 400) { super(message); }
@@ -32,7 +43,13 @@ async function get(url: URL) {
     // 502/504 kullanmıyoruz: relay mimarisinde bu istek bir Cloudflare Worker'ın fetch()
     // alt-isteği olarak görülebiliyor ve Cloudflare, 502/504 durum kodlu alt-istek yanıtlarının
     // gövdesini kendi jenerik hata sayfasıyla değiştiriyor -- bizim Türkçe mesajımızı yutuyor.
-    if (!response.ok) throw new ImportError(`Yayın sunucusu ${response.status} hatası verdi`, 500);
+    if (!response.ok) {
+      // 401/403/404/512: Xtream panelleri hatalı giriş veya süresi dolmuş abonelik için
+      // genelde bu kodları döndürür; kullanıcıya teknik durum kodu yerine ne yapması
+      // gerektiğini anlatan bir mesaj gösteriyoruz.
+      if ([401, 403, 404, 512].includes(response.status)) throw new ImportError("Bilgileriniz hatalı veya aboneliğinizin süresi dolmuş olabilir. Sunucu adresi, kullanıcı adı ve şifreyi kontrol edip tekrar deneyin.", 500);
+      throw new ImportError(`Yayın sunucusu ${response.status} hatası verdi`, 500);
+    }
     return response;
   } catch (error) {
     if (error instanceof ImportError) throw error;
@@ -52,22 +69,28 @@ async function getText(url: URL) {
 }
 
 export async function POST(request: Request) {
-  if (IMPORT_RELAY_ORIGIN) {
+  const { origin: IMPORT_RELAY_ORIGIN, host: IMPORT_RELAY_HOST } = await getImportRelayConfig();
+  const requestUrl = new URL(request.url);
+  const isRelayedRequest = request.headers.has("x-streamlivex-relay");
+  const isRelayHost = IMPORT_RELAY_ORIGIN ? (requestUrl.host === new URL(IMPORT_RELAY_ORIGIN).host || request.headers.get("host") === new URL(IMPORT_RELAY_ORIGIN).host) : false;
+
+  if (IMPORT_RELAY_ORIGIN && !isRelayedRequest && !isRelayHost) {
     try {
       const bodyText = await request.text();
       const relayHeaders = new Headers({ "content-type": "application/json" });
       if (IMPORT_RELAY_HOST) relayHeaders.set("host", IMPORT_RELAY_HOST);
+      relayHeaders.set("x-streamlivex-relay", "1");
       // Kept comfortably under Cloudflare Workers' own request duration limit so
       // we always get to return our own JSON error instead of Cloudflare's raw
       // "error code: 502" page when a request runs long.
       const relayed = await fetch(`${IMPORT_RELAY_ORIGIN}/api/import`, { method: "POST", headers: relayHeaders, body: bodyText, signal: AbortSignal.timeout(45000) });
-      const text = await relayed.text();
-      // Cloudflare'in kendisi, Worker'dan gelen 502/504 durum kodlu yanıtların gövdesini kendi
-      // jenerik hata sayfasıyla değiştiriyor (bizim Türkçe JSON hata mesajımızı yutuyor). Bu
-      // yüzden gerçek durumu 500'e eşliyoruz -- Cloudflare bu koda dokunmuyor, kullanıcı bizim
-      // gövdemizi görür.
+      // Büyük Xtream kütüphaneleri (bu hesapta ~54 MB) tek parça metne çevrilince (relayed.text())
+      // Worker'ın 128 MB bellek sınırını aşıp isteği düşürüyordu; kullanıcıya "sunucu yanıt
+      // vermedi" hatası dönüyordu. Gövdeyi tamponlamadan doğrudan akıtarak (stream) hem belleği
+      // hem CPU'yu koruyoruz. Cloudflare 502/504 durum kodlu yanıtların gövdesini kendi jenerik
+      // hata sayfasıyla değiştirdiği için gerçek durumu 500'e eşliyoruz.
       const status = relayed.status === 502 || relayed.status === 504 ? 500 : relayed.status;
-      return new Response(text, { status, headers: { "content-type": "application/json" } });
+      return new Response(relayed.body, { status, headers: { "content-type": "application/json" } });
     } catch (error) {
       const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
       return Response.json({ error: timedOut ? "İçe aktarma zaman aşımına uğradı — liste çok büyük veya sunucu yavaş yanıt veriyor olabilir, tekrar deneyin" : "İçe aktarma sunucusuna ulaşılamadı, tekrar deneyin" }, { status: 500 });

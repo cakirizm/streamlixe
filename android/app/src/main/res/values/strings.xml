@@ -5,6 +5,7 @@
     <string name="web_error">Uygulama arayüzüne bağlanılamadı.</string>
     <string name="retry">Yeniden dene</string>
     <string name="preparing_stream">Yayın hazırlanıyor…</string>
+    <string name="next_episode">Sonraki bölüm</string>
     <string name="stream_failed">Yayın oynatılamadı</string>
     <string name="stream_failed_detail">Kaynak çevrimdışı, süresi dolmuş veya cihazın desteklemediği bir codec kullanıyor olabilir.</string>
     <string name="back">Geri</string>

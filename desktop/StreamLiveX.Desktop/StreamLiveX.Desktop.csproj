@@ -20,4 +20,13 @@
     <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.23.1" />
   </ItemGroup>
 
+  <!-- VideoLAN.LibVLC.Windows 3.0.23.1 NuGet paketi, AC3/E-AC3 sesini paketlemek için gereken
+       libpacketizer_a52 eklentisini içermiyor. Bu yüzden AC3 sesli film/dizilerde ses gelmiyordu
+       (canlı TV AAC olduğu için çalışıyordu). Aynı sürümlü (3.0.23, ABI-uyumlu) VLC kurulumundan
+       alınan eksik ses eklentilerini vlc-plugins/ altında repoda tutup her derlemede libvlc plugin
+       klasörüne kopyalıyoruz; böylece Store paketi dahil her yapıda ses çalışıyor. -->
+  <ItemGroup>
+    <Content Include="vlc-plugins\**\*.dll" Link="libvlc\win-x64\plugins\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

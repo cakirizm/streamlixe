@@ -27,12 +27,20 @@ ar:{nav:["المميزات","كيف يعمل","الأجهزة","الأسئلة"]
 } as const;
 const marks=["SRC","YOU","PLAY","EPG","TV","A⇄"];
 const downloadLabel:Record<Locale,string>={tr:"İndir",en:"Download",ar:"تنزيل",de:"Download",fr:"Télécharger",es:"Descargar"};
+// Masaüstü (WebView2) ve Android uygulamaları web arayüzünü yükler; bu native kabuklar
+// yanlışlıkla landing (tanıtım) sayfasına düşerse doğrudan /app oynatıcısına yönlendiririz.
+// Normal tarayıcı ziyaretçileri etkilenmez: window.chrome.webview yalnızca WebView2'de,
+// StreamLiveXAndroid ise yalnızca Android uygulamasının user-agent'ında bulunur.
+const isNativeShell=()=>typeof window!=="undefined"&&(Boolean((window as Window&{chrome?:{webview?:unknown}}).chrome?.webview)||/StreamLiveXAndroid/i.test(navigator.userAgent));
 export default function Home(){
+ const [redirectingToApp]=useState(isNativeShell);
+ useEffect(()=>{if(redirectingToApp)window.location.replace("/app")},[redirectingToApp]);
  const [locale,setLocaleState]=useState<Locale>(getStoredLocale);
  const setLocale=(next:Locale)=>{setLocaleState(next);const mapped=toAppLocale[next];localStorage.setItem("slx-language",mapped);document.cookie=`slx-language=${mapped};path=/;max-age=31536000;SameSite=Lax`};
  const source=copy[locale];
  const t={...source,open:locale==="tr"?"Web oynatıcıya git":source.open,hero:locale==="tr"?[source.hero[0],"Tek dokunuş uzağında.",source.hero[2]]:source.hero};
  useEffect(()=>{document.documentElement.lang=locale;document.documentElement.dir=locale==="ar"?"rtl":"ltr"},[locale]);
+ if(redirectingToApp)return null;
  return <main className="slx-landing">
   <nav className="slx-nav slx-wrap"><a className="slx-lockup" href="#top"><img src="/streamlivex-brand.png" alt="StreamLiveX"/><span><b>StreamLiveX Player</b><small>SMART IPTV PLAYER</small></span></a><div className="slx-navlinks"><a href="#features">{t.nav[0]}</a><a href="#how">{t.nav[1]}</a><a href="#devices">{t.nav[2]}</a><a href="#faq">{t.nav[3]}</a><a className="slx-downloadNav" href="#download">{downloadLabel[locale]} <i>↓</i></a></div><div className="slx-navActions"><label className="slx-language"><span>{locale.toUpperCase()}</span><select value={locale} onChange={e=>setLocale(e.target.value as Locale)} aria-label="Language">{langs.map(l=><option value={l.id} key={l.id}>{l.label}</option>)}</select></label><a className="slx-btn slx-primary slx-small slx-desktopOpen" href="/app">{t.open} ↗</a><a className="slx-mobileDownload" href="#download" aria-label={downloadLabel[locale]}>↓</a></div></nav>
   <section className="slx-hero slx-wrap" id="top"><div className="slx-heroCopy"><b className="slx-kicker"><i/> {t.eyebrow}</b><h1>{t.hero[0]}<em>{t.hero[1]}</em></h1><p>{t.hero[2]}</p><div className="slx-actions"><a className="slx-btn slx-primary" href="/app">{t.open} →</a><a className="slx-btn slx-ghost" href="#how"><span className="slx-play">▶</span>{t.how}</a></div><div className="slx-trust">{t.trust.map(x=><span key={x}>✓ {x}</span>)}</div></div>

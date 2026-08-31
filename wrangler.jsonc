@@ -1,0 +1,26 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "streamlivex",
+  "compatibility_date": "2026-05-22",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "main": "./worker/index.ts",
+  "assets": {
+    "directory": "dist/client",
+    "not_found_handling": "none",
+    "binding": "ASSETS"
+  },
+  "images": {
+    "binding": "IMAGES"
+  },
+  "vars": {
+    "STREAM_RELAY_ORIGIN": "http://relay.streamlivex.com:3000",
+    "IMPORT_RELAY_ORIGIN": "http://relay.streamlivex.com:3000",
+    "TRANSCODE_ORIGIN": "http://relay.streamlivex.com:3100"
+  },
+  "routes": [
+    { "pattern": "streamlivex.com", "custom_domain": true },
+    { "pattern": "www.streamlivex.com", "custom_domain": true }
+  ]
+}

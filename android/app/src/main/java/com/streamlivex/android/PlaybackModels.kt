@@ -17,6 +17,9 @@ data class PlaybackItem(
     val url: String,
     val kind: String,
     val subtitles: List<PlaybackSubtitle> = emptyList(),
+    // Web tarafi, aktif bolumun sezon listesinde bir sonraki bolum oldugunu bildirir; oynaticida
+    // "Sonraki bolum" butonu buna gore gorunur.
+    val hasNext: Boolean = false,
 ) {
     val isLive: Boolean get() = kind.equals("live", ignoreCase = true)
 }
@@ -186,6 +189,7 @@ object BridgeMessageParser {
                 url = source,
                 kind = itemJson.optString("kind").ifBlank { "movie" },
                 subtitles = subtitles,
+                hasNext = itemJson.optBoolean("hasNext", false),
             ),
             preferences = preferences,
         )

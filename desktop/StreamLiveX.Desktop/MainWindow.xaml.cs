@@ -44,6 +44,13 @@ public partial class MainWindow : Window
     private int _activeSubtitleCueIndex = -1;
     private bool _isSeeking;
     private bool _isFullscreen;
+    // Tam ekrana girmeden onceki pencere durumu -- cikinca AYNI boyuta don. Onceden
+    // dogrudan WindowState.Normal'a donuluyordu; pencere tam ekrandan once maximize/buyuk
+    // ise cikista kucuk "yarim pencere" kaliyordu.
+    private WindowState _preFullscreenState = WindowState.Normal;
+    private WindowStyle _preFullscreenStyle = WindowStyle.SingleBorderWindow;
+    private ResizeMode _preFullscreenResize = ResizeMode.CanResize;
+    private System.Windows.Threading.DispatcherTimer? _focusReassertTimer;
     private bool _videoClickArmed;
     private bool _nativePlayerOpen;
     private bool _updatingPlayerOptions;
@@ -222,10 +229,11 @@ public partial class MainWindow : Window
             BrowserError.Visibility = Visibility.Collapsed;
             await Browser.EnsureCoreWebView2Async();
 
-            if (_appUri.IsLoopback)
-            {
-                await Browser.CoreWebView2.Profile.ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds.DiskCache);
-            }
+            // Uzak web arayüzü sık güncelleniyor; WebView2 HTML belgesini ve varlıkları önbelleğe
+            // alıp yeni CSS/JS deploy edilse bile eski arayüzü göstermeye devam edebiliyordu. Her
+            // açılışta disk önbelleğini temizleyerek kullanıcının daima en güncel arayüzü görmesini
+            // sağlıyoruz (varlıklar içerik-hash'li olduğundan bu yalnızca güncelleme olduğunda fark yaratır).
+            await Browser.CoreWebView2.Profile.ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds.DiskCache);
 
             Browser.CoreWebView2.Settings.AreDevToolsEnabled = _appUri.IsLoopback;
             Browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
@@ -327,6 +335,8 @@ public partial class MainWindow : Window
         ClearCustomSubtitles();
 
         MediaTitle.Text = request.Item?.Name ?? "StreamLiveX";
+        // "Sonraki bölüm" butonu yalnizca web tarafi sirada baska bir bolum oldugunu bildirdiginde.
+        NextEpisodeButton.Visibility = request.Item?.HasNext == true ? Visibility.Visible : Visibility.Collapsed;
         PlaybackStatus.Text = "Yayın hazırlanıyor";
         PositionSlider.Value = 0;
         PositionSlider.IsEnabled = !string.Equals(request.Item?.Kind, "live", StringComparison.OrdinalIgnoreCase);
@@ -360,6 +370,50 @@ public partial class MainWindow : Window
         ShowPlayerChrome(false);
         _mediaPlayer.Play(activeMedia);
         _ = MonitorDurationAsync(_mediaPlayer, activeMedia);
+        // Klavye odağını WPF penceresine ver ki ok tuşları (ileri/geri sarma) ve Escape
+        // (tam ekrandan çıkış) çalışsın. VLC video yüzeyi (airspace HWND) odağı kapabildiği için
+        // TEK seferlik odaklamak yetmiyordu -- kullanici once ekrana tiklamadan tuslar
+        // calismiyordu. Play/buffering sirasinda odagi birkac kez yeniden vererek bunu asiyoruz.
+        StartFocusReassert();
+    }
+
+    private void FocusNativePlayer()
+    {
+        if (!_nativePlayerOpen)
+        {
+            return;
+        }
+        Activate();
+        NativePlayer.Focus();
+        Keyboard.Focus(NativePlayer);
+    }
+
+    // VLC video HWND'i, oynatma baslarken odagi birkac kez geri kapabiliyor. Odagi hemen ve
+    // ardindan kisa araliklarla birkac kez daha WPF penceresine geri veriyoruz; kullanici
+    // (Play tamamlaninca) odagi ekrana tiklamadan da Esc/yon tuslarini kullanabilsin.
+    private void StartFocusReassert()
+    {
+        FocusNativePlayer();
+        _focusReassertTimer?.Stop();
+        _focusReassertTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(250),
+        };
+        var ticks = 0;
+        _focusReassertTimer.Tick += (_, _) =>
+        {
+            ticks++;
+            // Odak zaten WPF penceresindeyse (kullanici baska yere gitmediyse) israr etmeye gerek yok.
+            var focusOnPlayer = _nativePlayerOpen && (NativePlayer.IsKeyboardFocusWithin || IsKeyboardFocusWithin);
+            if (!_nativePlayerOpen || focusOnPlayer || ticks >= 10)
+            {
+                _focusReassertTimer?.Stop();
+                _focusReassertTimer = null;
+                return;
+            }
+            FocusNativePlayer();
+        };
+        _focusReassertTimer.Start();
     }
 
     private static List<Uri> BuildPlaybackCandidates(NativeMediaItem? item, Uri original)
@@ -795,6 +849,8 @@ public partial class MainWindow : Window
 
     private void VideoClickSurface_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        // Video yüzeyine tıklayınca klavye odağını WPF'te tut ki ok tuşları/Escape çalışmaya devam etsin.
+        NativePlayer.Focus();
         ShowPlayerChrome();
         if (!_videoClickArmed)
         {
@@ -850,7 +906,13 @@ public partial class MainWindow : Window
         }
 
         _isSeeking = true;
+        // Mouse'u yakala ki hizli/tek tikta MouseMove ve MouseUp olaylari kesinlikle bu slider'a
+        // ulassin (onceden capture yoktu; ilk tikin "up"i kacip seek islenmiyordu -- kullanici
+        // "2-3 kere basmam gerekiyor" diyordu).
+        PositionSlider.CaptureMouse();
         UpdateSeekPosition(e.GetPosition(PositionSlider).X);
+        // Tek tik: basar basmaz oynatici zamanini da uygula ki ilk tikta aninda ilerlesin.
+        CommitSeek();
     }
 
     private void PositionSlider_PreviewMouseMove(object sender, MouseEventArgs e)
@@ -858,6 +920,14 @@ public partial class MainWindow : Window
         if (_isSeeking && e.LeftButton == MouseButtonState.Pressed && PositionSlider.IsEnabled)
         {
             UpdateSeekPosition(e.GetPosition(PositionSlider).X);
+        }
+    }
+
+    private void CommitSeek()
+    {
+        if (PositionSlider.IsEnabled)
+        {
+            _mediaPlayer.Time = (long)PositionSlider.Value;
         }
     }
 
@@ -875,9 +945,10 @@ public partial class MainWindow : Window
 
     private void PositionSlider_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (PositionSlider.IsEnabled)
+        CommitSeek();
+        if (PositionSlider.IsMouseCaptured)
         {
-            _mediaPlayer.Time = (long)PositionSlider.Value;
+            PositionSlider.ReleaseMouseCapture();
         }
         _isSeeking = false;
     }
@@ -1318,11 +1389,38 @@ public partial class MainWindow : Window
 
     private void Fullscreen_Click(object sender, RoutedEventArgs e) => ToggleFullscreen();
 
+    private void NextEpisode_Click(object sender, RoutedEventArgs e)
+    {
+        // Sonraki bölüme geçişi web tarafı yönetir (sezon bölüm listesi/indeksi orada). Web olayını
+        // gönderiyoruz; web yeni bir "play" isteği postaladığında bu oynatıcı sonraki bölümü açar.
+        NextEpisodeButton.Visibility = Visibility.Collapsed;
+        SendWebEvent("streamlivex:native-player-next");
+    }
+
     private void ToggleFullscreen()
     {
-        _isFullscreen = !_isFullscreen;
-        WindowStyle = _isFullscreen ? WindowStyle.None : WindowStyle.SingleBorderWindow;
-        WindowState = _isFullscreen ? WindowState.Maximized : WindowState.Normal;
+        if (!_isFullscreen)
+        {
+            // Mevcut durumu sakla ki cikista aynen geri yukleyebilelim.
+            _preFullscreenState = WindowState;
+            _preFullscreenStyle = WindowStyle;
+            _preFullscreenResize = ResizeMode;
+            _isFullscreen = true;
+            WindowStyle = WindowStyle.None;
+            ResizeMode = ResizeMode.NoResize;
+            // Maximized'ken WindowStyle degistirmek WPF'te restore-bounds'u bozabiliyor;
+            // once Normal'a alip sonra Maximized yaparak tam ekranin dogru ekrana yayilmasini
+            // garanti ediyoruz.
+            WindowState = WindowState.Normal;
+            WindowState = WindowState.Maximized;
+        }
+        else
+        {
+            _isFullscreen = false;
+            WindowStyle = _preFullscreenStyle;
+            ResizeMode = _preFullscreenResize;
+            WindowState = _preFullscreenState;
+        }
     }
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
@@ -1418,6 +1516,7 @@ internal sealed class NativeMediaItem
     public string? Name { get; init; }
     public string? Url { get; init; }
     public string? Kind { get; init; }
+    public bool HasNext { get; init; }
     public List<NativeSubtitle> Subtitles { get; init; } = [];
 }
 

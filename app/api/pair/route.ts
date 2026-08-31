@@ -15,16 +15,18 @@ type PairedProvider = {
 // bu ozel semayi yalnizca gercek bir istek geldiginde (fonksiyon icinde) dinamik olarak
 // yukleyerek build dogrulamasini bozmadan calisiyoruz.
 async function kv() {
-  const { env } = await import("cloudflare:workers");
-  const namespace = env.PAIRING_KV;
-  if (!namespace) throw new Error("Eşleştirme deposu yapılandırılmamış");
-  return namespace;
+  try {
+    const { env } = await import("cloudflare:workers");
+    if (env?.PAIRING_KV) return env.PAIRING_KV;
+  } catch {}
+  return null;
 }
 
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as { action?: string; code?: string; provider?: PairedProvider };
     const namespace = await kv();
+    if (!namespace) return Response.json({ error: "Eşleştirme servisi yapılandırılmamış" }, { status: 503 });
 
     if (body.action === "create") {
       const code = crypto.randomUUID();
@@ -59,6 +61,7 @@ export async function GET(request: Request) {
     const code = new URL(request.url).searchParams.get("code")?.trim();
     if (!code) return Response.json({ error: "code gerekli" }, { status: 400 });
     const namespace = await kv();
+    if (!namespace) return Response.json({ status: "expired" }, { status: 404 });
     const raw = await namespace.get(`pair:${code}`);
     if (!raw) return Response.json({ status: "expired" }, { status: 404 });
     const data = JSON.parse(raw) as { status: string; provider?: PairedProvider };

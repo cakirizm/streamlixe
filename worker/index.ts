@@ -27,6 +27,16 @@ interface ExecutionContext {
 
 const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    if (env && typeof env === "object") {
+      const g = globalThis as unknown as { process?: { env?: Record<string, unknown> } };
+      g.process = g.process || { env: {} };
+      g.process.env = g.process.env || {};
+      for (const [key, val] of Object.entries(env)) {
+        if (typeof val === "string") {
+          g.process.env[key] = val;
+        }
+      }
+    }
     const url = new URL(request.url);
 
     if (url.pathname === "/_vinext/image") {
