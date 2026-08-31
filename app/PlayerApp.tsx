@@ -741,10 +741,10 @@ function ContinueWatching({profileId,open}:{profileId:string;open:(item:Media)=>
 }
 function MiniLivePlayer({item,onFull,onSessionChange}:{item:Media|null;onFull:(item:Media)=>void;onSessionChange?:(sessionId:string|null)=>void}){
   type LiveAttempt={url:string;type:"hls"|"mpegts"|"native";source:Media};
-  const ref=useRef<HTMLVideoElement>(null);const shellRef=useRef<HTMLDivElement>(null);const onFullRef=useRef(onFull);const stopRef=useRef<()=>void>(()=>{});const sessionIdRef=useRef<string|null>(null);const onSessionChangeRef=useRef(onSessionChange);useEffect(()=>{onSessionChangeRef.current=onSessionChange},[onSessionChange]);const [state,setState]=useState<"loading"|"playing"|"error">("loading");const [sourceIndex,setSourceIndex]=useState(0);const [androidPreview,setAndroidPreview]=useState(false);useLiveStallRecovery(ref,Boolean(item)&&!androidPreview);
+  const ref=useRef<HTMLVideoElement>(null);const shellRef=useRef<HTMLDivElement>(null);const onFullRef=useRef(onFull);const stopRef=useRef<()=>void>(()=>{});const sessionIdRef=useRef<string|null>(null);const onSessionChangeRef=useRef(onSessionChange);useEffect(()=>{onSessionChangeRef.current=onSessionChange},[onSessionChange]);const [state,setState]=useState<"loading"|"playing"|"error">("loading");const [sourceIndex,setSourceIndex]=useState(0);const [nativePreview,setNativePreview]=useState(false);useLiveStallRecovery(ref,Boolean(item)&&!nativePreview);
   useEffect(()=>{onFullRef.current=onFull},[onFull]);
-  useEffect(()=>{setAndroidPreview(/StreamLiveXAndroid/i.test(navigator.userAgent))},[]);
-  useEffect(()=>{const video=ref.current;if(!video||!item||/StreamLiveXAndroid/i.test(navigator.userAgent))return;let disposed=false;let generation=0;let cleanup:(()=>void)|undefined;let timer:ReturnType<typeof setTimeout>|undefined;
+  useEffect(()=>{const detect=()=>setNativePreview(Boolean(desktopBridge()));detect();window.addEventListener("streamlivex:native-bridge-ready",detect);return()=>window.removeEventListener("streamlivex:native-bridge-ready",detect)},[]);
+  useEffect(()=>{const video=ref.current;if(!video||!item||nativePreview)return;let disposed=false;let generation=0;let cleanup:(()=>void)|undefined;let timer:ReturnType<typeof setTimeout>|undefined;
     const score=(source:Media)=>/h265|hevc/i.test(source.name)?0:/fhd|1080/i.test(source.name)?5:/hd|720/i.test(source.name)?4:/4k|uhd/i.test(source.name)?2:3;
     const sources:Media[]=(item.sources?.length?item.sources:[item]).slice().sort((a,b)=>score(b)-score(a));
     const attempts=sources.reduce<LiveAttempt[]>((all,source)=>{const original=source.url.trim();const isTs=isMpegTsUrl(original);const hls=isTs?hlsAlternativeUrl(original):original;const next:LiveAttempt[]=isTs?[{url:playbackUrl(original),type:"mpegts",source},{url:playbackUrl(hls),type:"hls",source},{url:original,type:"mpegts",source}]:/\.m3u8($|\?)/i.test(original)?[{url:playbackUrl(original),type:"hls",source},{url:original,type:"hls",source}]:[{url:playbackUrl(original),type:"native",source},{url:original,type:"native",source}];if(preferDirectHttp(original))next.sort((a,b)=>Number(b.url===original)-Number(a.url===original));return[...all,...next]},[]);
@@ -758,8 +758,8 @@ function MiniLivePlayer({item,onFull,onSessionChange}:{item:Media|null;onFull:(i
       video.src=current.url;video.oncanplay=()=>ready(sourcePosition,run);video.onerror=()=>{if(run===generation)next(index+1)};video.load()
     }catch{if(!disposed&&run===generation)next(index+1)}};
     next(0);return()=>{stop();if(stopRef.current===stop)stopRef.current=()=>{}}
-  },[item]);
-  useEffect(()=>{if(!androidPreview||!item)return;const shell=shellRef.current;if(!shell)return;let bridge=desktopBridge();let disposed=false;let connected=false;let frame=0;let connectTimer:ReturnType<typeof setTimeout>|undefined;
+  },[item,nativePreview]);
+  useEffect(()=>{if(!nativePreview||!item)return;const shell=shellRef.current;if(!shell)return;let bridge=desktopBridge();let disposed=false;let connected=false;let frame=0;let connectTimer:ReturnType<typeof setTimeout>|undefined;
     const score=(source:Media)=>/h265|hevc/i.test(source.name)?0:/fhd|1080/i.test(source.name)?5:/hd|720/i.test(source.name)?4:/4k|uhd/i.test(source.name)?2:3;
     const nativeSource=(item.sources?.length?item.sources:[item]).slice().sort((a,b)=>score(b)-score(a))[0]||item;const sessionId=`preview-${item.id}-${Date.now()}`;sessionIdRef.current=sessionId;onSessionChangeRef.current?.(sessionId);
     const bounds=()=>{const rect=shell.getBoundingClientRect();return{left:Math.max(0,rect.left),top:rect.top,width:rect.width,height:rect.height,visible:rect.width>2&&rect.height>2&&rect.top>=0&&rect.bottom<=window.innerHeight&&document.visibilityState==="visible"}};
@@ -769,13 +769,13 @@ function MiniLivePlayer({item,onFull,onSessionChange}:{item:Media|null;onFull:(i
     const full=(event:Event)=>{const detail=(event as CustomEvent<{sessionId?:string}>).detail;if(detail?.sessionId===sessionId)onFullRef.current(item)};
     const observer=new ResizeObserver(schedule);observer.observe(shell);window.addEventListener("scroll",schedule,true);window.addEventListener("resize",schedule);window.visualViewport?.addEventListener("resize",schedule);window.visualViewport?.addEventListener("scroll",schedule);window.addEventListener("streamlivex:native-preview-fullscreen",full);document.addEventListener("visibilitychange",schedule);connect();
     return()=>{disposed=true;if(frame)cancelAnimationFrame(frame);if(connectTimer)clearTimeout(connectTimer);observer.disconnect();window.removeEventListener("scroll",schedule,true);window.removeEventListener("resize",schedule);window.visualViewport?.removeEventListener("resize",schedule);window.visualViewport?.removeEventListener("scroll",schedule);window.removeEventListener("streamlivex:native-preview-fullscreen",full);document.removeEventListener("visibilitychange",schedule);if(sessionIdRef.current===sessionId){sessionIdRef.current=null;onSessionChangeRef.current?.(null)}if(connected)bridge?.postMessage({type:"close-preview",sessionId})}
-  },[androidPreview,item?.id,item?.url]);
+  },[nativePreview,item?.id,item?.url]);
   if(!item)return <div className="live-preview-empty"><Tv size={34}/><b>Bir kanal seçin</b><span>Yayın burada açılır; program akışı alt bölümde görünür.</span></div>;
   const openFull=()=>{
-    if(androidPreview&&sessionIdRef.current){desktopBridge()?.postMessage({type:"promote-preview",sessionId:sessionIdRef.current});return}
+    if(nativePreview&&sessionIdRef.current){desktopBridge()?.postMessage({type:"promote-preview",sessionId:sessionIdRef.current});return}
     stopRef.current();setTimeout(()=>onFull(item),250);
   };
-  const sourceCount=item.sources?.length||1;return <div ref={shellRef} className={androidPreview?"live-preview native-inline":"live-preview"}><video ref={ref} controls playsInline preload="auto" onPlay={()=>setState("playing")}/><header><span><i/> CANLI</span><b>{displayTitle(item.name)}</b><small>{sourceCount>1?`${sourceIndex+1}/${sourceCount} kaynak`:"Otomatik kaynak"}</small></header>{!androidPreview&&state==="loading"&&<div className="mini-loading"><i/><span>Yayın kaynağı deneniyor…</span></div>}{!androidPreview&&state==="error"&&<div className="mini-error"><b>Yayın başlatılamadı</b><span>Bu kanalın kullanılabilir tüm kaynakları denendi.</span></div>}</div>
+  const sourceCount=item.sources?.length||1;return <div ref={shellRef} className={nativePreview?"live-preview native-inline":"live-preview"}><video ref={ref} controls playsInline preload="auto" onPlay={()=>setState("playing")}/><header><span><i/> CANLI</span><b>{displayTitle(item.name)}</b><small>{sourceCount>1?`${sourceIndex+1}/${sourceCount} kaynak`:"Otomatik kaynak"}</small></header>{!nativePreview&&state==="loading"&&<div className="mini-loading"><i/><span>Yayın kaynağı deneniyor…</span></div>}{!nativePreview&&state==="error"&&<div className="mini-error"><b>Yayın başlatılamadı</b><span>Bu kanalın kullanılabilir tüm kaynakları denendi.</span></div>}</div>
 }
 // Ust menuye (Ana Sayfa/Canli TV/...) programatik olarak odak vermek icin -- Canli TV
 // bolumunun kendi ok tusu isleyicisi (asagida) sayfanin genel odak sistemini kullanmadigindan,

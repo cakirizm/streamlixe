@@ -1,0 +1,23 @@
+name: StreamLiveX
+options:
+  bundleIdPrefix: com.streamlivex
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    SWIFT_VERSION: 5.0
+targets:
+  StreamLiveX:
+    type: application
+    platform: iOS
+    sources:
+      - StreamLiveX
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.streamlivex.ios
+        INFOPLIST_FILE: StreamLiveX/Resources/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Automatic
+    scheme:
+      testTargets: []
