@@ -131,7 +131,7 @@ export async function GET(request: Request) {
         found = search.results?.[0];
       }
       if (!found?.id) return Response.json({ configured: true, result: null });
-      const data = await tmdbGet(`${kind}/${found.id}`, locale, token, { append_to_response: "credits,recommendations,similar" });
+      const data = await tmdbGet(`${kind}/${found.id}`, locale, token, { append_to_response: "credits,recommendations,similar,videos" });
       if (locale !== "en-US" && !String(data.overview || "").trim()) {
         try {
           const fallback = await tmdbGet(`${kind}/${found.id}`, "en-US", token);
@@ -163,7 +163,7 @@ export async function GET(request: Request) {
         configured: true,
         result: {
           ...data,
-          overview: overview || "Bu içerik için TMDB üzerinde açıklama bulunamadı.",
+          overview: overview || undefined,
           media_type: kind,
           directors,
           cast,

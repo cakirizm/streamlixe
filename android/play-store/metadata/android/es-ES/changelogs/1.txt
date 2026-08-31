@@ -1,0 +1,1 @@
+Primera versión. Reproductor IPTV StreamLiveX para móvil, tablet, Android TV y Google TV: importación M3U/Xtream, biblioteca de TV en directo + películas + series, carátulas de TMDB, 6 idiomas con RTL árabe, perfiles, seguir viendo.

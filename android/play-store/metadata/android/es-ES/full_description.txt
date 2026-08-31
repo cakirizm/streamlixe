@@ -1,0 +1,22 @@
+StreamLiveX es un reproductor IPTV de tipo "trae tu propia suscripción". Carga tu propia suscripción IPTV y míralo en móvil, tablet, Android TV y Google TV en una interfaz ordenada y multilingüe.
+
+IMPORTANTE: StreamLiveX NO proporciona ni incluye ningún canal, película o serie. Es solo un cliente que reproduce la suscripción M3U / Xtream Codes que TÚ ya posees. Proporcionar el contenido de forma legal es responsabilidad exclusiva del propio servicio del usuario.
+
+QUÉ HACE
+• Importa tus datos M3U, Xtream Codes y EPG.
+• Reúne TV en directo, películas y series en una sola biblioteca.
+• Usa carátulas y sinopsis de TMDB para una interfaz rica y similar a una plataforma, en lugar de una lista de canales desordenada.
+• Uso táctil completo en móvil y tablet; navegación completa con mando (D-pad) en Android TV / Google TV.
+• Reproduce streams HLS y MPEG-TS con los códecs de hardware del dispositivo mediante Media3/ExoPlayer.
+
+EXPERIENCIA
+• 6 idiomas: turco, inglés, árabe, alemán, francés, español — soporte RTL completo para árabe.
+• Preferencias por perfil y un perfil infantil.
+• Memoria de posición por categoría y "Seguir viendo".
+• Cuando un stream falla, explica claramente el motivo (p. ej. códec del dispositivo / límite HEVC, fuente sin conexión).
+
+PRIVACIDAD Y SEGURIDAD
+• Tu usuario/contraseña IPTV permanece en tu dispositivo.
+• La app no aloja contenido; el tráfico de vídeo va directamente de tu proveedor a tu dispositivo.
+
+Se requiere una suscripción IPTV. StreamLiveX no vende suscripciones ni contenido.

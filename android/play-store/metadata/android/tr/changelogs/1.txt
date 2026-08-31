@@ -1,0 +1,1 @@
+İlk sürüm. Telefon, tablet, Android TV ve Google TV için StreamLiveX IPTV oynatıcısı: M3U/Xtream içe aktarma, canlı TV + film + dizi kütüphanesi, TMDB posterleri, 6 dil ve Arapça RTL, profiller, izlemeye devam et.

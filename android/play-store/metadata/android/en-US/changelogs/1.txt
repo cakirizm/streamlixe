@@ -1,0 +1,1 @@
+Initial release. StreamLiveX IPTV player for phone, tablet, Android TV and Google TV: M3U/Xtream import, live TV + movies + series library, TMDB posters, 6 languages with Arabic RTL, profiles, continue watching.

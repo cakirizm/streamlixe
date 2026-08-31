@@ -1,0 +1,22 @@
+StreamLiveX, kendi IPTV aboneliğinizi getirip (bring your own) telefon, tablet, Android TV ve Google TV üzerinde tek, düzenli ve çok dilli bir arayüzde izlemenizi sağlayan bir IPTV oynatıcısıdır.
+
+ÖNEMLİ: StreamLiveX hiçbir kanal, film veya dizi İÇERİĞİ SAĞLAMAZ ve içermez. Yalnızca sizin sahip olduğunuz M3U / Xtream Codes aboneliğini oynatan bir istemcidir. İçeriğin yasal olarak sağlanması tamamen kullanıcının kendi hizmet sağlayıcısının sorumluluğundadır.
+
+NELER YAPAR
+• M3U, Xtream Codes ve EPG bilgilerinizi içe aktarır.
+• Canlı TV, film ve dizileri tek kütüphanede toplar.
+• TMDB poster ve özetleriyle dağınık kanal listesi yerine platform benzeri zengin bir arayüz sunar.
+• Telefon ve tablette dokunmatik, Android TV / Google TV'de kumanda (D-pad) ile tam kullanım.
+• Media3/ExoPlayer ile HLS ve MPEG-TS yayınları cihazın donanım codec'leriyle oynatır.
+
+DENEYİM
+• 6 dil: Türkçe, İngilizce, Arapça, Almanca, Fransızca, İspanyolca — tam Arapça RTL desteği.
+• Profil bazlı tercihler ve çocuk profili.
+• Kategori konum hafızası ve "İzlemeye devam et".
+• Yayın oynatılamazsa nedenini açıkça söyler (ör. cihaz codec / HEVC sınırı, çevrimdışı kaynak).
+
+GİZLİLİK VE GÜVENLİK
+• IPTV kullanıcı adınız/parolanız yalnızca sizin cihazınızda kalır.
+• Uygulama içerik barındırmaz; video trafiği doğrudan sizin sağlayıcınızdan cihazınıza gider.
+
+Bir IPTV aboneliğiniz olması gerekir. StreamLiveX abonelik veya içerik satmaz.

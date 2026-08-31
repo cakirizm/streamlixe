@@ -1,5 +1,36 @@
 const blocked = /^(localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1\]?)/i;
 
+// LG/Samsung mağaza QA incelemesi için: gerçek bir IPTV aboneliği paylaşmadan,
+// herkese açık örnek videoları normal bir Xtream hesabıymış gibi sunan sabit demo
+// hesap. server=".../demo", kullanıcı="demo", şifre="demo" girildiğinde devreye girer.
+const DEMO_LIVE = [
+  { stream_id: 1, name: "StreamLiveX News", category_id: "1", stream_icon: "", container_extension: "ts", epg_channel_id: "" },
+  { stream_id: 2, name: "Nature Live", category_id: "2", stream_icon: "", container_extension: "m3u8", epg_channel_id: "" },
+];
+const DEMO_LIVE_CATEGORIES = [{ category_id: "1", category_name: "Haber" }, { category_id: "2", category_name: "Belgesel" }];
+const DEMO_VOD = [
+  { stream_id: 101, name: "Aurora", category_id: "10", stream_icon: "", container_extension: "mp4", rating: "8.7", year: "2026" },
+  { stream_id: 102, name: "Büyük Kaçış", category_id: "11", stream_icon: "", container_extension: "mp4", rating: "8.2", year: "2025" },
+];
+const DEMO_VOD_CATEGORIES = [{ category_id: "10", category_name: "Öne Çıkan Filmler" }, { category_id: "11", category_name: "Aksiyon Filmleri" }];
+const DEMO_SERIES = [
+  { series_id: 201, name: "Gece Hattı", category_id: "20", cover: "", rating: "9.1", releaseDate: "2026" },
+];
+const DEMO_SERIES_CATEGORIES = [{ category_id: "20", category_name: "Diziler" }];
+const DEMO_SERIES_INFO: Record<string, unknown> = {
+  info: { name: "Gece Hattı", plot: "İnsanlığın son sinyalinin peşinden bilinmeyene uzanan büyük bir yolculuk.", cover: "" },
+  episodes: {
+    "1": [
+      { id: 301, title: "1. Bölüm", episode_num: 1, container_extension: "mp4", info: {} },
+      { id: 302, title: "2. Bölüm", episode_num: 2, container_extension: "mp4", info: {} },
+    ],
+  },
+};
+function isDemoAccount(server: unknown, username: unknown, password: unknown) {
+  if (username !== "demo" || password !== "demo") return false;
+  try { return new URL(String(server)).pathname.replace(/\/+$/, "") === "/demo"; } catch { return false; }
+}
+
 // Optional relay: large Xtream accounts (tens of thousands of channels) can
 // exceed the Cloudflare Workers per-request CPU time limit (free plan). When
 // set, forward the raw import request to another origin (e.g. a shared-
@@ -73,10 +104,21 @@ export async function POST(request: Request) {
   const requestUrl = new URL(request.url);
   const isRelayedRequest = request.headers.has("x-streamlivex-relay");
   const isRelayHost = IMPORT_RELAY_ORIGIN ? (requestUrl.host === new URL(IMPORT_RELAY_ORIGIN).host || request.headers.get("host") === new URL(IMPORT_RELAY_ORIGIN).host) : false;
+  const bodyText = await request.text();
+
+  // Mağaza QA demo hesabı: relay/gerçek upstream'e hiç gitmeden burada (bu Worker'ın
+  // kendisinde) doğrudan yanıtlanır — relay origin'in bu route'un kodunu bilmesine gerek yok.
+  let demoBody: { method?: string; server?: string; username?: string; password?: string } | null = null;
+  try { demoBody = JSON.parse(bodyText); } catch { /* JSON değilse aşağıdaki normal akış hatayı üretir */ }
+  if (demoBody && (demoBody.method === "xtream" || demoBody.method === "series_info") && isDemoAccount(demoBody.server, demoBody.username, demoBody.password)) {
+    if (demoBody.method === "xtream") {
+      return Response.json({ live: DEMO_LIVE, vod: DEMO_VOD, series: DEMO_SERIES, liveCategories: DEMO_LIVE_CATEGORIES, vodCategories: DEMO_VOD_CATEGORIES, seriesCategories: DEMO_SERIES_CATEGORIES });
+    }
+    return Response.json(DEMO_SERIES_INFO);
+  }
 
   if (IMPORT_RELAY_ORIGIN && !isRelayedRequest && !isRelayHost) {
     try {
-      const bodyText = await request.text();
       const relayHeaders = new Headers({ "content-type": "application/json" });
       if (IMPORT_RELAY_HOST) relayHeaders.set("host", IMPORT_RELAY_HOST);
       relayHeaders.set("x-streamlivex-relay", "1");
@@ -97,7 +139,7 @@ export async function POST(request: Request) {
     }
   }
   try {
-    const body = await request.json() as { method?: string; url?: string; server?: string; username?: string; password?: string; seriesId?: string; streamId?: string; channelId?: string; channelName?: string };
+    const body = JSON.parse(bodyText) as { method?: string; url?: string; server?: string; username?: string; password?: string; seriesId?: string; streamId?: string; channelId?: string; channelName?: string };
     if (body.method === "m3u") {
       const text = await getText(safeUrl(body.url));
       if (!text.includes("#EXTINF") && !text.includes("#EXTM3U")) throw new Error("Adres geçerli bir M3U listesi döndürmedi");

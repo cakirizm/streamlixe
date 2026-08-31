@@ -224,7 +224,7 @@ html,body{width:100%;overflow-x:hidden}
   .dash>header>nav button.active:after{content:"";position:absolute;left:28%;right:28%;bottom:0;height:2px;border-radius:2px;background:linear-gradient(90deg,#745cff,#d43fd5);box-shadow:0 0 10px #8c4cff}
 
   .live-workspace{display:flex!important;flex-direction:column;gap:10px!important;min-height:0!important;padding:10px 10px calc(18px + var(--mobile-nav-height) + env(safe-area-inset-bottom))!important}
-  .live-workspace>aside{order:1;display:flex!important;flex-direction:row!important;gap:8px;max-height:none!important;margin:0!important;padding:2px 0 4px!important;border:0!important;border-radius:0!important;background:transparent!important;overflow-x:auto!important;overflow-y:hidden!important;scroll-snap-type:x proximity;scrollbar-width:none}
+  .live-workspace>aside{order:1;display:flex!important;flex-direction:row!important;align-items:stretch;gap:8px;height:auto!important;max-height:none!important;flex:0 0 auto!important;margin:0!important;padding:2px 0 4px!important;border:0!important;border-radius:0!important;background:transparent!important;overflow-x:auto!important;overflow-y:hidden!important;scroll-snap-type:x proximity;scrollbar-width:none}
   .live-workspace>aside::-webkit-scrollbar{display:none}
   .live-workspace>aside>span{display:none!important}
   .live-workspace>aside button{flex:0 0 auto;min-width:142px!important;min-height:48px!important;padding:8px 10px!important;scroll-snap-align:start;border-radius:12px!important}
