@@ -1,0 +1,47 @@
+# StreamLiveX — native iOS derleme + TestFlight (Mac gerektirmez)
+# Codemagic bu dosyayi deponun kokunde bekler. Proje XcodeGen ile uretildiginden
+# derlemeden once `xcodegen generate` calisir. Imzalama App Store Connect API
+# anahtariyla otomatik yapilir; Mac'te elle sertifika uretmeye gerek yoktur.
+workflows:
+  ios-testflight:
+    name: StreamLiveX iOS -> TestFlight
+    instance_type: mac_mini_m2   # Codemagic ucretsiz katman (500 dk/ay)
+    max_build_duration: 60
+    integrations:
+      # ASAGIDAKI AD, Codemagic > Teams/Personal Account > Integrations >
+      # Apple Developer Portal altinda ekledigin API anahtarinin ADIYLA
+      # BIREBIR AYNI olmali. Farkli adlandirdiysan burayi guncelle.
+      app_store_connect: "StreamLiveX ASC"
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.streamlivex.ios
+      vars:
+        XCODE_SCHEME: "StreamLiveX"
+      xcode: latest              # Xcode 26 / iOS 26 SDK (Apple 2026 zorunlulugu)
+    scripts:
+      - name: XcodeGen ile Xcode projesini uret
+        script: |
+          brew install xcodegen
+          cd ios
+          xcodegen generate
+      - name: Build numarasini ayarla (Codemagic otomatik artirir)
+        script: |
+          cd ios
+          agvtool new-version -all "$BUILD_NUMBER"
+      - name: Keychain ve imza profillerini hazirla
+        script: |
+          keychain initialize
+          cd ios
+          xcode-project use-profiles
+      - name: IPA derle
+        script: |
+          cd ios
+          xcode-project build-ipa --project "StreamLiveX.xcodeproj" --scheme "$XCODE_SCHEME"
+    artifacts:
+      - ios/build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true   # derleme biter bitmez TestFlight'a yukle
