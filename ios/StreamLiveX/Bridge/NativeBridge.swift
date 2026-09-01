@@ -10,7 +10,7 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
         Task { @MainActor in model?.handle(command) }
     }
 
-    static let bootstrap = WKUserScript(source: """
+    static let bootstrap = WKUserScript(source: #"""
         function markStreamLiveXiOS() {
           if (document.documentElement) document.documentElement.classList.add('streamlivex-ios');
         }
@@ -53,5 +53,5 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
         }
         new MutationObserver(installIOSActions).observe(document.documentElement, { childList: true, subtree: true });
         document.addEventListener('DOMContentLoaded', installIOSActions);
-        """, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+        """#, injectionTime: .atDocumentStart, forMainFrameOnly: true)
 }
