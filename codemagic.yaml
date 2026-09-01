@@ -21,12 +21,17 @@ workflows:
         BUNDLE_ID: "com.streamlivex.ios"
         XCODE_SCHEME: "StreamLiveX"
       xcode: latest              # Xcode 26 / iOS 26 SDK (Apple 2026 zorunlulugu)
+      cocoapods: default
     scripts:
       - name: XcodeGen ile Xcode projesini uret
         script: |
           brew install xcodegen
           cd ios
           xcodegen generate
+      - name: iOS oynatici bagimliliklarini kur
+        script: |
+          cd ios
+          pod install
       - name: Sertifika + provisioning profile (yoksa olustur, varsa kullan)
         script: |
           keychain initialize
@@ -48,7 +53,7 @@ workflows:
         script: |
           cd ios
           xcode-project build-ipa \
-            --project "StreamLiveX.xcodeproj" \
+            --workspace "StreamLiveX.xcworkspace" \
             --scheme "$XCODE_SCHEME" \
             --verbose \
             --disable-xcpretty

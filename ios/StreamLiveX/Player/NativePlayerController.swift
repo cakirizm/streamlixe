@@ -1,22 +1,29 @@
 import AVFoundation
+import MobileVLCKit
 import UIKit
 
 @MainActor
-final class NativePlayerController: ObservableObject {
-    let player = AVPlayer()
+final class NativePlayerController: NSObject, ObservableObject, VLCMediaPlayerDelegate {
+    let player = VLCMediaPlayer()
+    @Published private(set) var isPlaying = false
     private var currentID: String?
+    private var currentRequest: PlaybackRequest?
+    private var candidateIndex = 0
+    private var autoplay = true
     private var shouldResume = false
-    private var statusObservation: NSKeyValueObservation?
     private var preparationTimeout: Task<Void, Never>?
+    private var pendingResumeMilliseconds: Double = 0
+    private var currentSeconds: Double = 0
+    private var durationSeconds: Double = 0
     var onError: ((String) -> Void)?
 
     var progress: (current: Double, duration: Double) {
-        let current = player.currentTime().seconds
-        let duration = player.currentItem?.duration.seconds ?? 0
-        return (current.isFinite ? current : 0, duration.isFinite ? duration : 0)
+        (currentSeconds, durationSeconds)
     }
 
-    init() {
+    override init() {
+        super.init()
+        player.delegate = self
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
         NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
@@ -25,80 +32,128 @@ final class NativePlayerController: ObservableObject {
     }
 
     func load(_ request: PlaybackRequest, autoplay: Bool) {
-        if currentID == request.id { if autoplay { player.play() }; return }
-        currentID = request.id
-        prepare(request, autoplay: autoplay, candidateIndex: 0)
-    }
-
-    private func prepare(_ request: PlaybackRequest, autoplay: Bool, candidateIndex: Int) {
-        let candidates = playbackCandidates(for: request.item.url)
-        guard candidates.indices.contains(candidateIndex) else {
-            onError?("Yayın iPhone tarafından desteklenen bir biçimde sunulmuyor.")
+        if currentID == request.id {
+            if autoplay { player.play() }
             return
         }
-        let asset = AVURLAsset(
-            url: candidates[candidateIndex],
-            options: [AVURLAssetHTTPUserAgentKey: "VLC/3.0 StreamLiveX-iOS/1.0"]
-        )
-        let item = AVPlayerItem(asset: asset)
-        item.preferredForwardBufferDuration = request.item.isLive ? 4 : 12
-        item.canUseNetworkResourcesForLiveStreamingWhilePaused = false
-        statusObservation = nil
+        currentID = request.id
+        currentRequest = request
+        candidateIndex = 0
+        self.autoplay = autoplay
+        pendingResumeMilliseconds = request.item.isLive ? 0 : request.resumeMilliseconds
+        prepare(request, candidateIndex: candidateIndex)
+    }
+
+    private func prepare(_ request: PlaybackRequest, candidateIndex: Int) {
+        let candidates = playbackCandidates(for: request.item.url)
+        guard candidates.indices.contains(candidateIndex) else {
+            onError?("Yayın açılamadı. Sağlayıcı bağlantıyı reddetti veya kaynak çevrimdışı.")
+            return
+        }
+
         preparationTimeout?.cancel()
-        player.replaceCurrentItem(with: item)
-        player.automaticallyWaitsToMinimizeStalling = true
-        statusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
-            Task { @MainActor in
-                if case .failed = item.status {
-                    self?.tryNextCandidate(
-                        request,
-                        failedIndex: candidateIndex,
-                        message: item.error?.localizedDescription ?? "Yayın açılamadı"
-                    )
-                }
-                if case .readyToPlay = item.status {
-                    self?.preparationTimeout?.cancel()
-                    self?.applyMediaPreferences(request.preferences, to: item)
-                }
-            }
-        }
-        preparationTimeout = Task { [weak self, weak item] in
+        player.stop()
+
+        let media = VLCMedia(url: candidates[candidateIndex])
+        media.addOption(":http-user-agent=VLC/3.0 StreamLiveX-iOS/1.0")
+        media.addOption(":http-reconnect")
+        media.addOption(request.item.isLive ? ":network-caching=1500" : ":network-caching=3000")
+        player.media = media
+        player.rate = request.preferences.playbackRate
+
+        preparationTimeout = Task { [weak self] in
             try? await Task.sleep(for: .seconds(15))
-            guard !Task.isCancelled,
-                  let self,
-                  let item,
+            guard !Task.isCancelled, let self,
                   self.currentID == request.id,
-                  self.player.currentItem === item,
-                  item.status != .readyToPlay else { return }
-            self.tryNextCandidate(request, failedIndex: candidateIndex, message: "Sunucu 15 saniye içinde yanıt vermedi")
+                  self.player.state != .playing else { return }
+            self.tryNextCandidate(message: "Sunucu 15 saniye içinde yanıt vermedi")
         }
-        if request.resumeMilliseconds > 0 && !request.item.isLive {
-            player.seek(to: CMTime(seconds: request.resumeMilliseconds / 1000, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
-        }
-        player.rate = autoplay ? request.preferences.playbackRate : 0
-        if autoplay { player.playImmediately(atRate: request.preferences.playbackRate) }
+
+        if autoplay { player.play() }
         UIApplication.shared.isIdleTimerDisabled = true
     }
 
-    func stop() { player.pause(); player.replaceCurrentItem(with: nil); currentID = nil; statusObservation = nil; preparationTimeout?.cancel(); UIApplication.shared.isIdleTimerDisabled = false }
-    func pauseForBackgroundIfNeeded() { shouldResume = player.rate > 0; player.pause() }
-    func resumeAfterBackgroundIfNeeded() { if shouldResume { player.play() }; shouldResume = false }
+    func attach(to view: UIView) {
+        if player.drawable as? UIView !== view { player.drawable = view }
+    }
+
+    func detach(from view: UIView) {
+        if player.drawable as? UIView === view { player.drawable = nil }
+    }
+
+    func togglePlayback() {
+        player.isPlaying ? player.pause() : player.play()
+    }
+
+    func stop() {
+        preparationTimeout?.cancel()
+        player.stop()
+        player.media = nil
+        currentID = nil
+        currentRequest = nil
+        currentSeconds = 0
+        durationSeconds = 0
+        isPlaying = false
+        UIApplication.shared.isIdleTimerDisabled = false
+    }
+
+    func pauseForBackgroundIfNeeded() {
+        shouldResume = player.isPlaying
+        player.pause()
+    }
+
+    func resumeAfterBackgroundIfNeeded() {
+        if shouldResume { player.play() }
+        shouldResume = false
+    }
+
     private func handleInterruption(_ note: Notification) {
         guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
               let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
-        if type == .began { shouldResume = player.rate > 0; player.pause() }
+        if type == .began { shouldResume = player.isPlaying; player.pause() }
         else if shouldResume { try? AVAudioSession.sharedInstance().setActive(true); player.play(); shouldResume = false }
     }
 
-    private func tryNextCandidate(_ request: PlaybackRequest, failedIndex: Int, message: String) {
-        guard currentID == request.id else { return }
+    nonisolated func mediaPlayerStateChanged(_ notification: Notification) {
+        Task { @MainActor [weak self] in self?.handlePlayerState() }
+    }
+
+    nonisolated func mediaPlayerTimeChanged(_ notification: Notification) {
+        Task { @MainActor [weak self] in self?.updateProgress() }
+    }
+
+    private func handlePlayerState() {
+        isPlaying = player.state == .playing
+        switch player.state {
+        case .playing:
+            preparationTimeout?.cancel()
+            if pendingResumeMilliseconds > 0 {
+                player.time = VLCTime(int: Int32(min(pendingResumeMilliseconds, Double(Int32.max))))
+                pendingResumeMilliseconds = 0
+            }
+            updateProgress()
+        case .error:
+            tryNextCandidate(message: "VLC medya akışını başlatamadı")
+        default:
+            break
+        }
+    }
+
+    private func updateProgress() {
+        currentSeconds = max(0, Double(player.time.intValue) / 1000)
+        durationSeconds = max(0, Double(player.media?.length.intValue ?? 0) / 1000)
+    }
+
+    private func tryNextCandidate(message: String) {
+        guard let request = currentRequest, currentID == request.id else { return }
         preparationTimeout?.cancel()
-        let nextIndex = failedIndex + 1
+        let nextIndex = candidateIndex + 1
         if playbackCandidates(for: request.item.url).indices.contains(nextIndex) {
+            candidateIndex = nextIndex
             Task {
                 try? await Task.sleep(for: .milliseconds(350))
                 if self.currentID == request.id {
-                    self.prepare(request, autoplay: true, candidateIndex: nextIndex)
+                    self.prepare(request, candidateIndex: nextIndex)
                 }
             }
         } else {
@@ -107,26 +162,13 @@ final class NativePlayerController: ObservableObject {
     }
 
     private func playbackCandidates(for source: URL) -> [URL] {
+        let candidates = [source]
         guard source.pathExtension.caseInsensitiveCompare("ts") == .orderedSame,
               var components = URLComponents(url: source, resolvingAgainstBaseURL: false) else {
-            return [source]
+            return candidates
         }
         components.path = String(components.path.dropLast(2)) + "m3u8"
-        guard let hlsURL = components.url, hlsURL != source else { return [source] }
-        return [hlsURL, source]
-    }
-
-    private func applyMediaPreferences(_ preferences: PlaybackPreferences, to item: AVPlayerItem) {
-        let asset = item.asset
-        if preferences.audioLanguage != "auto", let group = asset.mediaSelectionGroup(forMediaCharacteristic: .audible) {
-            let option = group.options.first { $0.extendedLanguageTag?.hasPrefix(preferences.audioLanguage) == true }
-            if let option { item.select(option, in: group) }
-        }
-        if let group = asset.mediaSelectionGroup(forMediaCharacteristic: .legible) {
-            if preferences.subtitleMode == "off" { item.select(nil, in: group) }
-            else if let option = group.options.first(where: { $0.extendedLanguageTag?.hasPrefix(preferences.subtitleLanguage) == true }) {
-                item.select(option, in: group)
-            }
-        }
+        guard let hlsURL = components.url, hlsURL != source else { return candidates }
+        return candidates + [hlsURL]
     }
 }

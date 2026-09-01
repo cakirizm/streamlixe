@@ -743,7 +743,7 @@ function MiniLivePlayer({item,onFull,onSessionChange}:{item:Media|null;onFull:(i
   type LiveAttempt={url:string;type:"hls"|"mpegts"|"native";source:Media};
   const ref=useRef<HTMLVideoElement>(null);const shellRef=useRef<HTMLDivElement>(null);const onFullRef=useRef(onFull);const stopRef=useRef<()=>void>(()=>{});const sessionIdRef=useRef<string|null>(null);const onSessionChangeRef=useRef(onSessionChange);useEffect(()=>{onSessionChangeRef.current=onSessionChange},[onSessionChange]);const [state,setState]=useState<"loading"|"playing"|"error">("loading");const [sourceIndex,setSourceIndex]=useState(0);const [nativePreview,setNativePreview]=useState(false);useLiveStallRecovery(ref,Boolean(item)&&!nativePreview);
   useEffect(()=>{onFullRef.current=onFull},[onFull]);
-  useEffect(()=>{const detect=()=>setNativePreview(Boolean(desktopBridge())&&!isIOSNativeHost());detect();window.addEventListener("streamlivex:native-bridge-ready",detect);return()=>window.removeEventListener("streamlivex:native-bridge-ready",detect)},[]);
+  useEffect(()=>{const detect=()=>setNativePreview(Boolean(desktopBridge()));detect();window.addEventListener("streamlivex:native-bridge-ready",detect);return()=>window.removeEventListener("streamlivex:native-bridge-ready",detect)},[]);
   useEffect(()=>{const video=ref.current;if(!video||!item||nativePreview)return;let disposed=false;let generation=0;let cleanup:(()=>void)|undefined;let timer:ReturnType<typeof setTimeout>|undefined;
     const score=(source:Media)=>/h265|hevc/i.test(source.name)?0:/fhd|1080/i.test(source.name)?5:/hd|720/i.test(source.name)?4:/4k|uhd/i.test(source.name)?2:3;
     const sources:Media[]=(item.sources?.length?item.sources:[item]).slice().sort((a,b)=>score(b)-score(a));
@@ -1088,13 +1088,10 @@ function LegacyPlayer({item,onBack}:{item:Media,onBack:()=>void}){
 
 type DesktopWebViewBridge={postMessage:(message:unknown)=>void};
 function desktopBridge():DesktopWebViewBridge|null{return typeof window==="undefined"?null:(window as Window&{chrome?:{webview?:DesktopWebViewBridge}}).chrome?.webview||null}
-function isIOSNativeHost(){return typeof navigator!=="undefined"&&/StreamLiveXiOS/i.test(navigator.userAgent)}
 function Player({item,profileId,onBack,onNext}:{item:Media;profileId:string;onBack:()=>void;onNext:()=>void}){
-  // Android'in ExoPlayer'i ham MPEG-TS ve daha fazla kapsayiciyi dogrudan oynatabiliyor.
-  // iOS kabugunda ise web oynaticinin HLS/MPEG-TS/proxy fallback zincirini kullan; boylece
-  // AVPlayer'in desteklemedigi saglayici bicimleri hata ekranina guvenle dusebilir.
-  // Android ve diger masaustu kabuklarinin native oynaticisini degistirme.
-  const [nativeMode]=useState(()=>Boolean(desktopBridge())&&!isIOSNativeHost());
+  // Android ExoPlayer ve iOS VLCKit ayni native bridge sozlesmesini kullanir. Boylece
+  // saglayici URL'si HTTPS web proxy'sine girmeden cihazdan dogrudan oynaticiya gider.
+  const [nativeMode]=useState(()=>Boolean(desktopBridge()));
   // Aktif bolumun sezon listesinde bir sonraki bolum var mi? -> "Sonraki bolum" butonu bunda gorunur.
   const hasNext=Array.isArray(item.episodeList)&&item.episodeIndex!=null&&item.episodeIndex+1<item.episodeList.length;
   if(nativeMode)return <NativeDesktopPlayer item={item} profileId={profileId} onBack={onBack} onNext={onNext} hasNext={hasNext}/>;
@@ -1112,7 +1109,7 @@ function NativeDesktopPlayer({item,profileId,onBack,onNext,hasNext}:{item:Media;
   const onBackRef=useRef(onBack);useEffect(()=>{onBackRef.current=onBack},[onBack]);
   const onNextRef=useRef(onNext);useEffect(()=>{onNextRef.current=onNext},[onNext]);
   useEffect(()=>{const bridge=desktopBridge();if(!bridge)return;const store=(event:Event)=>{const detail=(event as CustomEvent<{current?:number;duration?:number}>).detail;if(detail)saveWatchProgress(profileId,item,Number(detail.current||0),Number(detail.duration||0))};const closed=(event:Event)=>{store(event);onBackRef.current()};const failed=(event:Event)=>setError(String((event as CustomEvent<string>).detail||"Yayın açılamadı."));const settings=(event:Event)=>{const changes=(event as CustomEvent<Partial<PlayerPrefs>>).detail||{};savePlayerPrefs(profileId,{...readPlayerPrefs(profileId),...changes})};const next=()=>onNextRef.current();window.addEventListener("streamlivex:native-player-closed",closed);window.addEventListener("streamlivex:native-player-progress",store);window.addEventListener("streamlivex:native-player-error",failed);window.addEventListener("streamlivex:native-settings",settings);window.addEventListener("streamlivex:native-player-next",next);const requestKey=`${item.id}:${item.url}:${profileId}`;if(postedRequest.current!==requestKey){postedRequest.current=requestKey;const saved=readWatchProgress(profileId).find(entry=>entry.item.id===item.id);bridge.postMessage({type:"play",sessionId:sessionId,resumeTime:saved&&saved.current/saved.duration<.95?Math.round(saved.current*1000):0,item:{name:item.name,url:item.url,kind:item.kind,subtitles:item.subtitles||[],hasNext},preferences:readPlayerPrefs(profileId)})}return()=>{window.removeEventListener("streamlivex:native-player-closed",closed);window.removeEventListener("streamlivex:native-player-progress",store);window.removeEventListener("streamlivex:native-player-error",failed);window.removeEventListener("streamlivex:native-settings",settings);window.removeEventListener("streamlivex:native-player-next",next);bridge.postMessage({type:"close",sessionId:sessionId})}},[item.id,item.url,item.name,item.kind,item.subtitles,profileId,hasNext,sessionId]);
-  return <main className="player-page simple-player"><div className="player-state passive"><i/><h2>{error||"Windows oynatıcı açılıyor"}</h2><p>{error?"Listeye dönüp farklı bir kaynak deneyebilirsin.":"Ses, görüntü ve altyazı VLC motoruyla hazırlanıyor."}</p>{error&&<div className="player-error-actions"><button onClick={onBack}>Listeye dön</button></div>}</div></main>;
+  return <main className="player-page simple-player"><div className="player-state passive"><i/><h2>{error||"Yerel oynatıcı açılıyor"}</h2><p>{error?"Listeye dönüp farklı bir kaynak deneyebilirsin.":"Yayın cihazından doğrudan sağlayıcıya bağlanıyor."}</p>{error&&<div className="player-error-actions"><button onClick={onBack}>Listeye dön</button></div>}</div></main>;
 }
 function WebPlayer({item,profileId,onBack,onNext,hasNext}:{item:Media;profileId:string;onBack:()=>void;onNext:()=>void;hasNext:boolean}){
   const video=useRef<HTMLVideoElement>(null);const hlsRef=useRef<Hls|null>(null);const [status,setStatus]=useState<"loading"|"ready"|"playing"|"error">("loading");const [attempt,setAttempt]=useState(0);const [engine,setEngine]=useState("");useLiveStallRecovery(video,item.kind==="live");

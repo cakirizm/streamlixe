@@ -1,0 +1,9 @@
+platform :ios, '17.0'
+
+source 'https://github.com/CocoaPods/Specs.git'
+
+project 'StreamLiveX.xcodeproj'
+
+target 'StreamLiveX' do
+  pod 'MobileVLCKit', '3.7.3'
+end

@@ -1,17 +1,17 @@
 # StreamLiveX iOS
 
-Bu klasör, mevcut StreamLiveX web arayüzünü iPhone ve iPad'de `WKWebView` içinde çalıştıran, videoyu AVFoundation ile yerel oynatan iOS uygulamasını içerir. tvOS/Apple TV hedefi yoktur. Android, Android TV ve web bağımsız kalır.
+Bu klasör, mevcut StreamLiveX web arayüzünü iPhone ve iPad'de `WKWebView` içinde çalıştıran, videoyu VLCKit/libVLC ile yerel oynatan iOS uygulamasını içerir. tvOS/Apple TV hedefi yoktur. Android, Android TV ve web bağımsız kalır.
 
 ## Mimari
 
 - Web arayüzü `https://streamlivex.com/app` adresinden yüklenir. Kalıcı `WKWebsiteDataStore` çerezleri, localStorage/IndexedDB'yi, profilleri, dil/RTL, tema, favoriler ve kategori konumlarını korur.
 - `NativeBridge`, Android telefon/tablet uygulamasındaki `window.chrome.webview.postMessage` sözleşmesini aynen uygular: `play`, `preview`, `preview-layout`, `promote-preview`, `close` ve `close-preview`.
-- `AVPlayer`/`AVPlayerViewController` canlı, HLS, VOD, film ve dizi oynatır. Gömülü ses ve altyazı parçaları sistem oynatıcısından seçilebilir; web tercihi eşleşirse başlangıçta uygulanır.
-- Canlı önizleme ve tam ekran aynı AVPlayer'ı kullandığından geçişte medya yeniden hazırlanmaz.
+- `VLCKit` canlı, HLS, ham MPEG-TS, VOD, film ve diziyi doğrudan sağlayıcı URL'sinden oynatır. Yayın, web proxy katmanından geçmez.
+- Canlı önizleme ve tam ekran aynı VLCMediaPlayer'ı kullandığından geçişte medya yeniden hazırlanmaz.
 
 ## Xcode projesi ve signing
 
-Güncel Xcode ve XcodeGen gerekir (`brew install xcodegen`). macOS'ta `cd ios && xcodegen generate` komutuyla `StreamLiveX.xcodeproj` üretin. Projeyi açıp kişisel Team'i seçin. Depoda Team ID, provisioning profili, sertifika veya secret bulunmaz.
+Güncel Xcode, XcodeGen ve CocoaPods gerekir (`brew install xcodegen cocoapods`). macOS'ta `cd ios && xcodegen generate && pod install` komutlarıyla projeyi üretin ve `StreamLiveX.xcworkspace` dosyasını açın. Depoda provisioning profili, sertifika veya secret bulunmaz.
 
 Minimum iOS 16.0, Bundle ID `com.streamlivex.ios`, cihaz ailesi yalnızca iPhone/iPad (`1,2`) olarak tanımlıdır. Geliştirme sunucusu için `Info.plist` içindeki `SLXWebAppURL` HTTPS test adresiyle değiştirilebilir; fiziksel cihazda `localhost` cihazın kendisidir.
 
@@ -65,4 +65,4 @@ StreamLiveX içerik sağlamayan oynatıcı olarak sunulmalıdır. İnceleme hesa
 
 ## Bilinen iOS sınırları
 
-AVFoundation yalnızca iOS'un desteklediği codec/container kombinasyonlarını oynatır. MKV, bazı MPEG-TS ve özel codec akışları sunucuda HLS/fMP4'e dönüştürülmelidir. Ayrı SRT/ASS dosyaları AVPlayer'a bağımsız parça olarak takılamaz; sağlayıcı bunları HLS WebVTT rendition olarak paketlemelidir. Bu sınırlar TLS doğrulamasını kapatmak için gerekçe değildir.
+VLCKit, AVFoundation'a göre daha fazla codec ve container destekler; yine de donanım, bozuk akış, sağlayıcı oturum/IP sınırı veya DRM nedeniyle her kaynak garanti edilemez. HTTP(S) IPTV adresleri cihazdan doğrudan sağlayıcıya gider; TLS doğrulaması kapatılmaz.
