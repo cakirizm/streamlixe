@@ -11,6 +11,7 @@ final class WebPlayerModel: ObservableObject {
     @Published var webError: String?
     @Published var downloadsPresented = false
     @Published var parentalProfile = "main"
+    @Published var parentalCategories: [String] = []
     @Published var parentalPresented = false
     weak var webView: WKWebView?
     let player = NativePlayerController()
@@ -34,8 +35,9 @@ final class WebPlayerModel: ObservableObject {
             if id == nil || previewRequest?.id == id { previewRequest = nil; previewBounds = nil; if fullScreenRequest == nil { player.stop() } }
         case .showDownloads:
             downloadsPresented = true
-        case .showParental(let profileID):
+        case .showParental(let profileID, let categories):
             parentalProfile = profileID
+            parentalCategories = categories
             parentalPresented = true
         case .migrateParentalPin(let profileID, let pin):
             _ = SecurePinStore.set(pin, profileID: profileID)
@@ -57,12 +59,12 @@ final class WebPlayerModel: ObservableObject {
     }
 
     func reportError(_ message: String) { dispatch("streamlivex:native-player-error", detail: message) }
-    func setParentalFiltering(_ enabled: Bool) { dispatch("streamlivex:native-settings", detail: ["parental": enabled]) }
+    func setParentalSettings(_ enabled: Bool, restrictedGroups: [String]) { dispatch("streamlivex:native-settings", detail: ["parental": enabled, "hiddenGroups": restrictedGroups]) }
     func requestNext() { dispatch("streamlivex:native-player-next", detail: NSNull()) }
     func playOffline(_ download: OfflineDownload) {
         guard let localURL = download.localURL else { return }
         downloadsPresented = false
-        Task { try? await Task.sleep(for: .milliseconds(300)); let request = PlaybackRequest(id: "offline-\(download.id)", item: PlaybackItem(name: download.title, url: localURL, kind: "movie"), resumeMilliseconds: 0, preferences: PlaybackPreferences()); fullScreenRequest = request; player.load(request, autoplay: true) }
+        Task { try? await Task.sleep(for: .milliseconds(300)); let request = PlaybackRequest(id: "offline-\(download.id)", item: PlaybackItem(name: download.title, url: localURL, kind: download.kind, artwork: download.artworkURL), resumeMilliseconds: 0, preferences: PlaybackPreferences()); fullScreenRequest = request; player.load(request, autoplay: true) }
     }
 
     func dispatch(_ name: String, detail: Any) {
@@ -85,7 +87,7 @@ final class WebPlayerModel: ObservableObject {
               let mediaURL = URL(string: source), ["http", "https"].contains(mediaURL.scheme?.lowercased()) else { return }
         let value: (String) -> String? = { key in components.queryItems?.first(where: { $0.name == key })?.value }
         let request = PlaybackRequest(id: UUID().uuidString,
-                                      item: PlaybackItem(name: value("title") ?? "StreamLiveX", url: mediaURL, kind: value("kind") ?? "movie"),
+                                      item: PlaybackItem(name: value("title") ?? "StreamLiveX", url: mediaURL, kind: value("kind") ?? "movie", artwork: nil),
                                       resumeMilliseconds: 0, preferences: PlaybackPreferences())
         fullScreenRequest = request; player.load(request, autoplay: true)
     }

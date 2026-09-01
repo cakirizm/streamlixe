@@ -105,8 +105,8 @@ struct NativePlayerScreen: View {
     private var download: OfflineDownload? { downloads.downloads.first { $0.id == request.id } }
     private var downloadIcon: String { switch download?.state { case .some(.downloaded): "checkmark.circle.fill"; case .some(.downloading): "arrow.down.circle.dotted"; case .some(.paused): "pause.circle"; case .some(.failed): "exclamationmark.circle"; case nil: "arrow.down.circle" } }
     private func toggleDownload() {
-        guard let download else { downloads.start(id: request.id, title: request.item.name, source: request.item.url); return }
-        switch download.state { case .downloading: downloads.pause(request.id); case .paused: downloads.resume(request.id); case .failed: downloads.start(id: request.id, title: request.item.name, source: request.item.url); case .downloaded: break }
+        guard let download else { downloads.start(id: request.id, title: request.item.name, source: request.item.url, artworkURL: request.item.artwork, kind: request.item.kind); return }
+        switch download.state { case .downloading: downloads.pause(request.id); case .paused: downloads.resume(request.id); case .failed: downloads.start(id: request.id, title: request.item.name, source: request.item.url, artworkURL: request.item.artwork, kind: request.item.kind); case .downloaded: break }
         scheduleHide()
     }
 }

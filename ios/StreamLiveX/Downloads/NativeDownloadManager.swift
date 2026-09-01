@@ -6,15 +6,17 @@ struct OfflineDownload: Codable, Identifiable {
     let id: String
     let title: String
     let source: URL
+    let artworkURL: URL?
+    let kind: String
     var localURL: URL?
     var progress: Double
     var state: State
     var error: String?
 
-    private enum CodingKeys: String, CodingKey { case id, title, localURL, progress, state, error }
-    init(id: String, title: String, source: URL, localURL: URL? = nil, progress: Double, state: State, error: String? = nil) { self.id = id; self.title = title; self.source = source; self.localURL = localURL; self.progress = progress; self.state = state; self.error = error }
-    init(from decoder: Decoder) throws { let box = try decoder.container(keyedBy: CodingKeys.self); id = try box.decode(String.self, forKey: .id); title = try box.decode(String.self, forKey: .title); source = URL(string: "about:blank")!; localURL = try box.decodeIfPresent(URL.self, forKey: .localURL); progress = try box.decode(Double.self, forKey: .progress); let savedState = try box.decode(State.self, forKey: .state); state = savedState == .downloading ? .paused : savedState; error = try box.decodeIfPresent(String.self, forKey: .error) }
-    func encode(to encoder: Encoder) throws { var box = encoder.container(keyedBy: CodingKeys.self); try box.encode(id, forKey: .id); try box.encode(title, forKey: .title); try box.encodeIfPresent(localURL, forKey: .localURL); try box.encode(progress, forKey: .progress); try box.encode(state, forKey: .state); try box.encodeIfPresent(error, forKey: .error) }
+    private enum CodingKeys: String, CodingKey { case id, title, artworkURL, kind, localURL, progress, state, error }
+    init(id: String, title: String, source: URL, artworkURL: URL? = nil, kind: String = "movie", localURL: URL? = nil, progress: Double, state: State, error: String? = nil) { self.id = id; self.title = title; self.source = source; self.artworkURL = artworkURL; self.kind = kind; self.localURL = localURL; self.progress = progress; self.state = state; self.error = error }
+    init(from decoder: Decoder) throws { let box = try decoder.container(keyedBy: CodingKeys.self); id = try box.decode(String.self, forKey: .id); title = try box.decode(String.self, forKey: .title); source = URL(string: "about:blank")!; artworkURL = try box.decodeIfPresent(URL.self, forKey: .artworkURL); kind = try box.decodeIfPresent(String.self, forKey: .kind) ?? "movie"; localURL = try box.decodeIfPresent(URL.self, forKey: .localURL); progress = try box.decode(Double.self, forKey: .progress); let savedState = try box.decode(State.self, forKey: .state); state = savedState == .downloading ? .paused : savedState; error = try box.decodeIfPresent(String.self, forKey: .error) }
+    func encode(to encoder: Encoder) throws { var box = encoder.container(keyedBy: CodingKeys.self); try box.encode(id, forKey: .id); try box.encode(title, forKey: .title); try box.encodeIfPresent(artworkURL, forKey: .artworkURL); try box.encode(kind, forKey: .kind); try box.encodeIfPresent(localURL, forKey: .localURL); try box.encode(progress, forKey: .progress); try box.encode(state, forKey: .state); try box.encodeIfPresent(error, forKey: .error) }
 }
 
 @MainActor
@@ -36,11 +38,11 @@ final class NativeDownloadManager: NSObject, ObservableObject, AVAssetDownloadDe
         session.getAllTasks { [weak self] activeTasks in Task { @MainActor in guard let self else { return }; activeTasks.forEach { task in if let id = task.taskDescription { self.tasks[task.taskIdentifier] = id } } } }
     }
 
-    func start(id: String, title: String, source: URL) {
+    func start(id: String, title: String, source: URL, artworkURL: URL? = nil, kind: String = "movie") {
         guard source.pathExtension.lowercased() == "m3u8" else { return }
         if downloads.contains(where: { $0.id == id && $0.state == .downloaded }) { return }
         downloads.removeAll { $0.id == id }
-        downloads.insert(OfflineDownload(id: id, title: title, source: source, progress: 0, state: .downloading), at: 0)
+        downloads.insert(OfflineDownload(id: id, title: title, source: source, artworkURL: artworkURL, kind: kind, progress: 0, state: .downloading), at: 0)
         let asset = AVURLAsset(url: source)
         guard let task = session.makeAssetDownloadTask(asset: asset, assetTitle: title, assetArtworkData: nil, options: nil) else {
             fail(id, "İndirme başlatılamadı")

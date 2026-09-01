@@ -6,8 +6,13 @@ const read = path => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
 test("iOS redesign is scoped and keeps five primary tabs", async () => {
   const [app, css, bridge] = await Promise.all([read("app/PlayerApp.tsx"), read("app/ios-mobile.css"), read("ios/StreamLiveX/Bridge/NativeBridge.swift")]);
-  assert.match(app, /isIOSNativeHost\(\)\?\[\{id:"home"[\s\S]*id:"settings",label:"Profil"/);
-  assert.match(css, /html\.streamlivex-ios \.dash>header>nav/);
+  assert.match(app, /function IOSDashboard/);
+  assert.match(app, /const nav=\[\{id:"home"[\s\S]*id:"settings" as Section,label:"Profil"/);
+  assert.doesNotMatch(app.match(/function IOSDashboard[\s\S]*?function Dashboard/)?.[0] ?? "", /label:"Spor"|label:"Kategoriler"/);
+  assert.match(app, /function IOSCatalog/);
+  assert.match(app, /function IOSLiveTV/);
+  assert.match(app, /function IOSProfile/);
+  assert.match(css, /html\.streamlivex-ios \.ios-tabbar/);
   assert.doesNotMatch(css, /(^|\})\s*\.dash>header>nav/);
   assert.match(bridge, /classList\.add\('streamlivex-ios'\)/);
 });
@@ -30,9 +35,13 @@ test("native player exposes seek, audio and subtitle controls", async () => {
 });
 
 test("downloads use AVAssetDownloadURLSession and PIN uses Keychain", async () => {
-  const [downloads, pin] = await Promise.all([read("ios/StreamLiveX/Downloads/NativeDownloadManager.swift"), read("ios/StreamLiveX/Security/SecurePinStore.swift")]);
+  const [downloads, screen, parental, pin] = await Promise.all([read("ios/StreamLiveX/Downloads/NativeDownloadManager.swift"), read("ios/StreamLiveX/Downloads/NativeDownloadsScreen.swift"), read("ios/StreamLiveX/Security/NativeParentalScreen.swift"), read("ios/StreamLiveX/Security/SecurePinStore.swift")]);
   assert.match(downloads, /AVAssetDownloadURLSession/);
   assert.match(downloads, /pathExtension\.lowercased\(\) == "m3u8"/);
+  assert.match(screen, /AsyncImage\(url: item\.artworkURL\)/);
+  assert.match(screen, /ByteCountFormatter/);
+  assert.match(parental, /Kategori Kısıtlamaları/);
+  assert.match(parental, /IOSPinPad/);
   assert.match(pin, /SecItemAdd/);
   assert.match(pin, /SHA256\.hash/);
   assert.doesNotMatch(pin, /UserDefaults/);

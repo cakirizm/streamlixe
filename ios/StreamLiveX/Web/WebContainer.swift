@@ -25,7 +25,7 @@ struct WebContainer: View {
             NativePlayerScreen(model: model, request: request)
         }
         .sheet(isPresented: $model.downloadsPresented) { NativeDownloadsScreen(onPlay: model.playOffline) }
-        .sheet(isPresented: $model.parentalPresented) { NativeParentalScreen(profileID: model.parentalProfile, onFilteringChange: model.setParentalFiltering) }
+        .sheet(isPresented: $model.parentalPresented) { NativeParentalScreen(profileID: model.parentalProfile, categories: model.parentalCategories, onSettingsChange: model.setParentalSettings) }
     }
 }
 

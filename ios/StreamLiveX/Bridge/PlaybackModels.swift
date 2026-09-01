@@ -19,6 +19,7 @@ struct PlaybackItem: Codable {
     let name: String
     let url: URL
     let kind: String
+    var artwork: URL?
     var subtitles: [SubtitleSource] = []
     var hasNext = false
     var isLive: Bool { kind.caseInsensitiveCompare("live") == .orderedSame }
@@ -47,7 +48,7 @@ enum BridgeCommand {
     case close(String?)
     case closePreview(String?)
     case showDownloads
-    case showParental(String)
+    case showParental(String, [String])
     case migrateParentalPin(String, String)
     case confirmExit
 }
@@ -75,7 +76,7 @@ enum BridgeParser {
         case "close": return .close(session)
         case "close-preview": return .closePreview(session)
         case "show-downloads": return .showDownloads
-        case "show-parental": return .showParental((root["profileId"] as? String)?.nilIfBlank ?? "main")
+        case "show-parental": return .showParental((root["profileId"] as? String)?.nilIfBlank ?? "main", (root["categories"] as? [String] ?? []).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
         case "migrate-parental-pin":
             guard let profile = (root["profileId"] as? String)?.nilIfBlank, let pin = root["pin"] as? String else { return nil }
             return .migrateParentalPin(profile, pin)
@@ -101,6 +102,7 @@ enum BridgeParser {
             item: PlaybackItem(name: (rawItem["name"] as? String)?.nilIfBlank ?? "StreamLiveX",
                                url: url,
                                kind: (rawItem["kind"] as? String)?.nilIfBlank ?? "movie",
+                               artwork: (rawItem["artwork"] as? String).flatMap(secureMediaURL),
                                subtitles: subtitles,
                                hasNext: rawItem["hasNext"] as? Bool ?? false),
             resumeMilliseconds: max(0, (root["resumeTime"] as? NSNumber)?.doubleValue ?? 0),
