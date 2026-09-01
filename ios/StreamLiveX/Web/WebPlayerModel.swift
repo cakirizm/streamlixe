@@ -50,9 +50,15 @@ final class WebPlayerModel: ObservableObject {
     func requestNext() { dispatch("streamlivex:native-player-next", detail: NSNull()) }
 
     func dispatch(_ name: String, detail: Any) {
-        guard JSONSerialization.isValidJSONObject(["detail": detail]),
-              let data = try? JSONSerialization.data(withJSONObject: detail),
-              let json = String(data: data, encoding: .utf8) else { return }
+        // JSONSerialization, String/Number gibi kok degerlerde Swift Error yerine
+        // yakalanamayan NSException firlatir. Degeri once dizi icinde serialize edip
+        // parantezleri soymak her gecerli CustomEvent.detail turunu guvenle destekler.
+        let payload = [detail]
+        guard JSONSerialization.isValidJSONObject(payload),
+              let data = try? JSONSerialization.data(withJSONObject: payload),
+              let array = String(data: data, encoding: .utf8),
+              array.count >= 2 else { return }
+        let json = String(array.dropFirst().dropLast())
         webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent(\(js(name)), { detail: \(json) }));")
     }
 

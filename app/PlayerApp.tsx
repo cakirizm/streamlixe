@@ -743,7 +743,7 @@ function MiniLivePlayer({item,onFull,onSessionChange}:{item:Media|null;onFull:(i
   type LiveAttempt={url:string;type:"hls"|"mpegts"|"native";source:Media};
   const ref=useRef<HTMLVideoElement>(null);const shellRef=useRef<HTMLDivElement>(null);const onFullRef=useRef(onFull);const stopRef=useRef<()=>void>(()=>{});const sessionIdRef=useRef<string|null>(null);const onSessionChangeRef=useRef(onSessionChange);useEffect(()=>{onSessionChangeRef.current=onSessionChange},[onSessionChange]);const [state,setState]=useState<"loading"|"playing"|"error">("loading");const [sourceIndex,setSourceIndex]=useState(0);const [nativePreview,setNativePreview]=useState(false);useLiveStallRecovery(ref,Boolean(item)&&!nativePreview);
   useEffect(()=>{onFullRef.current=onFull},[onFull]);
-  useEffect(()=>{const detect=()=>setNativePreview(Boolean(desktopBridge()));detect();window.addEventListener("streamlivex:native-bridge-ready",detect);return()=>window.removeEventListener("streamlivex:native-bridge-ready",detect)},[]);
+  useEffect(()=>{const detect=()=>setNativePreview(Boolean(desktopBridge())&&!isIOSNativeHost());detect();window.addEventListener("streamlivex:native-bridge-ready",detect);return()=>window.removeEventListener("streamlivex:native-bridge-ready",detect)},[]);
   useEffect(()=>{const video=ref.current;if(!video||!item||nativePreview)return;let disposed=false;let generation=0;let cleanup:(()=>void)|undefined;let timer:ReturnType<typeof setTimeout>|undefined;
     const score=(source:Media)=>/h265|hevc/i.test(source.name)?0:/fhd|1080/i.test(source.name)?5:/hd|720/i.test(source.name)?4:/4k|uhd/i.test(source.name)?2:3;
     const sources:Media[]=(item.sources?.length?item.sources:[item]).slice().sort((a,b)=>score(b)-score(a));
@@ -1088,8 +1088,13 @@ function LegacyPlayer({item,onBack}:{item:Media,onBack:()=>void}){
 
 type DesktopWebViewBridge={postMessage:(message:unknown)=>void};
 function desktopBridge():DesktopWebViewBridge|null{return typeof window==="undefined"?null:(window as Window&{chrome?:{webview?:DesktopWebViewBridge}}).chrome?.webview||null}
+function isIOSNativeHost(){return typeof navigator!=="undefined"&&/StreamLiveXiOS/i.test(navigator.userAgent)}
 function Player({item,profileId,onBack,onNext}:{item:Media;profileId:string;onBack:()=>void;onNext:()=>void}){
-  const [nativeMode]=useState(()=>Boolean(desktopBridge()));
+  // Android'in ExoPlayer'i ham MPEG-TS ve daha fazla kapsayiciyi dogrudan oynatabiliyor.
+  // iOS kabugunda ise web oynaticinin HLS/MPEG-TS/proxy fallback zincirini kullan; boylece
+  // AVPlayer'in desteklemedigi saglayici bicimleri hata ekranina guvenle dusebilir.
+  // Android ve diger masaustu kabuklarinin native oynaticisini degistirme.
+  const [nativeMode]=useState(()=>Boolean(desktopBridge())&&!isIOSNativeHost());
   // Aktif bolumun sezon listesinde bir sonraki bolum var mi? -> "Sonraki bolum" butonu bunda gorunur.
   const hasNext=Array.isArray(item.episodeList)&&item.episodeIndex!=null&&item.episodeIndex+1<item.episodeList.length;
   if(nativeMode)return <NativeDesktopPlayer item={item} profileId={profileId} onBack={onBack} onNext={onNext} hasNext={hasNext}/>;

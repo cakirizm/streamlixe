@@ -10,6 +10,7 @@
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>
 <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
+<key>ITSAppUsesNonExemptEncryption</key><false/>
 <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>com.streamlivex.ios.play</string><key>CFBundleURLSchemes</key><array><string>streamlivex</string></array></dict></array>
 <key>LSRequiresIPhoneOS</key><true/>
 <key>NSAppTransportSecurity</key><dict><key>NSAllowsArbitraryLoadsForMedia</key><true/></dict>
