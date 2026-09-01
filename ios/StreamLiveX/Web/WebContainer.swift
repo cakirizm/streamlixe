@@ -24,8 +24,11 @@ struct WebContainer: View {
         .fullScreenCover(item: $model.fullScreenRequest, onDismiss: { model.closePlayer() }) { request in
             NativePlayerScreen(model: model, request: request)
         }
+        .sheet(isPresented: $model.downloadsPresented) { NativeDownloadsScreen(onPlay: model.playOffline) }
+        .sheet(isPresented: $model.parentalPresented) { NativeParentalScreen(profileID: model.parentalProfile, onFilteringChange: model.setParentalFiltering) }
     }
 }
+
 
 private struct BrowserView: UIViewRepresentable {
     @ObservedObject var model: WebPlayerModel

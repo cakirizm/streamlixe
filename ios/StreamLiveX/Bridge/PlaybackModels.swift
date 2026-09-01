@@ -11,6 +11,7 @@ struct PlaybackPreferences: Codable {
     var audioLanguage = "auto"
     var subtitleMode = "auto"
     var subtitleLanguage = "tr"
+    var subtitleDelay: Double = 0
     var playbackRate: Float = 1
 }
 
@@ -45,6 +46,9 @@ enum BridgeCommand {
     case promotePreview(String)
     case close(String?)
     case closePreview(String?)
+    case showDownloads
+    case showParental(String)
+    case migrateParentalPin(String, String)
     case confirmExit
 }
 
@@ -70,6 +74,11 @@ enum BridgeParser {
         case "promote-preview": return session.map(BridgeCommand.promotePreview)
         case "close": return .close(session)
         case "close-preview": return .closePreview(session)
+        case "show-downloads": return .showDownloads
+        case "show-parental": return .showParental((root["profileId"] as? String)?.nilIfBlank ?? "main")
+        case "migrate-parental-pin":
+            guard let profile = (root["profileId"] as? String)?.nilIfBlank, let pin = root["pin"] as? String else { return nil }
+            return .migrateParentalPin(profile, pin)
         case "confirm-exit": return .confirmExit
         default: return nil
         }
@@ -98,6 +107,7 @@ enum BridgeParser {
             preferences: PlaybackPreferences(audioLanguage: (prefs["audioLanguage"] as? String)?.nilIfBlank ?? "auto",
                                              subtitleMode: (prefs["subtitleMode"] as? String)?.nilIfBlank ?? "auto",
                                              subtitleLanguage: (prefs["subtitleLanguage"] as? String)?.nilIfBlank ?? "tr",
+                                             subtitleDelay: min(10, max(-10, (prefs["subtitleDelay"] as? NSNumber)?.doubleValue ?? 0)),
                                              playbackRate: min(2, max(0.5, (prefs["playbackRate"] as? NSNumber)?.floatValue ?? 1)))
         )
     }

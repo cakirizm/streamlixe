@@ -9,6 +9,9 @@ final class WebPlayerModel: ObservableObject {
     @Published var previewRequest: PlaybackRequest?
     @Published var previewBounds: PreviewBounds?
     @Published var webError: String?
+    @Published var downloadsPresented = false
+    @Published var parentalProfile = "main"
+    @Published var parentalPresented = false
     weak var webView: WKWebView?
     let player = NativePlayerController()
 
@@ -29,6 +32,13 @@ final class WebPlayerModel: ObservableObject {
             if id == nil || fullScreenRequest?.id == id { closePlayer(notifyWeb: false) }
         case .closePreview(let id):
             if id == nil || previewRequest?.id == id { previewRequest = nil; previewBounds = nil; if fullScreenRequest == nil { player.stop() } }
+        case .showDownloads:
+            downloadsPresented = true
+        case .showParental(let profileID):
+            parentalProfile = profileID
+            parentalPresented = true
+        case .migrateParentalPin(let profileID, let pin):
+            _ = SecurePinStore.set(pin, profileID: profileID)
         case .confirmExit:
             break // iOS apps must not terminate themselves programmatically.
         }
@@ -47,7 +57,13 @@ final class WebPlayerModel: ObservableObject {
     }
 
     func reportError(_ message: String) { dispatch("streamlivex:native-player-error", detail: message) }
+    func setParentalFiltering(_ enabled: Bool) { dispatch("streamlivex:native-settings", detail: ["parental": enabled]) }
     func requestNext() { dispatch("streamlivex:native-player-next", detail: NSNull()) }
+    func playOffline(_ download: OfflineDownload) {
+        guard let localURL = download.localURL else { return }
+        downloadsPresented = false
+        Task { try? await Task.sleep(for: .milliseconds(300)); let request = PlaybackRequest(id: "offline-\(download.id)", item: PlaybackItem(name: download.title, url: localURL, kind: "movie"), resumeMilliseconds: 0, preferences: PlaybackPreferences()); fullScreenRequest = request; player.load(request, autoplay: true) }
+    }
 
     func dispatch(_ name: String, detail: Any) {
         // JSONSerialization, String/Number gibi kok degerlerde Swift Error yerine
