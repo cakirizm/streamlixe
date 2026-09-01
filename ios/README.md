@@ -8,6 +8,9 @@ Bu klasör, mevcut StreamLiveX web arayüzünü iPhone ve iPad'de `WKWebView` i�
 - `NativeBridge`, Android telefon/tablet uygulamasındaki `window.chrome.webview.postMessage` sözleşmesini aynen uygular: `play`, `preview`, `preview-layout`, `promote-preview`, `close` ve `close-preview`.
 - `VLCKit` canlı, HLS, ham MPEG-TS, VOD, film ve diziyi doğrudan sağlayıcı URL'sinden oynatır. Yayın, web proxy katmanından geçmez.
 - Canlı önizleme ve tam ekran aynı VLCMediaPlayer'ı kullandığından geçişte medya yeniden hazırlanmaz.
+- iOS kabuğunda referans tasarıma uygun beş sekmeli mobil navigasyon, portre/landscape ve iPad uyarlaması bulunur. Bu tema `.streamlivex-ios` ile sınırlandığı için Android/TV görünümü değişmez.
+- HLS VOD içerikleri `AVAssetDownloadURLSession` ile arka planda indirilebilir, duraklatılabilir, sürdürülebilir, silinebilir ve yerel VLC oynatıcıda çevrimdışı açılabilir. Canlı TV kaydı desteklenmez.
+- Ebeveyn PIN'i yalnız iOS Keychain'de cihazla sınırlı, salt+SHA-256 doğrulama verisi olarak saklanır; düz metin PIN web deposuna yazılmaz.
 
 ## Xcode projesi ve signing
 
