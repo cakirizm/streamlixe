@@ -21,6 +21,8 @@ targets:
         INFOPLIST_FILE: StreamLiveX/Resources/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1,2"
-        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_STYLE: Manual
+        DEVELOPMENT_TEAM: "34JL83RV94"
+        CODE_SIGN_IDENTITY: "Apple Distribution"
     scheme:
       testTargets: []
