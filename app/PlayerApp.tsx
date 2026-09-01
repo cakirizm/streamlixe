@@ -526,7 +526,7 @@ export default function Home(){
   const [pairError,setPairError]=useState("");
   const [pairRetry,setPairRetry]=useState(0);
   useEffect(()=>{
-    if(screen!=="setup")return;
+    if(screen!=="setup"||/StreamLiveXiOS/i.test(navigator.userAgent))return;
     let active=true;let poll:ReturnType<typeof setInterval>|null=null;
     setPairQrUrl("");setPairError("");
     (async()=>{

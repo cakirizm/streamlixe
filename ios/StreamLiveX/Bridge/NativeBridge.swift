@@ -11,6 +11,11 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
     }
 
     static let bootstrap = WKUserScript(source: """
+        function markStreamLiveXiOS() {
+          if (document.documentElement) document.documentElement.classList.add('streamlivex-ios');
+        }
+        markStreamLiveXiOS();
+        document.addEventListener('DOMContentLoaded', markStreamLiveXiOS, { once: true });
         window.chrome = window.chrome || {};
         window.chrome.webview = window.chrome.webview || {
           postMessage: function(message) {
