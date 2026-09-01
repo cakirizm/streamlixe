@@ -1,22 +1,20 @@
 # StreamLiveX — native iOS derleme + TestFlight (Mac gerektirmez)
 # Codemagic bu dosyayi deponun kokunde bekler. Proje XcodeGen ile uretildiginden
-# derlemeden once `xcodegen generate` calisir. Imzalama App Store Connect API
-# anahtariyla otomatik yapilir; Mac'te elle sertifika uretmeye gerek yoktur.
+# derlemeden once `xcodegen generate` calisir. Imza dosyalari (sertifika +
+# provisioning profile) App Store Connect API anahtariyla YOKSA OTOMATIK
+# olusturulur (--create). Mac'te elle sertifika uretmeye gerek yoktur.
 workflows:
   ios-testflight:
     name: StreamLiveX iOS -> TestFlight
     instance_type: mac_mini_m2   # Codemagic ucretsiz katman (500 dk/ay)
     max_build_duration: 60
     integrations:
-      # ASAGIDAKI AD, Codemagic > Teams/Personal Account > Integrations >
-      # Apple Developer Portal altinda ekledigin API anahtarinin ADIYLA
-      # BIREBIR AYNI olmali. Farkli adlandirdiysan burayi guncelle.
+      # ASAGIDAKI AD, Codemagic > Settings/Personal Account > Integrations >
+      # Developer Portal altinda ekledigin API anahtarinin ADIYLA BIREBIR AYNI olmali.
       app_store_connect: "StreamLiveX ASC"
     environment:
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.streamlivex.ios
       vars:
+        BUNDLE_ID: "com.streamlivex.ios"
         XCODE_SCHEME: "StreamLiveX"
       xcode: latest              # Xcode 26 / iOS 26 SDK (Apple 2026 zorunlulugu)
     scripts:
@@ -25,15 +23,19 @@ workflows:
           brew install xcodegen
           cd ios
           xcodegen generate
+      - name: Imza dosyalarini hazirla (yoksa olustur)
+        script: |
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+          keychain add-certificates
+          cd ios
+          xcode-project use-profiles
       - name: Build numarasini ayarla (Codemagic otomatik artirir)
         script: |
           cd ios
           agvtool new-version -all "$BUILD_NUMBER"
-      - name: Keychain ve imza profillerini hazirla
-        script: |
-          keychain initialize
-          cd ios
-          xcode-project use-profiles
       - name: IPA derle
         script: |
           cd ios
