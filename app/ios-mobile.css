@@ -1,0 +1,196 @@
+/* iPhone/iPad presentation layer. The native shell adds .streamlivex-ios before
+   first paint; every rule is scoped so Android, TV and browser layouts remain unchanged. */
+html.streamlivex-ios{--ios-bg:#05070d;--ios-surface:#0d0f16;--ios-card:#11131b;--ios-line:rgba(255,255,255,.09);--ios-purple:#8b35ef;--ios-pink:#ec4899;--ios-text:#fff;--ios-secondary:#a5a7b0;--ios-muted:#71717a;background:var(--ios-bg);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text",system-ui,sans-serif;color-scheme:dark}
+html.streamlivex-ios body{padding:0;background:var(--ios-bg);font-family:inherit;-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}
+html.streamlivex-ios button,html.streamlivex-ios input,html.streamlivex-ios select{font-family:inherit}
+html.streamlivex-ios button{min-height:44px}
+
+/* Splash */
+html.streamlivex-ios .boot-screen{min-height:100dvh;padding:env(safe-area-inset-top) 24px env(safe-area-inset-bottom);background:radial-gradient(circle at 50% 46%,rgba(124,58,237,.2),transparent 29%),linear-gradient(160deg,#080713,#05070d 60%);gap:20px}
+html.streamlivex-ios .boot-screen:before{content:"";position:absolute;inset:16% -30%;background:radial-gradient(ellipse at center,transparent 40%,rgba(124,58,237,.14));filter:blur(30px);pointer-events:none}
+html.streamlivex-ios .boot-screen .logo{position:relative;flex-direction:column;gap:14px}
+html.streamlivex-ios .boot-screen .logo img{width:84px;height:84px;border-radius:24px;box-shadow:0 20px 65px rgba(124,58,237,.34)}
+html.streamlivex-ios .boot-screen .logo span{font-size:28px;letter-spacing:-1.2px}
+html.streamlivex-ios .boot-screen>i{width:22px;height:22px;border:2px solid rgba(255,255,255,.16);border-top-color:#a855f7}
+html.streamlivex-ios .boot-screen>p{font-size:14px;color:var(--ios-secondary)}
+
+/* Playlist setup and profile selection */
+html.streamlivex-ios .setup-page{display:block;min-height:100dvh;padding:max(22px,env(safe-area-inset-top)) 18px max(28px,env(safe-area-inset-bottom));background:radial-gradient(circle at 45% 5%,rgba(124,58,237,.18),transparent 31%),var(--ios-bg);overflow:auto}
+html.streamlivex-ios .setup-page .setup-qr{display:none!important}
+html.streamlivex-ios .setup-card{width:min(100%,560px);margin:0 auto;padding:16px 6px 30px;border:0;background:transparent;box-shadow:none}
+html.streamlivex-ios .setup-card>.logo{justify-content:center;margin:8px 0 34px}
+html.streamlivex-ios .setup-card>.logo img{width:48px;height:48px;border-radius:15px}
+html.streamlivex-ios .setup-card>.logo span{font-size:21px}
+html.streamlivex-ios .setup-head{margin:0 0 24px}
+html.streamlivex-ios .setup-head span{font-size:11px;letter-spacing:.14em;color:#a855f7}
+html.streamlivex-ios .setup-head h1{margin:8px 0;font-size:30px;line-height:1.08;letter-spacing:-1px}
+html.streamlivex-ios .setup-head p{font-size:15px;line-height:1.55;color:var(--ios-secondary)}
+html.streamlivex-ios .method-tabs{gap:8px;margin-bottom:24px;padding:4px;border:1px solid var(--ios-line);border-radius:14px;background:#090b12}
+html.streamlivex-ios .method-tabs button{height:58px;border:0;border-radius:11px;background:transparent;font-size:19px}
+html.streamlivex-ios .method-tabs button:nth-child(3){display:none}
+html.streamlivex-ios .method-tabs button.active{background:linear-gradient(135deg,rgba(124,58,237,.32),rgba(162,28,175,.24));box-shadow:inset 0 0 0 1px rgba(168,85,247,.48)}
+html.streamlivex-ios .method-tabs b{font-size:12px}
+html.streamlivex-ios form>label,html.streamlivex-ios .two label{gap:8px;margin-bottom:16px;font-size:13px;color:#d4d4d8}
+html.streamlivex-ios input,html.streamlivex-ios select{height:50px;border-color:var(--ios-line);border-radius:12px;background:#101219;font-size:15px;padding:0 14px}
+html.streamlivex-ios .two{grid-template-columns:1fr}
+html.streamlivex-ios .file-drop{height:92px!important;border-radius:14px;background:#0c0e15}
+html.streamlivex-ios .primary{height:52px;border-radius:13px;background:linear-gradient(100deg,#7c3aed,#a21caf);font-size:15px;box-shadow:0 12px 34px rgba(124,58,237,.25)}
+html.streamlivex-ios .demo-link{font-size:14px;min-height:44px}
+html.streamlivex-ios .privacy{font-size:11px;line-height:1.5}
+html.streamlivex-ios .setup-legal-links{gap:18px;justify-content:center;font-size:12px}
+html.streamlivex-ios .standalone-language{top:max(12px,env(safe-area-inset-top));right:12px}
+html.streamlivex-ios .setup-back{font-size:13px}
+
+html.streamlivex-ios .profile-page{min-height:100dvh;padding:max(18px,env(safe-area-inset-top)) 18px max(32px,env(safe-area-inset-bottom));background:radial-gradient(circle at 50% 15%,rgba(124,58,237,.13),transparent 30%),var(--ios-bg)}
+html.streamlivex-ios .profile-page>.logo{justify-content:center}
+html.streamlivex-ios .profile-page>div:last-child{margin-top:10vh}
+html.streamlivex-ios .profile-page h1{font-size:28px;margin:10px 0 28px}
+html.streamlivex-ios .profile-page section{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+html.streamlivex-ios .profile-page section button{width:auto;min-width:0}
+html.streamlivex-ios .profile-page section i{width:100%;height:auto;aspect-ratio:1;border-radius:22px;font-size:26px}
+html.streamlivex-ios .playlist-picker section button{padding:14px;border:1px solid var(--ios-line);border-radius:18px;background:var(--ios-card)}
+html.streamlivex-ios .profile-add{position:fixed;z-index:300;left:12px;right:12px;bottom:max(12px,env(safe-area-inset-bottom));max-height:80dvh;overflow:auto;padding:22px;border-radius:24px;background:#11131bf7;box-shadow:0 -18px 60px #000;border:1px solid var(--ios-line)}
+
+/* Application shell */
+html.streamlivex-ios .dash{min-height:100dvh;padding:calc(66px + env(safe-area-inset-top)) 0 calc(82px + env(safe-area-inset-bottom));background:var(--ios-bg)}
+html.streamlivex-ios .dash>header{position:fixed;z-index:100;left:0;right:0;top:0;height:calc(64px + env(safe-area-inset-top));padding:env(safe-area-inset-top) 16px 0;gap:10px;background:rgba(5,7,13,.92);border-bottom:1px solid var(--ios-line);box-shadow:none;backdrop-filter:blur(22px) saturate(140%)}
+html.streamlivex-ios .dash>header:after{display:none}
+html.streamlivex-ios .dash>header .logo{min-width:0;margin:0 auto 0 0}
+html.streamlivex-ios .dash>header .logo img{width:34px;height:34px;border-radius:10px}
+html.streamlivex-ios .dash>header .logo span{display:block;font-size:17px}
+html.streamlivex-ios .dash>header>nav{position:fixed;z-index:120;left:0;right:0;bottom:0;top:auto;height:calc(64px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(5,1fr);gap:0;padding:5px 5px env(safe-area-inset-bottom);border:0;border-top:1px solid var(--ios-line);border-radius:0;background:rgba(8,9,15,.96);box-shadow:0 -10px 35px rgba(0,0,0,.45);backdrop-filter:blur(22px)}
+html.streamlivex-ios .dash>header>nav button{height:56px;min-width:0;padding:5px 2px!important;display:flex;flex-direction:column;gap:4px;border-radius:10px;color:#777985;font-size:10px;font-weight:600}
+html.streamlivex-ios .dash>header>nav button svg{width:21px;height:21px}
+html.streamlivex-ios .dash>header>nav button span{display:block;white-space:nowrap}
+html.streamlivex-ios .dash>header>nav button.active{color:#a855f7;background:transparent;box-shadow:none}
+html.streamlivex-ios .dash>header>nav button.active:after{display:none}
+html.streamlivex-ios .dash-search{order:2;flex:0 0 42px!important;width:42px!important;height:42px!important;margin:0!important;border:0;background:#10121a;border-radius:50%}
+html.streamlivex-ios .dash-search input{position:absolute;inset:0;opacity:0;cursor:pointer}
+html.streamlivex-ios .dash-search:focus-within{position:fixed!important;z-index:150;left:12px!important;right:12px!important;top:calc(8px + env(safe-area-inset-top));width:auto!important;padding:0 12px;border:1px solid #7c3aed;border-radius:12px;background:#11131b}
+html.streamlivex-ios .dash-search:focus-within input{position:static;opacity:1}
+html.streamlivex-ios .header-favorites{display:none!important}
+html.streamlivex-ios .profile-control{order:3}
+html.streamlivex-ios .avatar{width:38px;height:38px;border-radius:50%;font-size:0;background:linear-gradient(135deg,#7c3aed,#ec4899)}
+html.streamlivex-ios .avatar:after{content:"";width:22px;height:22px;border-radius:50%;background:url('/streamlivex-brand.png') center/cover}
+html.streamlivex-ios .profile-menu{position:fixed;left:12px;right:12px;top:calc(58px + env(safe-area-inset-top));width:auto;border-radius:18px;background:#11131bf7}
+
+/* Home */
+html.streamlivex-ios .featured{min-height:0;height:auto;aspect-ratio:16/10;margin:12px 14px 28px;border:1px solid var(--ios-line);border-radius:20px;overflow:hidden;background:#0d0f16;box-shadow:0 18px 45px #0008}
+html.streamlivex-ios .featured-bg{inset:0;background:linear-gradient(90deg,rgba(5,7,13,.96),rgba(5,7,13,.42) 65%,rgba(5,7,13,.12))}
+html.streamlivex-ios .featured>div:nth-of-type(2){z-index:3;width:68%;padding:18px;align-self:end}
+html.streamlivex-ios .featured h1{font-size:28px;line-height:1.05;letter-spacing:-.8px;margin:8px 0}
+html.streamlivex-ios .featured p{max-width:100%;font-size:13px;line-height:1.45;-webkit-line-clamp:2}
+html.streamlivex-ios .featured small{font-size:12px}
+html.streamlivex-ios .featured button{min-height:42px;border-radius:11px;font-size:13px}
+html.streamlivex-ios .featured-poster{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;padding:0!important;opacity:.92}
+html.streamlivex-ios .featured-poster img{width:100%;height:100%;object-fit:cover;object-position:center}
+html.streamlivex-ios .hero-nav{display:none!important}
+html.streamlivex-ios .hero-dots{bottom:9px}
+html.streamlivex-ios .home-picks,html.streamlivex-ios .continue-section{padding:0 14px;margin:0 0 30px}
+html.streamlivex-ios .home-picks>div:first-child h2,html.streamlivex-ios .continue-section h2{font-size:20px;margin:4px 0 13px}
+html.streamlivex-ios .home-picks>div:first-child span{font-size:10px;letter-spacing:.1em}
+html.streamlivex-ios .pick-row{gap:12px;margin:0 -14px;padding:0 14px 5px;scroll-snap-type:x proximity}
+html.streamlivex-ios .trend-card{flex:0 0 132px;scroll-snap-align:start}
+html.streamlivex-ios .trend-card .trend-open>div{height:auto;aspect-ratio:2/3;border-radius:13px}
+html.streamlivex-ios .trend-card h3{font-size:14px;line-height:1.2;margin-top:8px}
+html.streamlivex-ios .trend-card p{font-size:12px}
+html.streamlivex-ios .trend-card .rank{font-size:32px}
+
+/* Catalogs */
+html.streamlivex-ios .catalog{display:block;padding:0 14px}
+html.streamlivex-ios .catalog>aside{position:static;width:auto;height:auto;display:flex;gap:8px;overflow-x:auto;margin:8px -14px 18px;padding:4px 14px 8px;border:0;background:transparent;scrollbar-width:none}
+html.streamlivex-ios .catalog>aside>span{display:none}
+html.streamlivex-ios .catalog>aside button{flex:0 0 auto;min-height:38px;padding:0 14px;border:1px solid var(--ios-line);border-radius:10px;background:#10121a;font-size:13px}
+html.streamlivex-ios .catalog>aside button svg,html.streamlivex-ios .catalog>aside button small{display:none}
+html.streamlivex-ios .catalog>aside button.active{background:#7c3aed;border-color:#8b5cf6;color:#fff}
+html.streamlivex-ios .catalog-content{padding:0}
+html.streamlivex-ios .library-title{padding:4px 0 16px}
+html.streamlivex-ios .library-title h2{font-size:26px}
+html.streamlivex-ios .library-title>b{font-size:12px}
+html.streamlivex-ios .media-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:18px 10px}
+html.streamlivex-ios .media-card .poster{aspect-ratio:2/3;height:auto;border-radius:12px}
+html.streamlivex-ios .media-card h3{font-size:13px;line-height:1.25;margin:7px 0 3px}
+html.streamlivex-ios .media-card p{font-size:11px;line-height:1.3}
+html.streamlivex-ios .media-card>.fav{width:34px;height:34px;min-height:34px;right:5px;top:5px}
+html.streamlivex-ios .simple-page{padding:18px 14px}
+html.streamlivex-ios .favorites-hero{padding:0;margin:0 0 22px;background:none;border:0}
+html.streamlivex-ios .favorites-hero h2{font-size:27px}
+
+/* Live TV: chips + rows + player stage */
+html.streamlivex-ios .live-workspace{display:flex;flex-direction:column;height:auto;min-height:calc(100dvh - 150px);padding:0 14px}
+html.streamlivex-ios .live-workspace>aside{order:1;position:static;width:auto;height:auto;display:flex;gap:8px;overflow-x:auto;margin:5px -14px 12px;padding:4px 14px;border:0;background:transparent}
+html.streamlivex-ios .live-workspace>aside>span{display:none}
+html.streamlivex-ios .live-workspace>aside button{flex:0 0 auto;min-height:38px;padding:0 14px;border:1px solid var(--ios-line);border-radius:10px;background:#10121a}
+html.streamlivex-ios .live-workspace>aside button svg,html.streamlivex-ios .live-workspace>aside button small{display:none}
+html.streamlivex-ios .live-workspace>aside button.active{background:#7c3aed;border-color:#8b5cf6}
+html.streamlivex-ios .live-channels{order:3;height:auto;overflow:visible;padding:0;border:0;background:transparent}
+html.streamlivex-ios .live-channels>header{padding:10px 0 12px}
+html.streamlivex-ios .live-channels>header h2{font-size:25px}
+html.streamlivex-ios .live-channels article{margin-bottom:8px;border:1px solid var(--ios-line);border-radius:14px;background:#0d0f16;overflow:hidden}
+html.streamlivex-ios .live-channels article>button:first-child{min-height:68px;padding:9px}
+html.streamlivex-ios .live-channels article img,html.streamlivex-ios .live-channels article i{width:46px;height:46px;border-radius:11px}
+html.streamlivex-ios .live-channels article span b{font-size:15px}
+html.streamlivex-ios .live-channels article span small{font-size:12px}
+html.streamlivex-ios .live-stage{order:2;display:block;padding:0;margin-bottom:14px}
+html.streamlivex-ios .live-preview{aspect-ratio:16/9;height:auto;border-radius:16px}
+html.streamlivex-ios .live-preview header{padding:10px 12px}
+html.streamlivex-ios .epg-panel{margin-top:10px;border-radius:14px}
+html.streamlivex-ios .tv-hint{display:none}
+
+/* Detail pages */
+html.streamlivex-ios .details-page{min-height:100dvh;padding-bottom:calc(24px + env(safe-area-inset-bottom));background:var(--ios-bg)}
+html.streamlivex-ios .details-backdrop{height:42dvh;min-height:300px;background-position:center top!important;background-size:cover!important}
+html.streamlivex-ios .details-page>header{height:calc(56px + env(safe-area-inset-top));padding:env(safe-area-inset-top) 14px 0}
+html.streamlivex-ios .details-page>header .logo{display:none}
+html.streamlivex-ios .details-page>header>button{width:42px;height:42px;border-radius:50%;backdrop-filter:blur(16px)}
+html.streamlivex-ios .detail-main{display:block;padding:34dvh 16px 18px}
+html.streamlivex-ios .detail-poster{display:none}
+html.streamlivex-ios .detail-main article>span{font-size:11px}
+html.streamlivex-ios .detail-main h1{font-size:29px;line-height:1.08;margin:8px 0}
+html.streamlivex-ios .detail-meta{font-size:13px}
+html.streamlivex-ios .detail-main article>p{font-size:15px;line-height:1.55;color:#c4c5cb}
+html.streamlivex-ios .people-line{font-size:13px}
+html.streamlivex-ios .detail-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+html.streamlivex-ios .detail-actions button{min-height:48px;border-radius:12px;font-size:13px}
+html.streamlivex-ios .detail-play{grid-column:1/-1;background:linear-gradient(100deg,#7c3aed,#a21caf)}
+html.streamlivex-ios .series-source-section,html.streamlivex-ios .detail-rail{padding-left:14px;padding-right:14px}
+html.streamlivex-ios .details-page>.series-browser{padding:24px 12px 50px}
+html.streamlivex-ios .details-page>.series-browser .season-episode-layout{display:block}
+html.streamlivex-ios .details-page>.series-browser .season-list{position:static;width:auto;display:flex;overflow-x:auto;margin:0 0 12px;padding:5px;border:0;background:transparent}
+html.streamlivex-ios .details-page>.series-browser .season-list>b{display:none}
+html.streamlivex-ios .details-page>.series-browser .season-list button{flex:0 0 auto;min-width:120px;min-height:46px}
+html.streamlivex-ios .details-page>.series-browser .episode-cards article{grid-template-columns:112px minmax(0,1fr);min-height:118px;border-radius:13px}
+html.streamlivex-ios .details-page>.series-browser .episode-image img{min-height:118px}
+html.streamlivex-ios .details-page>.series-browser .episode-cards article>div{padding:10px}
+html.streamlivex-ios .details-page>.series-browser .episode-cards p{-webkit-line-clamp:2;white-space:normal;font-size:11px}
+
+/* Profile/settings tab */
+html.streamlivex-ios .settings-theme,html.streamlivex-ios .media-center{display:none}
+html.streamlivex-ios .advanced-settings{padding:18px 14px 28px}
+html.streamlivex-ios .advanced-settings>header{padding:14px 4px 22px}
+html.streamlivex-ios .advanced-settings>header:before{content:"Profil";display:block;margin-bottom:20px;font-size:29px;font-weight:800;letter-spacing:-.7px;color:#fff}
+html.streamlivex-ios .advanced-settings>header h1{font-size:20px}
+html.streamlivex-ios .advanced-settings>header p{font-size:14px}
+html.streamlivex-ios .settings-sections{gap:9px}
+html.streamlivex-ios .settings-accordion{border-color:var(--ios-line);border-radius:14px;background:var(--ios-card)}
+html.streamlivex-ios .settings-accordion>button{min-height:65px;padding:10px 13px}
+html.streamlivex-ios .settings-accordion>button>svg:first-child{width:24px;height:24px;color:#a855f7}
+html.streamlivex-ios .settings-accordion b{font-size:15px}
+html.streamlivex-ios .settings-accordion small{font-size:12px}
+html.streamlivex-ios .settings-accordion:nth-child(7){display:none}/* legacy web PIN stores plain text; native Keychain panel replaces it on iOS */
+html.streamlivex-ios .profile-add>label:last-of-type{display:none}/* profile PIN is managed from the native Keychain panel */
+html.streamlivex-ios .ios-native-downloads-button{width:100%;display:grid;grid-template-columns:38px 1fr;align-items:center;gap:9px;text-align:left;border:1px solid var(--ios-line);border-radius:14px;background:var(--ios-card);color:#fff;padding:10px 13px}
+html.streamlivex-ios .ios-native-downloads-button>span:first-child{width:34px;height:34px;display:grid;place-items:center;border-radius:10px;background:rgba(124,58,237,.2);color:#a855f7;font-size:20px}
+html.streamlivex-ios .ios-native-downloads-button>span:last-child{display:flex;flex-direction:column;gap:3px}
+html.streamlivex-ios .setting-detail{padding:4px 14px 18px}
+html.streamlivex-ios .setting-detail label{font-size:13px}
+
+/* Search, states and sheets */
+html.streamlivex-ios .search-page{padding:16px 14px}
+html.streamlivex-ios .empty,html.streamlivex-ios .genre-loading,html.streamlivex-ios .episode-state{min-height:180px;border:1px dashed var(--ios-line);border-radius:16px;background:#0d0f16;color:var(--ios-secondary);font-size:14px}
+html.streamlivex-ios .error{border-radius:13px;font-size:13px}
+html.streamlivex-ios .player-track-panel{left:10px;right:10px;bottom:max(10px,env(safe-area-inset-bottom));top:auto;width:auto;max-height:78dvh;border-radius:24px 24px 18px 18px;overflow:auto;background:#11131bf7;backdrop-filter:blur(25px)}
+
+@media(max-width:370px){html.streamlivex-ios .media-grid{grid-template-columns:repeat(2,minmax(0,1fr))}html.streamlivex-ios .dash>header .logo span{display:none}html.streamlivex-ios .featured{aspect-ratio:4/3}html.streamlivex-ios .featured h1{font-size:24px}}
+@media(min-width:700px){html.streamlivex-ios .dash{padding-left:max(24px,env(safe-area-inset-left));padding-right:max(24px,env(safe-area-inset-right))}html.streamlivex-ios .featured{max-width:1080px;aspect-ratio:21/9;margin:24px auto 38px}html.streamlivex-ios .home-picks,html.streamlivex-ios .continue-section,html.streamlivex-ios .catalog,html.streamlivex-ios .simple-page,html.streamlivex-ios .live-workspace,html.streamlivex-ios .advanced-settings{max-width:1080px;margin-left:auto;margin-right:auto}html.streamlivex-ios .media-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:24px 15px}html.streamlivex-ios .trend-card{flex-basis:165px}html.streamlivex-ios .live-workspace{display:grid;grid-template-columns:minmax(300px,.9fr) minmax(380px,1.1fr);gap:18px}html.streamlivex-ios .live-workspace>aside{grid-column:1/-1}html.streamlivex-ios .live-channels{grid-column:1;grid-row:2}html.streamlivex-ios .live-stage{grid-column:2;grid-row:2;position:sticky;top:calc(78px + env(safe-area-inset-top));align-self:start}html.streamlivex-ios .detail-main{max-width:920px;margin:auto;padding-left:28px;padding-right:28px}html.streamlivex-ios .details-page>.series-browser{max-width:920px;margin:auto}html.streamlivex-ios .settings-sections{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}}
+@media(orientation:landscape) and (max-height:520px){html.streamlivex-ios .dash>header{height:calc(48px + env(safe-area-inset-top))}html.streamlivex-ios .dash{padding-top:calc(50px + env(safe-area-inset-top))}html.streamlivex-ios .dash>header>nav{left:auto;right:max(8px,env(safe-area-inset-right));top:calc(52px + env(safe-area-inset-top));bottom:auto;width:62px;height:auto;grid-template-columns:1fr;padding:6px;border:1px solid var(--ios-line);border-radius:14px}html.streamlivex-ios .dash>header>nav button span{display:none}html.streamlivex-ios .dash{padding-right:78px}}
