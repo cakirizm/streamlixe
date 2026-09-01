@@ -15,6 +15,30 @@ test("iOS redesign is scoped and keeps five primary tabs", async () => {
   assert.match(css, /html\.streamlivex-ios \.ios-tabbar/);
   assert.doesNotMatch(css, /(^|\})\s*\.dash>header>nav/);
   assert.match(bridge, /classList\.add\('streamlivex-ios'\)/);
+  assert.match(app, /function IOSSearch/);
+  assert.match(app, /function IOSFavorites/);
+  assert.match(app, /Son Aramalar/);
+  assert.match(app, /\[\["all","Tümü"\],\["movie","Filmler"\],\["series","Diziler"\],\["live","Kanallar"\]\]/);
+});
+
+test("iOS IPA renders the branch UI from its local bundle", async () => {
+  const [configuration, container, plist, workflow, entry, packageJson, project] = await Promise.all([
+    read("ios/StreamLiveX/App/AppConfiguration.swift"),
+    read("ios/StreamLiveX/Web/WebContainer.swift"),
+    read("ios/StreamLiveX/Resources/Info.plist"),
+    read("codemagic.yaml"),
+    read("ios-web/src/main.tsx"),
+    read("package.json"),
+    read("ios/project.yml"),
+  ]);
+  assert.match(configuration, /Bundle\.main\.url\(forResource: "index", withExtension: "html", subdirectory: "Web"\)/);
+  assert.match(container, /loadFileURL\(bundledURL/);
+  assert.doesNotMatch(plist, /https:\/\/streamlivex\.com\/app|SLXWebAppURL/);
+  assert.match(workflow, /VITE_UI_BUILD_SHA=.*npm run build:ios-web/);
+  assert.match(entry, /__SLX_UI_SOURCE__ = "Bundled iOS Branch"/);
+  assert.match(entry, /__SLX_PROXY_ORIGIN__ = serviceOrigin/);
+  assert.match(packageJson, /"build:ios-web"/);
+  assert.match(project, /path: StreamLiveX\/Resources\/Web\s+type: folder/);
 });
 
 test("iOS supports portrait and iPad without a tvOS target", async () => {

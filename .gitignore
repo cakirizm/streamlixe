@@ -40,3 +40,6 @@ smart-tv/tizen/signature*.xml
 
 # TypeScript artımlı derleme önbelleği
 tsconfig.tsbuildinfo
+
+# iOS branch UI is generated before XcodeGen/Codemagic packaging.
+ios/StreamLiveX/Resources/Web/

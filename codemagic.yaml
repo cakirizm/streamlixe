@@ -23,6 +23,10 @@ workflows:
       xcode: latest              # Xcode 26 / iOS 26 SDK (Apple 2026 zorunlulugu)
       cocoapods: default
     scripts:
+      - name: Branch iOS arayuzunu IPA icin paketle
+        script: |
+          npm ci
+          VITE_UI_BUILD_SHA="$(git rev-parse --short HEAD)" npm run build:ios-web
       - name: XcodeGen ile Xcode projesini uret
         script: |
           brew install xcodegen

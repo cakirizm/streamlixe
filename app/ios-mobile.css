@@ -232,3 +232,31 @@ html.streamlivex-ios .ios-search{padding:18px 14px}html.streamlivex-ios .ios-sea
 
 @media(max-width:365px){html.streamlivex-ios .ios-poster-grid{grid-template-columns:repeat(2,minmax(0,1fr))}html.streamlivex-ios .ios-hero{height:215px}html.streamlivex-ios .ios-hero>div{max-width:84%}}
 @media(min-width:700px){html.streamlivex-ios .ios-screen{max-width:1050px;margin:auto}html.streamlivex-ios .ios-hero{height:390px;margin:22px 24px 34px}html.streamlivex-ios .ios-section,html.streamlivex-ios .ios-catalog,html.streamlivex-ios .ios-live,html.streamlivex-ios .ios-profile{padding-left:24px;padding-right:24px}html.streamlivex-ios .ios-poster-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:26px 14px}html.streamlivex-ios .ios-profile{max-width:720px;margin:auto}html.streamlivex-ios .ios-rail .ios-poster-card{flex-basis:160px}}
+
+/* Dedicated iOS search/favorites rows and verifiable bundled-build marker. */
+html.streamlivex-ios .ios-build-marker{display:grid;gap:4px;width:100%;padding:12px;border:1px solid rgba(124,58,237,.32);border-radius:12px;background:rgba(124,58,237,.1);color:#c4b5fd;font:600 12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;text-align:left}
+html.streamlivex-ios .ios-result-row{display:flex;align-items:center;min-height:74px;border-bottom:1px solid rgba(255,255,255,.07);background:#0d0f16}
+html.streamlivex-ios .ios-result-row:last-child{border-bottom:0}
+html.streamlivex-ios .ios-result-row>button:first-child{display:flex;align-items:center;gap:12px;min-width:0;flex:1;padding:9px 4px 9px 10px;border:0;background:transparent;color:#fff;text-align:left}
+html.streamlivex-ios .ios-result-row img,html.streamlivex-ios .ios-result-row i{width:48px;height:54px;flex:0 0 48px;object-fit:cover;border-radius:9px;background:#171923;display:grid;place-items:center;font-style:normal}
+html.streamlivex-ios .ios-result-row span{display:grid;gap:5px;min-width:0;flex:1}
+html.streamlivex-ios .ios-result-row b,html.streamlivex-ios .ios-result-row small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+html.streamlivex-ios .ios-result-row b{font-size:14px}html.streamlivex-ios .ios-result-row small{font-size:11px;color:#a5a7b0}
+html.streamlivex-ios .ios-result-row>button:last-child{width:44px;min-height:44px;padding:0;border:0;background:transparent;color:#71717a}
+html.streamlivex-ios .ios-result-row>button:last-child.active{color:#ec4899}
+html.streamlivex-ios .ios-search>header label{position:relative}
+html.streamlivex-ios .ios-search>header label>button{position:absolute;right:5px;width:35px;min-height:35px;padding:0;border:0;border-radius:50%;background:#252733;color:#a5a7b0;font-size:20px}
+html.streamlivex-ios .ios-search-groups,html.streamlivex-ios .ios-search-start{display:grid;gap:24px;margin-top:22px}
+html.streamlivex-ios .ios-search-groups>section>header,html.streamlivex-ios .ios-search-start section>header{display:flex;align-items:center;justify-content:space-between;margin:0 0 9px}
+html.streamlivex-ios .ios-search-groups h2,html.streamlivex-ios .ios-search-start h2{margin:0;font-size:18px}
+html.streamlivex-ios .ios-search-groups>section>header span{color:#a5a7b0;font-size:12px}
+html.streamlivex-ios .ios-search-groups>section>div,html.streamlivex-ios .ios-search-start section>div:not(.ios-recent-searches),html.streamlivex-ios .ios-favorite-list{overflow:hidden;border:1px solid rgba(255,255,255,.09);border-radius:15px}
+html.streamlivex-ios .ios-search-start section>header button{min-height:36px;border:0;background:transparent;color:#a78bfa;font-size:12px}
+html.streamlivex-ios .ios-recent-searches{display:flex;gap:8px;overflow-x:auto;padding-bottom:3px}
+html.streamlivex-ios .ios-recent-searches button{display:flex;align-items:center;gap:7px;flex:0 0 auto;min-height:40px;padding:0 13px;border:1px solid rgba(255,255,255,.09);border-radius:20px;background:#11131b;color:#a5a7b0}
+html.streamlivex-ios .ios-favorites{padding:16px 14px 28px}
+html.streamlivex-ios .ios-favorites>.ios-back{margin:0 0 18px}
+html.streamlivex-ios .ios-favorites>header{margin:0 0 18px}
+html.streamlivex-ios .ios-favorites>header span{font-size:10px;letter-spacing:.14em;color:#a78bfa}
+html.streamlivex-ios .ios-favorites>header h1{margin:6px 0 0;font-size:28px}
+html.streamlivex-ios .ios-favorites .ios-chips{margin-bottom:16px}

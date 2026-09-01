@@ -46,7 +46,8 @@ private struct BrowserView: UIViewRepresentable {
         view.navigationDelegate = context.coordinator
         view.scrollView.contentInsetAdjustmentBehavior = .never
         model.webView = view
-        view.load(URLRequest(url: AppConfiguration.webAppURL, cachePolicy: .useProtocolCachePolicy, timeoutInterval: 20))
+        let bundledURL = AppConfiguration.bundledWebAppURL
+        view.loadFileURL(bundledURL, allowingReadAccessTo: bundledURL.deletingLastPathComponent())
         return view
     }
     func updateUIView(_ uiView: WKWebView, context: Context) {}
@@ -61,8 +62,9 @@ extension NativeBridge: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { model?.webError = error.localizedDescription }
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url else { decisionHandler(.cancel); return }
-        if action.targetFrame?.isMainFrame != false,
-           url.host == AppConfiguration.webAppURL.host || url == AppConfiguration.webAppURL { decisionHandler(.allow); return }
+        if url.isFileURL { decisionHandler(.allow); return }
+        if action.targetFrame?.isMainFrame == false,
+           url.host == AppConfiguration.serviceURL.host { decisionHandler(.allow); return }
         if ["http", "https", "mailto", "tel"].contains(url.scheme?.lowercased()) { UIApplication.shared.open(url) }
         decisionHandler(.cancel)
     }
