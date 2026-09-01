@@ -1,18 +1,22 @@
 # StreamLiveX — native iOS derleme + TestFlight (Mac gerektirmez)
 # Codemagic bu dosyayi deponun kokunde bekler. Proje XcodeGen ile uretildiginden
-# derlemeden once `xcodegen generate` calisir. Imza dosyalari (sertifika +
-# provisioning profile) App Store Connect API anahtariyla YOKSA OTOMATIK
-# olusturulur (--create). Mac'te elle sertifika uretmeye gerek yoktur.
+# derlemeden once `xcodegen generate` calisir.
+#
+# IMZA: Dagitim sertifikasi, Codemagic'te "signing" grubunda tanimli
+# CERTIFICATE_PRIVATE_KEY guvenli degiskeniyle olusturulur/yeniden kullanilir.
+# Boylece her build ayni sertifikayi kullanir (Apple'in sertifika limitine takilmaz).
 workflows:
   ios-testflight:
     name: StreamLiveX iOS -> TestFlight
     instance_type: mac_mini_m2   # Codemagic ucretsiz katman (500 dk/ay)
     max_build_duration: 60
     integrations:
-      # ASAGIDAKI AD, Codemagic > Settings/Personal Account > Integrations >
-      # Developer Portal altinda ekledigin API anahtarinin ADIYLA BIREBIR AYNI olmali.
+      # Codemagic > Settings > Integrations > Developer Portal altindaki
+      # API anahtarinin ADIYLA BIREBIR AYNI olmali.
       app_store_connect: "StreamLiveX ASC"
     environment:
+      groups:
+        - signing              # CERTIFICATE_PRIVATE_KEY (secure) bu gruptan gelir
       vars:
         BUNDLE_ID: "com.streamlivex.ios"
         XCODE_SCHEME: "StreamLiveX"
@@ -23,11 +27,12 @@ workflows:
           brew install xcodegen
           cd ios
           xcodegen generate
-      - name: Imza dosyalarini hazirla (yoksa olustur)
+      - name: Sertifika + provisioning profile (yoksa olustur, varsa kullan)
         script: |
           keychain initialize
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
+            --certificate-key "@env:CERTIFICATE_PRIVATE_KEY" \
             --create
           keychain add-certificates
           cd ios
