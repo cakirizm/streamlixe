@@ -36,7 +36,10 @@ workflows:
             --create
           keychain add-certificates
           cd ios
-          xcode-project use-profiles
+          xcode-project use-profiles \
+            --project "StreamLiveX.xcodeproj" \
+            --archive-method app-store \
+            --code-signing-setup-verbose-logging
       - name: Build numarasini ayarla (Codemagic otomatik artirir)
         script: |
           cd ios
@@ -44,7 +47,11 @@ workflows:
       - name: IPA derle
         script: |
           cd ios
-          xcode-project build-ipa --project "StreamLiveX.xcodeproj" --scheme "$XCODE_SCHEME"
+          xcode-project build-ipa \
+            --project "StreamLiveX.xcodeproj" \
+            --scheme "$XCODE_SCHEME" \
+            --verbose \
+            --disable-xcpretty
     artifacts:
       - ios/build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
