@@ -79,7 +79,7 @@ struct NativePlayerScreen: View {
                         VStack(spacing: 8) {
                             HStack(spacing: 12) {
                                 if !model.player.audioTracks.isEmpty { Button { audioSheet = true; hideTask?.cancel() } label: { Label("Ses", systemImage: "speaker.wave.2") }.buttonStyle(.bordered) }
-                                if !model.player.subtitleTracks.isEmpty { Button { subtitleSheet = true; hideTask?.cancel() } label: { Label("Altyazı", systemImage: "captions.bubble") }.buttonStyle(.bordered) }
+                                if request.item.isLive == false { Button { model.player.refreshTracks(); subtitleSheet = true; hideTask?.cancel() } label: { Label("Altyazı", systemImage: "captions.bubble") }.buttonStyle(.bordered) }
                                 Spacer()
                             }
                             Slider(value: Binding(get: { model.player.currentSeconds }, set: { model.player.seek(to: $0) }), in: 0...max(model.player.durationSeconds, 1)).tint(.purple)
@@ -96,7 +96,7 @@ struct NativePlayerScreen: View {
         .onDisappear { hideTask?.cancel(); model.reportProgress() }
         .animation(.easeInOut(duration: 0.2), value: controlsVisible)
         .confirmationDialog("Ses Parçası", isPresented: $audioSheet) { ForEach(model.player.audioTracks) { track in Button(track.name) { model.player.selectAudioTrack(track.id); scheduleHide() } } }
-        .confirmationDialog("Altyazı", isPresented: $subtitleSheet) { Button("Kapalı") { model.player.selectSubtitleTrack(-1); scheduleHide() }; ForEach(model.player.subtitleTracks.filter { $0.id >= 0 }) { track in Button(track.name) { model.player.selectSubtitleTrack(track.id); scheduleHide() } } }
+        .confirmationDialog("Altyazı", isPresented: $subtitleSheet) { Button("Kapalı") { model.player.selectSubtitleTrack(-1); scheduleHide() }; if model.player.subtitleTracks.filter({ $0.id >= 0 }).isEmpty { Button("Bu yayında altyazı bulunamadı") {}.disabled(true) }; ForEach(model.player.subtitleTracks.filter { $0.id >= 0 }) { track in Button(track.name) { model.player.selectSubtitleTrack(track.id); scheduleHide() } } }
     }
 
     private func setControls(_ visible: Bool) { controlsVisible = visible; if visible { scheduleHide() } else { hideTask?.cancel() } }

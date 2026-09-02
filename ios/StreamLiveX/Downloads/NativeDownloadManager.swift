@@ -39,7 +39,12 @@ final class NativeDownloadManager: NSObject, ObservableObject, AVAssetDownloadDe
     }
 
     func start(id: String, title: String, source: URL, artworkURL: URL? = nil, kind: String = "movie") {
-        guard source.pathExtension.lowercased() == "m3u8" else { return }
+        guard source.pathExtension.lowercased() == "m3u8" else {
+            downloads.removeAll { $0.id == id }
+            downloads.insert(OfflineDownload(id: id, title: title, source: source, artworkURL: artworkURL, kind: kind, progress: 0, state: .failed, error: "Bu kaynak çevrimdışı indirmeyi desteklemiyor. HLS (.m3u8) kaynak gerekir."), at: 0)
+            persist()
+            return
+        }
         if downloads.contains(where: { $0.id == id && $0.state == .downloaded }) { return }
         downloads.removeAll { $0.id == id }
         downloads.insert(OfflineDownload(id: id, title: title, source: source, artworkURL: artworkURL, kind: kind, progress: 0, state: .downloading), at: 0)

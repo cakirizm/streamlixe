@@ -38,6 +38,13 @@ final class WebPlayerModel: ObservableObject {
             if id == nil || fullScreenRequest?.id == id { closePlayer(notifyWeb: false) }
         case .closePreview(let id):
             if id == nil || previewRequest?.id == id { previewRequest = nil; previewBounds = nil; if fullScreenRequest == nil { player.stop() } }
+        case .download(let request):
+            NativeDownloadManager.shared.start(id: request.id,
+                                               title: request.item.name,
+                                               source: request.item.url,
+                                               artworkURL: request.item.artwork,
+                                               kind: request.item.kind)
+            downloadsPresented = true
         case .showDownloads:
             downloadsPresented = true
         case .showParental(let profileID, let categories):

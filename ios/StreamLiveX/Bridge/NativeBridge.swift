@@ -1,7 +1,7 @@
 import WebKit
 import UIKit
 
-final class NativeBridge: NSObject, WKScriptMessageHandler {
+final class NativeBridge: NSObject, WKScriptMessageHandler, UIGestureRecognizerDelegate {
     weak var model: WebPlayerModel?
     var isLoadingLegacyMigration = false
     var didStartLegacyExport = false
@@ -11,10 +11,12 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
 
     @objc func handleBackSwipe(_ gesture: UIScreenEdgePanGestureRecognizer) {
         guard gesture.state == .ended,
-              gesture.translation(in: gesture.view).x > 72,
-              gesture.velocity(in: gesture.view).x > 120 else { return }
+              gesture.translation(in: gesture.view).x > 28 else { return }
         model?.webView?.evaluateJavaScript("window.dispatchEvent(new Event('streamlivex:hardware-back'))")
     }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool { true }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.name == "streamlivex", let command = BridgeParser.parse(message.body) else { return }
@@ -48,19 +50,51 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
         });
         function installIOSActions() {
           var target = document.querySelector('.advanced-settings .settings-sections');
-          if (!target || target.querySelector('.ios-native-downloads-button')) return;
-          var button = document.createElement('button');
-          button.type = 'button';
-          button.className = 'settings-danger ios-native-downloads-button';
-          button.innerHTML = '<span aria-hidden="true">↓</span><span><b>İndirmeler</b><small>Çevrimdışı HLS film ve bölümlerini yönet</small></span>';
-          button.addEventListener('click', function () { window.chrome.webview.postMessage({ type: 'show-downloads' }); });
-          target.prepend(button);
-          var parental = document.createElement('button');
-          parental.type = 'button';
-          parental.className = 'settings-danger ios-native-downloads-button ios-native-parental-button';
-          parental.innerHTML = '<span aria-hidden="true">⌾</span><span><b>Güvenli Ebeveyn Kontrolü</b><small>PIN’i iOS Keychain ile yönet</small></span>';
-          parental.addEventListener('click', function () { window.chrome.webview.postMessage({ type: 'show-parental', profileId: localStorage.getItem('slx-active-profile') || 'main' }); });
-          target.prepend(parental);
+          if (target && !target.querySelector('.ios-native-downloads-button')) {
+            var button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'settings-danger ios-native-downloads-button';
+            button.innerHTML = '<span aria-hidden="true">↓</span><span><b>İndirmeler</b><small>Çevrimdışı HLS film ve bölümlerini yönet</small></span>';
+            button.addEventListener('click', function () { window.chrome.webview.postMessage({ type: 'show-downloads' }); });
+            target.prepend(button);
+            var parental = document.createElement('button');
+            parental.type = 'button';
+            parental.className = 'settings-danger ios-native-downloads-button ios-native-parental-button';
+            parental.innerHTML = '<span aria-hidden="true">⌾</span><span><b>Güvenli Ebeveyn Kontrolü</b><small>PIN’i iOS Keychain ile yönet</small></span>';
+            parental.addEventListener('click', function () { window.chrome.webview.postMessage({ type: 'show-parental', profileId: localStorage.getItem('slx-active-profile') || 'main' }); });
+            target.prepend(parental);
+          }
+          var actions = document.querySelector('.details-page .detail-actions');
+          if (actions && !actions.querySelector('.ios-detail-download')) {
+            var detailDownload = document.createElement('button');
+            detailDownload.type = 'button';
+            detailDownload.className = 'detail-save ios-detail-download';
+            var isSeries = ((document.querySelector('.detail-main article > span') || {}).textContent || '').indexOf('DİZİ') === 0;
+            detailDownload.innerHTML = '<span aria-hidden="true">↓</span> ' + (isSeries ? 'Bölüm İndir' : 'İndir');
+            detailDownload.addEventListener('click', function () {
+              if (isSeries) { var episodes = document.getElementById('episodes'); if (episodes) episodes.scrollIntoView({ behavior: 'smooth' }); return; }
+              var play = actions.querySelector('.detail-play');
+              if (!play || play.disabled) return;
+              sessionStorage.setItem('slx-ios-download-next', '1');
+              play.click();
+            });
+            actions.append(detailDownload);
+          }
+          document.querySelectorAll('.episode-cards article').forEach(function (article) {
+            var controls = article.querySelector(':scope > div');
+            if (!controls || controls.querySelector('.ios-episode-download')) return;
+            var episodeDownload = document.createElement('button');
+            episodeDownload.type = 'button';
+            episodeDownload.className = 'ios-episode-download';
+            episodeDownload.innerHTML = '<span aria-hidden="true">↓</span> İndir';
+            episodeDownload.addEventListener('click', function () {
+              var play = controls.querySelector(':scope > button:not(.ios-episode-download)');
+              if (!play) return;
+              sessionStorage.setItem('slx-ios-download-next', '1');
+              play.click();
+            });
+            controls.append(episodeDownload);
+          });
         }
         new MutationObserver(installIOSActions).observe(document.documentElement, { childList: true, subtree: true });
         document.addEventListener('DOMContentLoaded', installIOSActions);

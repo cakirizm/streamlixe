@@ -208,6 +208,7 @@ private struct BrowserView: UIViewRepresentable {
         let backSwipe = UIScreenEdgePanGestureRecognizer(target: context.coordinator, action: #selector(NativeBridge.handleBackSwipe(_:)))
         backSwipe.edges = .left
         backSwipe.cancelsTouchesInView = false
+        backSwipe.delegate = context.coordinator
         view.addGestureRecognizer(backSwipe)
         model.webView = view
         if context.coordinator.requiresLegacyMigration {

@@ -169,7 +169,7 @@ final class NativePlayerController: NSObject, ObservableObject, VLCMediaPlayerDe
         durationSeconds = max(0, Double(player.media?.length.intValue ?? 0) / 1000)
     }
 
-    private func refreshTracks() {
+    func refreshTracks() {
         let audioNames = player.audioTrackNames ?? []
         let audioIndexes = player.audioTrackIndexes ?? []
         audioTracks = zip(audioNames, audioIndexes).compactMap { name, index in

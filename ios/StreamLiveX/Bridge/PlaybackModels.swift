@@ -48,6 +48,7 @@ enum BridgeCommand {
     case promotePreview(String)
     case close(String?)
     case closePreview(String?)
+    case download(PlaybackRequest)
     case showDownloads
     case showParental(String, [String])
     case migrateParentalPin(String, String)
@@ -77,6 +78,7 @@ enum BridgeParser {
         case "promote-preview": return session.map(BridgeCommand.promotePreview)
         case "close": return .close(session)
         case "close-preview": return .closePreview(session)
+        case "download": return request(root).map(BridgeCommand.download)
         case "show-downloads": return .showDownloads
         case "show-parental": return .showParental((root["profileId"] as? String)?.nilIfBlank ?? "main", (root["categories"] as? [String] ?? []).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
         case "migrate-parental-pin":
