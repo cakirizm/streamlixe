@@ -262,15 +262,15 @@ extension NativeBridge: WKNavigationDelegate {
     private func exportLegacyStorage(from webView: WKWebView) {
         guard !didStartLegacyExport else { return }
         didStartLegacyExport = true
-        webView.callAsyncJavaScript(Self.legacyExportScript, arguments: [:], in: nil, contentWorld: .page) { [weak self, weak webView] result in
-            guard let self, let webView else { return }
-            let json = try? result.get() as? String
-            if let json, let data = json.data(using: .utf8) {
+        Task { @MainActor [weak self, weak webView] in
+            guard let webView else { return }
+            let result = try? await webView.callAsyncJavaScript(Self.legacyExportScript, arguments: [:], in: nil, contentWorld: .page)
+            if let json = result as? String, let data = json.data(using: .utf8) {
                 let encoded = data.base64EncodedString()
                 let source = "window.__SLX_LEGACY_EXPORT_BASE64__ = '\(encoded)';"
                 webView.configuration.userContentController.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true))
             }
-            DispatchQueue.main.async { self.loadBundledUI(in: webView) }
+            self?.loadBundledUI(in: webView)
         }
     }
 
