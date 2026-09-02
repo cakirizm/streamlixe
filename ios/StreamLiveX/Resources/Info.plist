@@ -17,7 +17,7 @@
      HTTPS keeps normal certificate validation. HTTP is admitted only so the app's explicitly
      validated VOD playback/download URLs can use URLSession and AVFoundation. -->
 <key>NSAppTransportSecurity</key><dict><key>NSAllowsArbitraryLoads</key><true/><key>NSAllowsArbitraryLoadsForMedia</key><true/></dict>
-<key>UILaunchScreen</key><dict><key>UIColorName</key><string>LaunchBackground</string><key>UIImageName</key><string>LaunchLogo</string></dict>
+<key>UILaunchScreen</key><dict><key>UIColorName</key><string>LaunchBackground</string></dict>
 <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
 <key>UISupportedInterfaceOrientations~ipad</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationPortraitUpsideDown</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
 </dict></plist>

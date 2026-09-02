@@ -150,18 +150,13 @@ final class BundledWebSchemeHandler: NSObject, WKURLSchemeHandler {
 
 struct WebContainer: View {
     @ObservedObject var model: WebPlayerModel
+    @State private var launchVisible = true
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             BrowserView(model: model)
                 .ignoresSafeArea(edges: .bottom)
-            if !model.uiReady && model.webError == nil {
-                ZStack {
-                    Color.black
-                    ProgressView("StreamLiveX hazırlanıyor…").tint(.white).foregroundStyle(.white)
-                }
-                .ignoresSafeArea()
-            }
+            if launchVisible && model.webError == nil { ProfessionalLaunchView().transition(.opacity) }
             if let request = model.previewRequest, let bounds = model.previewBounds, bounds.visible {
                 NativePlayerView(controller: model.player, showsControls: false)
                     .frame(width: bounds.width, height: bounds.height)
@@ -179,11 +174,48 @@ struct WebContainer: View {
             }
         }
         .background(Color.black)
+        .onChange(of: model.uiReady) { _, ready in
+            guard ready else { return }
+            Task {
+                try? await Task.sleep(for: .milliseconds(320))
+                await MainActor.run { withAnimation(.easeOut(duration: 0.42)) { launchVisible = false } }
+            }
+        }
         .fullScreenCover(item: $model.fullScreenRequest, onDismiss: { model.closePlayer() }) { request in
             NativePlayerScreen(model: model, request: request)
         }
         .sheet(isPresented: $model.downloadsPresented) { NativeDownloadsScreen(onPlay: model.playOffline) }
         .sheet(isPresented: $model.parentalPresented) { NativeParentalScreen(profileID: model.parentalProfile, categories: model.parentalCategories, onSettingsChange: model.setParentalSettings) }
+    }
+}
+
+private struct ProfessionalLaunchView: View {
+    @State private var appeared = false
+
+    var body: some View {
+        ZStack {
+            Color(red: 0.02, green: 0.025, blue: 0.045).ignoresSafeArea()
+            RadialGradient(colors: [Color.purple.opacity(0.22), .clear], center: .center, startRadius: 5, endRadius: 260).ignoresSafeArea()
+            VStack(spacing: 13) {
+                HStack(spacing: 0) {
+                    Text("StreamLive")
+                        .foregroundStyle(.white)
+                    Text("X")
+                        .foregroundStyle(LinearGradient(colors: [.cyan, .blue, .purple, .pink], startPoint: .topLeading, endPoint: .bottomTrailing))
+                }
+                .font(.system(size: 34, weight: .bold, design: .rounded))
+                Text("YOUR STREAMING EXPERIENCE")
+                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                    .tracking(2.1)
+                    .foregroundStyle(.white.opacity(0.55))
+                ProgressView().tint(.white.opacity(0.8)).scaleEffect(0.8).padding(.top, 5)
+            }
+            .scaleEffect(appeared ? 1 : 0.92)
+            .opacity(appeared ? 1 : 0)
+        }
+        .onAppear { withAnimation(.easeOut(duration: 0.55)) { appeared = true } }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("StreamLiveX hazırlanıyor")
     }
 }
 

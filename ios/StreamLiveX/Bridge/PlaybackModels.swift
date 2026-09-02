@@ -13,7 +13,7 @@ struct PlaybackPreferences: Codable {
     var subtitleLanguage = "tr"
     var subtitleDelay: Double = 0
     var playbackRate: Float = 1
-    var subtitleSize: Int = 100
+    var subtitleSize: Int = 80
     var subtitleColor = "#FFFFFF"
     var subtitleBackground = "shadow"
     var subtitleBackgroundOpacity: Double = 0.6
@@ -123,7 +123,7 @@ enum BridgeParser {
                                              subtitleLanguage: (prefs["subtitleLanguage"] as? String)?.nilIfBlank ?? "tr",
                                              subtitleDelay: min(10, max(-10, (prefs["subtitleDelay"] as? NSNumber)?.doubleValue ?? 0)),
                                              playbackRate: min(2, max(0.5, (prefs["playbackRate"] as? NSNumber)?.floatValue ?? 1)),
-                                             subtitleSize: min(180, max(70, (prefs["subtitleSize"] as? NSNumber)?.intValue ?? 100)),
+                                             subtitleSize: min(180, max(70, (prefs["subtitleSize"] as? NSNumber)?.intValue ?? 80)),
                                              subtitleColor: (prefs["subtitleColor"] as? String)?.nilIfBlank ?? "#FFFFFF",
                                              subtitleBackground: (prefs["subtitleBackground"] as? String)?.nilIfBlank ?? "shadow",
                                              subtitleBackgroundOpacity: min(1, max(0, (prefs["subtitleBackgroundOpacity"] as? NSNumber)?.doubleValue ?? 0.6)),
