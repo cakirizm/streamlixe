@@ -25,6 +25,10 @@ workflows:
     scripts:
       - name: Branch iOS arayuzunu IPA icin paketle
         script: |
+          if [ "$CM_BRANCH" != "ios-mobile-redesign-v1" ]; then
+            echo "Bu workflow yalnizca ios-mobile-redesign-v1 dali icindir."
+            exit 1
+          fi
           npm ci
           VITE_UI_BUILD_SHA="$(git rev-parse --short HEAD)" npm run build:ios-web
       - name: XcodeGen ile Xcode projesini uret

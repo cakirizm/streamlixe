@@ -1,4 +1,5 @@
 import WebKit
+import UIKit
 
 final class NativeBridge: NSObject, WKScriptMessageHandler {
     weak var model: WebPlayerModel?
@@ -7,6 +8,13 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
     var requiresLegacyMigration: Bool { !UserDefaults.standard.bool(forKey: "SLXLocalWebMigrationCompleted") }
 
     init(model: WebPlayerModel) { self.model = model }
+
+    @objc func handleBackSwipe(_ gesture: UIScreenEdgePanGestureRecognizer) {
+        guard gesture.state == .ended,
+              gesture.translation(in: gesture.view).x > 72,
+              gesture.velocity(in: gesture.view).x > 120 else { return }
+        model?.webView?.evaluateJavaScript("window.dispatchEvent(new Event('streamlivex:hardware-back'))")
+    }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.name == "streamlivex", let command = BridgeParser.parse(message.body) else { return }

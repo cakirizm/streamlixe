@@ -205,6 +205,10 @@ private struct BrowserView: UIViewRepresentable {
         view.customUserAgent = "StreamLiveXiOS/1.0"
         view.navigationDelegate = context.coordinator
         view.scrollView.contentInsetAdjustmentBehavior = .never
+        let backSwipe = UIScreenEdgePanGestureRecognizer(target: context.coordinator, action: #selector(NativeBridge.handleBackSwipe(_:)))
+        backSwipe.edges = .left
+        backSwipe.cancelsTouchesInView = false
+        view.addGestureRecognizer(backSwipe)
         model.webView = view
         if context.coordinator.requiresLegacyMigration {
             context.coordinator.isLoadingLegacyMigration = true
