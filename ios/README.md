@@ -20,7 +20,7 @@ Minimum iOS 16.0, Bundle ID `com.streamlivex.ios`, cihaz ailesi yalnızca iPhone
 
 ## Ağ, güvenlik ve gizlilik
 
-ATS doğrulaması açıktır; genel `NSAllowsArbitraryLoads` kullanılmaz. Web kabuğu yalnızca HTTPS yüklenir. Kullanıcıların mevcut HTTP IPTV medya akışları için Apple'ın medya ile sınırlı `NSAllowsArbitraryLoadsForMedia` anahtarı kullanılır; bu, HTTPS sertifika doğrulamasını kapatmaz ve WKWebView trafiğine uygulanmaz. Kimlik bilgileri ve oynatma URL'leri loglanmaz.
+ATS kapsamında HTTPS sertifika doğrulaması açık kalır ve hiçbir URLSession güven temsilcisi sertifikayı atlamaz. Kullanıcıların sağlayıcı alan adları önceden bilinemediği için HTTP HLS oynatma/indirme amacıyla `NSAllowsArbitraryLoadsForMedia`, HTTP MKV/MP4 gibi doğrudan dosyaların arka plan `URLSession` ile indirilebilmesi için de `NSAllowsArbitraryLoads` gerekir. Uygulama bu istisnayı yalnızca bridge tarafından doğrulanan HTTP/HTTPS VOD medya adreslerine uygular; canlı yayın indirmesi reddedilir. App Store inceleme notunda kullanıcı tarafından yapılandırılan eski IPTV sağlayıcılarının HTTP medya uyumluluğu açıklanmalıdır. Kimlik bilgileri ve oynatma URL'leri loglanmaz.
 
 Kamera, mikrofon, konum, fotoğraf ve kişi izni istenmez. Background audio ve Picture in Picture ürün/inceleme kapsamını gereksiz büyütmemek için etkin değildir.
 

@@ -13,6 +13,11 @@ struct PlaybackPreferences: Codable {
     var subtitleLanguage = "tr"
     var subtitleDelay: Double = 0
     var playbackRate: Float = 1
+    var subtitleSize: Int = 100
+    var subtitleColor = "#FFFFFF"
+    var subtitleBackground = "shadow"
+    var subtitleBackgroundOpacity: Double = 0.6
+    var subtitleVerticalPosition: Int = 8
 }
 
 struct PlaybackItem: Codable {
@@ -22,6 +27,7 @@ struct PlaybackItem: Codable {
     var artwork: URL?
     var subtitles: [SubtitleSource] = []
     var hasNext = false
+    var hasPrevious = false
     var isLive: Bool { kind.caseInsensitiveCompare("live") == .orderedSame }
 }
 
@@ -29,7 +35,8 @@ struct PlaybackRequest: Identifiable {
     let id: String
     let item: PlaybackItem
     let resumeMilliseconds: Double
-    let preferences: PlaybackPreferences
+    var preferences: PlaybackPreferences
+    var profileID = "main"
 }
 
 struct PreviewBounds: Codable {
@@ -108,13 +115,20 @@ enum BridgeParser {
                                kind: (rawItem["kind"] as? String)?.nilIfBlank ?? "movie",
                                artwork: (rawItem["artwork"] as? String).flatMap(secureMediaURL),
                                subtitles: subtitles,
-                               hasNext: rawItem["hasNext"] as? Bool ?? false),
+                               hasNext: rawItem["hasNext"] as? Bool ?? false,
+                               hasPrevious: rawItem["hasPrevious"] as? Bool ?? false),
             resumeMilliseconds: max(0, (root["resumeTime"] as? NSNumber)?.doubleValue ?? 0),
             preferences: PlaybackPreferences(audioLanguage: (prefs["audioLanguage"] as? String)?.nilIfBlank ?? "auto",
                                              subtitleMode: (prefs["subtitleMode"] as? String)?.nilIfBlank ?? "auto",
                                              subtitleLanguage: (prefs["subtitleLanguage"] as? String)?.nilIfBlank ?? "tr",
                                              subtitleDelay: min(10, max(-10, (prefs["subtitleDelay"] as? NSNumber)?.doubleValue ?? 0)),
-                                             playbackRate: min(2, max(0.5, (prefs["playbackRate"] as? NSNumber)?.floatValue ?? 1)))
+                                             playbackRate: min(2, max(0.5, (prefs["playbackRate"] as? NSNumber)?.floatValue ?? 1)),
+                                             subtitleSize: min(180, max(70, (prefs["subtitleSize"] as? NSNumber)?.intValue ?? 100)),
+                                             subtitleColor: (prefs["subtitleColor"] as? String)?.nilIfBlank ?? "#FFFFFF",
+                                             subtitleBackground: (prefs["subtitleBackground"] as? String)?.nilIfBlank ?? "shadow",
+                                             subtitleBackgroundOpacity: min(1, max(0, (prefs["subtitleBackgroundOpacity"] as? NSNumber)?.doubleValue ?? 0.6)),
+                                             subtitleVerticalPosition: min(20, max(0, (prefs["subtitleVerticalPosition"] as? NSNumber)?.intValue ?? 8))),
+            profileID: (root["profileId"] as? String)?.nilIfBlank ?? "main"
         )
     }
 

@@ -116,7 +116,7 @@ final class NativeDownloadManager: NSObject, ObservableObject, AVAssetDownloadDe
     }
     nonisolated func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         guard let error else { return }
-        Task { @MainActor in if let id = hlsTasks[task.taskIdentifier] ?? directTasks[task.taskIdentifier], downloads.contains(where: { $0.id == id }) { fail(id, error.localizedDescription) } }
+        Task { @MainActor in if let id = hlsTasks[task.taskIdentifier] ?? directTasks[task.taskIdentifier], downloads.contains(where: { $0.id == id }) { fail(id, localizedDownloadError(error)) } }
     }
 
     private func finish(id: String, temporaryURL: URL, extension ext: String) {
@@ -129,6 +129,18 @@ final class NativeDownloadManager: NSObject, ObservableObject, AVAssetDownloadDe
     }
     private func replace(_ item: OfflineDownload) { downloads.removeAll { $0.id == item.id }; downloads.insert(item, at: 0); persist() }
     private func fail(_ id: String, _ message: String) { mutate(id) { $0.state = .failed; $0.error = message } }
+    private func localizedDownloadError(_ error: Error) -> String {
+        let code = (error as? URLError)?.code
+        switch code {
+        case .appTransportSecurityRequiresSecureConnection: return "Bu sağlayıcının HTTP bağlantısına iOS izin vermedi. Uygulamayı güncelleyip yeniden deneyin."
+        case .timedOut: return "İndirme zaman aşımına uğradı. Bağlantınızı kontrol edip yeniden deneyin."
+        case .notConnectedToInternet, .networkConnectionLost: return "İnternet bağlantısı kesildi. Bağlantı geldiğinde yeniden deneyin."
+        case .cannotConnectToHost, .cannotFindHost: return "Yayın sunucusuna ulaşılamadı. Sağlayıcı adresini kontrol edin."
+        case .userAuthenticationRequired, .userCancelledAuthentication: return "Yayın sunucusu indirme yetkisini kabul etmedi."
+        case .cancelled: return "İndirme durduruldu."
+        default: return "İndirme tamamlanamadı. Lütfen yeniden deneyin."
+        }
+    }
     private func mutate(_ id: String, _ change: (inout OfflineDownload) -> Void) { guard let index = downloads.firstIndex(where: { $0.id == id }) else { return }; change(&downloads[index]); persist() }
     private func persist() { if let data = try? JSONEncoder().encode(downloads) { UserDefaults.standard.set(data, forKey: storageKey) } }
 }
