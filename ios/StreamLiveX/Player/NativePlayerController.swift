@@ -2,10 +2,18 @@ import AVFoundation
 import MobileVLCKit
 import UIKit
 
+struct NativeMediaTrack: Identifiable, Hashable { let id: Int32; let name: String }
+
 @MainActor
 final class NativePlayerController: NSObject, ObservableObject, VLCMediaPlayerDelegate {
     let player = VLCMediaPlayer()
     @Published private(set) var isPlaying = false
+    @Published private(set) var currentSeconds: Double = 0
+    @Published private(set) var durationSeconds: Double = 0
+    @Published private(set) var audioTracks: [NativeMediaTrack] = []
+    @Published private(set) var subtitleTracks: [NativeMediaTrack] = []
+    @Published private(set) var selectedAudioTrack: Int32 = -1
+    @Published private(set) var selectedSubtitleTrack: Int32 = -1
     private var currentID: String?
     private var currentRequest: PlaybackRequest?
     private var candidateIndex = 0
@@ -13,8 +21,7 @@ final class NativePlayerController: NSObject, ObservableObject, VLCMediaPlayerDe
     private var shouldResume = false
     private var preparationTimeout: Task<Void, Never>?
     private var pendingResumeMilliseconds: Double = 0
-    private var currentSeconds: Double = 0
-    private var durationSeconds: Double = 0
+    private var externalSubtitleAttached = false
     var onError: ((String) -> Void)?
 
     var progress: (current: Double, duration: Double) {
@@ -41,6 +48,7 @@ final class NativePlayerController: NSObject, ObservableObject, VLCMediaPlayerDe
         candidateIndex = 0
         self.autoplay = autoplay
         pendingResumeMilliseconds = request.item.isLive ? 0 : request.resumeMilliseconds
+        externalSubtitleAttached = false
         prepare(request, candidateIndex: candidateIndex)
     }
 
@@ -84,6 +92,21 @@ final class NativePlayerController: NSObject, ObservableObject, VLCMediaPlayerDe
     func togglePlayback() {
         player.isPlaying ? player.pause() : player.play()
     }
+
+    func seek(by seconds: Double) {
+        guard durationSeconds > 0 else { return }
+        seek(to: currentSeconds + seconds)
+    }
+
+    func seek(to seconds: Double) {
+        guard durationSeconds > 0 else { return }
+        let target = min(max(0, seconds), durationSeconds)
+        player.time = VLCTime(int: Int32(min(target * 1000, Double(Int32.max))))
+        updateProgress()
+    }
+
+    func selectAudioTrack(_ id: Int32) { player.currentAudioTrackIndex = id; selectedAudioTrack = id }
+    func selectSubtitleTrack(_ id: Int32) { player.currentVideoSubTitleIndex = id; selectedSubtitleTrack = id }
 
     func stop() {
         preparationTimeout?.cancel()
@@ -132,6 +155,8 @@ final class NativePlayerController: NSObject, ObservableObject, VLCMediaPlayerDe
                 pendingResumeMilliseconds = 0
             }
             updateProgress()
+            attachPreferredExternalSubtitleIfNeeded()
+            refreshTracks()
         case .error:
             tryNextCandidate(message: "VLC medya akışını başlatamadı")
         default:
@@ -142,6 +167,31 @@ final class NativePlayerController: NSObject, ObservableObject, VLCMediaPlayerDe
     private func updateProgress() {
         currentSeconds = max(0, Double(player.time.intValue) / 1000)
         durationSeconds = max(0, Double(player.media?.length.intValue ?? 0) / 1000)
+    }
+
+    private func refreshTracks() {
+        let audioNames = player.audioTrackNames ?? []
+        let audioIndexes = player.audioTrackIndexes ?? []
+        audioTracks = zip(audioNames, audioIndexes).compactMap { name, index in
+            guard let number = index as? NSNumber else { return nil }
+            return NativeMediaTrack(id: number.int32Value, name: String(describing: name))
+        }
+        let subtitleNames = player.videoSubTitlesNames ?? []
+        let subtitleIndexes = player.videoSubTitlesIndexes ?? []
+        subtitleTracks = zip(subtitleNames, subtitleIndexes).compactMap { name, index in
+            guard let number = index as? NSNumber else { return nil }
+            return NativeMediaTrack(id: number.int32Value, name: String(describing: name))
+        }
+        selectedAudioTrack = player.currentAudioTrackIndex
+        selectedSubtitleTrack = player.currentVideoSubTitleIndex
+    }
+
+    private func attachPreferredExternalSubtitleIfNeeded() {
+        guard !externalSubtitleAttached, let request = currentRequest,
+              request.preferences.subtitleMode != "off", !request.item.subtitles.isEmpty else { return }
+        let preferred = request.item.subtitles.first(where: { request.preferences.subtitleLanguage == "auto" || $0.language.lowercased().hasPrefix(request.preferences.subtitleLanguage.lowercased()) }) ?? request.item.subtitles[0]
+        externalSubtitleAttached = player.addPlaybackSlave(preferred.src, type: .subtitle, enforce: true) == 0
+        player.currentVideoSubTitleDelay = Int(request.preferences.subtitleDelay * 1_000_000)
     }
 
     private func tryNextCandidate(message: String) {

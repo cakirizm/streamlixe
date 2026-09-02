@@ -4,14 +4,17 @@ Bu klasör, mevcut StreamLiveX web arayüzünü iPhone ve iPad'de `WKWebView` i�
 
 ## Mimari
 
-- Web arayüzü `https://streamlivex.com/app` adresinden yüklenir. Kalıcı `WKWebsiteDataStore` çerezleri, localStorage/IndexedDB'yi, profilleri, dil/RTL, tema, favoriler ve kategori konumlarını korur.
+- Branch'e ait iOS web arayüzü `npm run build:ios-web` ile `Resources/Web` altına üretilir ve IPA içinde yerelden yüklenir. Üretim `/app` sayfası görsel kaynak değildir. Kalıcı `WKWebsiteDataStore` localStorage/IndexedDB'yi, profilleri, dil/RTL, tema, favoriler ve kategori konumlarını korur; sunucu gerektiren API uçları HTTPS hizmetine yönlendirilir.
 - `NativeBridge`, Android telefon/tablet uygulamasındaki `window.chrome.webview.postMessage` sözleşmesini aynen uygular: `play`, `preview`, `preview-layout`, `promote-preview`, `close` ve `close-preview`.
 - `VLCKit` canlı, HLS, ham MPEG-TS, VOD, film ve diziyi doğrudan sağlayıcı URL'sinden oynatır. Yayın, web proxy katmanından geçmez.
 - Canlı önizleme ve tam ekran aynı VLCMediaPlayer'ı kullandığından geçişte medya yeniden hazırlanmaz.
+- iOS kabuğunda referans tasarıma uygun beş sekmeli mobil navigasyon, portre/landscape ve iPad uyarlaması bulunur. Bu tema `.streamlivex-ios` ile sınırlandığı için Android/TV görünümü değişmez.
+- HLS VOD içerikleri `AVAssetDownloadURLSession` ile arka planda indirilebilir, duraklatılabilir, sürdürülebilir, silinebilir ve yerel VLC oynatıcıda çevrimdışı açılabilir. Canlı TV kaydı desteklenmez.
+- Ebeveyn PIN'i yalnız iOS Keychain'de cihazla sınırlı, salt+SHA-256 doğrulama verisi olarak saklanır; düz metin PIN web deposuna yazılmaz.
 
 ## Xcode projesi ve signing
 
-Güncel Xcode, XcodeGen ve CocoaPods gerekir (`brew install xcodegen cocoapods`). macOS'ta `cd ios && xcodegen generate && pod install` komutlarıyla projeyi üretin ve `StreamLiveX.xcworkspace` dosyasını açın. Depoda provisioning profili, sertifika veya secret bulunmaz.
+Güncel Xcode, Node.js, XcodeGen ve CocoaPods gerekir (`brew install xcodegen cocoapods`). macOS'ta depo kökünde önce `npm ci && VITE_UI_BUILD_SHA="$(git rev-parse --short HEAD)" npm run build:ios-web`, ardından `cd ios && xcodegen generate && pod install` komutlarıyla branch UI paketini ve projeyi üretin; `StreamLiveX.xcworkspace` dosyasını açın. Depoda provisioning profili, sertifika veya secret bulunmaz.
 
 Minimum iOS 16.0, Bundle ID `com.streamlivex.ios`, cihaz ailesi yalnızca iPhone/iPad (`1,2`) olarak tanımlıdır. Geliştirme sunucusu için `Info.plist` içindeki `SLXWebAppURL` HTTPS test adresiyle değiştirilebilir; fiziksel cihazda `localhost` cihazın kendisidir.
 

@@ -14,7 +14,11 @@ targets:
     type: application
     platform: iOS
     sources:
-      - StreamLiveX
+      - path: StreamLiveX
+        excludes:
+          - Resources/Web
+      - path: StreamLiveX/Resources/Web
+        type: folder
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.streamlivex.ios
