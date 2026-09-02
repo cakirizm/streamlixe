@@ -22,21 +22,49 @@ test("iOS redesign is scoped and keeps five primary tabs", async () => {
 });
 
 test("iOS IPA renders the branch UI from its local bundle", async () => {
-  const [configuration, container, plist, workflow, entry, packageJson, project] = await Promise.all([
+  const [configuration, container, model, bridgeModels, plist, workflow, entry, packageJson, project] = await Promise.all([
     read("ios/StreamLiveX/App/AppConfiguration.swift"),
     read("ios/StreamLiveX/Web/WebContainer.swift"),
+    read("ios/StreamLiveX/Web/WebPlayerModel.swift"),
+    read("ios/StreamLiveX/Bridge/PlaybackModels.swift"),
     read("ios/StreamLiveX/Resources/Info.plist"),
     read("codemagic.yaml"),
     read("ios-web/src/main.tsx"),
     read("package.json"),
     read("ios/project.yml"),
   ]);
-  assert.match(configuration, /Bundle\.main\.url\(forResource: "index", withExtension: "html", subdirectory: "Web"\)/);
-  assert.match(container, /loadFileURL\(bundledURL/);
+  assert.match(configuration, /localWebScheme = "streamlivex-local"/);
+  assert.match(configuration, /localWebHost = "app"/);
+  assert.match(configuration, /URL\(string: "streamlivex-local:\/\/app\/index\.html"\)/);
+  assert.match(container, /final class BundledWebSchemeHandler: NSObject, WKURLSchemeHandler/);
+  assert.match(container, /setURLSchemeHandler\(bundledHandler, forURLScheme: AppConfiguration\.localWebScheme\)/);
+  assert.match(container, /view\.load\(URLRequest\(url: AppConfiguration\.bundledWebAppURL\)\)/);
+  assert.doesNotMatch(container, /loadFileURL/);
+  assert.match(container, /didFailWithError/);
+  assert.match(container, /requestURL\.host == AppConfiguration\.localWebHost/);
+  assert.match(container, /url\.scheme == AppConfiguration\.localWebScheme,[\s\S]*url\.host == AppConfiguration\.localWebHost \{ decisionHandler\(\.allow\)/);
+  assert.match(container, /document\.getElementById\('root'\)\?\.childElementCount/);
+  assert.match(container, /Uygulama arayüzü başlatılamadı/);
+  assert.match(container, /case "html": return "text\/html"/);
+  assert.match(container, /case "css": return "text\/css"/);
+  assert.match(container, /case "js", "mjs": return "application\/javascript"/);
+  assert.match(container, /requestedURL\.path\.hasPrefix\(rootPath\)/);
+  assert.match(container, /foregroundStyle\(\.white\)/);
+  assert.match(container, /requestURL\.path\.hasPrefix\("\/api\/"\)/);
+  assert.match(container, /URLSession\.shared\.dataTask/);
+  assert.match(container, /X-StreamLiveX-Body/);
+  assert.match(container, /callAsyncJavaScript/);
+  assert.match(container, /streamlivex-v2/);
+  assert.match(container, /__SLX_LEGACY_EXPORT_BASE64__/);
+  assert.match(model, /@Published var uiReady = false/);
+  assert.match(bridgeModels, /case uiReady/);
+  assert.match(bridgeModels, /case "ui-ready": return \.uiReady/);
   assert.doesNotMatch(plist, /https:\/\/streamlivex\.com\/app|SLXWebAppURL/);
   assert.match(workflow, /VITE_UI_BUILD_SHA=.*npm run build:ios-web/);
   assert.match(entry, /__SLX_UI_SOURCE__ = "Bundled iOS Branch"/);
-  assert.match(entry, /__SLX_PROXY_ORIGIN__ = serviceOrigin/);
+  assert.match(entry, /__SLX_PROXY_ORIGIN__ = window\.location\.origin/);
+  assert.match(entry, /async function migrateLegacyStorage/);
+  assert.match(entry, /type: "ui-ready"/);
   assert.match(packageJson, /"build:ios-web"/);
   assert.match(project, /path: StreamLiveX\/Resources\/Web\s+type: folder/);
 });

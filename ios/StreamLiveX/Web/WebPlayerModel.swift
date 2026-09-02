@@ -5,6 +5,7 @@ import WebKit
 
 @MainActor
 final class WebPlayerModel: ObservableObject {
+    @Published var uiReady = false
     @Published var fullScreenRequest: PlaybackRequest?
     @Published var previewRequest: PlaybackRequest?
     @Published var previewBounds: PreviewBounds?
@@ -18,6 +19,10 @@ final class WebPlayerModel: ObservableObject {
 
     func handle(_ command: BridgeCommand) {
         switch command {
+        case .uiReady:
+            uiReady = true
+            webError = nil
+            UserDefaults.standard.set(true, forKey: "SLXLocalWebMigrationCompleted")
         case .play(let request):
             previewRequest = nil; previewBounds = nil
             fullScreenRequest = request
@@ -44,6 +49,12 @@ final class WebPlayerModel: ObservableObject {
         case .confirmExit:
             break // iOS apps must not terminate themselves programmatically.
         }
+    }
+
+    func retryWebUI() {
+        uiReady = false
+        webError = nil
+        webView?.load(URLRequest(url: AppConfiguration.bundledWebAppURL))
     }
 
     func closePlayer(notifyWeb: Bool = true) {

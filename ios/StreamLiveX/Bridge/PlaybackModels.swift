@@ -41,6 +41,7 @@ struct PreviewBounds: Codable {
 }
 
 enum BridgeCommand {
+    case uiReady
     case play(PlaybackRequest)
     case preview(PlaybackRequest, PreviewBounds)
     case previewLayout(String, PreviewBounds)
@@ -65,6 +66,7 @@ enum BridgeParser {
         let type = (root["type"] as? String)?.lowercased() ?? ""
         let session = (root["sessionId"] as? String)?.nilIfBlank
         switch type {
+        case "ui-ready": return .uiReady
         case "play": return request(root).map(BridgeCommand.play)
         case "preview":
             guard let request = request(root), let bounds = bounds(root) else { return nil }
