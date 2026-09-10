@@ -20,6 +20,15 @@ final class BundledWebSchemeHandler: NSObject, WKURLSchemeHandler {
             return
         }
 
+        // Playlist imports must leave from the device's own (residential) IP: /api/import runs
+        // inside a Cloudflare Worker and many IPTV panels reject datacenter addresses outright,
+        // so the list never downloads. The web UI calls this endpoint first and falls back to
+        // /api/import when it fails.
+        if requestURL.path == "/native-fetch" {
+            proxyDeviceRequest(urlSchemeTask, requestURL: requestURL)
+            return
+        }
+
         if requestURL.path.hasPrefix("/api/") {
             proxyAPIRequest(urlSchemeTask, requestURL: requestURL)
             return
@@ -85,6 +94,34 @@ final class BundledWebSchemeHandler: NSObject, WKURLSchemeHandler {
             upstreamRequest.httpBody = schemeTask.request.httpBody
         }
 
+        perform(upstreamRequest, for: schemeTask, responseURL: requestURL, invalidResponseMessage: "The API returned an invalid response.")
+    }
+
+    // Private and link-local ranges are refused here as well as in the Worker: the device sits on
+    // the user's LAN, so an unchecked address would turn this endpoint into an SSRF hole against
+    // the router, NAS and every other host the phone can reach.
+    private static let blockedHostPattern = "^(localhost|127\\.|0\\.|10\\.|192\\.168\\.|169\\.254\\.|172\\.(1[6-9]|2\\d|3[01])\\.|\\[?::1\\]?)"
+
+    private func proxyDeviceRequest(_ schemeTask: WKURLSchemeTask, requestURL: URL) {
+        guard let target = URLComponents(url: requestURL, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "url" })?.value,
+              let upstreamURL = URL(string: target),
+              let scheme = upstreamURL.scheme?.lowercased(), scheme == "http" || scheme == "https",
+              let host = upstreamURL.host,
+              host.range(of: Self.blockedHostPattern, options: [.regularExpression, .caseInsensitive]) == nil else {
+            schemeTask.didFailWithError(loaderError("Address is missing or not allowed."))
+            return
+        }
+
+        // Matches the Worker's REQUEST_TIMEOUT_MS so a slow panel fails the same way on both paths.
+        var upstreamRequest = URLRequest(url: upstreamURL, timeoutInterval: 45)
+        upstreamRequest.httpMethod = "GET"
+        upstreamRequest.setValue("VLC/3.0.21 LibVLC/3.0.21", forHTTPHeaderField: "User-Agent")
+        upstreamRequest.setValue("*/*", forHTTPHeaderField: "Accept")
+        perform(upstreamRequest, for: schemeTask, responseURL: requestURL, invalidResponseMessage: "The provider returned an invalid response.")
+    }
+
+    private func perform(_ upstreamRequest: URLRequest, for schemeTask: WKURLSchemeTask, responseURL: URL, invalidResponseMessage: String) {
         let identifier = ObjectIdentifier(schemeTask as AnyObject)
         let task = URLSession.shared.dataTask(with: upstreamRequest) { [weak self] data, response, error in
             guard let self else { return }
@@ -95,15 +132,15 @@ final class BundledWebSchemeHandler: NSObject, WKURLSchemeHandler {
             DispatchQueue.main.async {
                 if let error { schemeTask.didFailWithError(error); return }
                 guard let upstream = response as? HTTPURLResponse else {
-                    schemeTask.didFailWithError(self.loaderError("The API returned an invalid response.")); return
+                    schemeTask.didFailWithError(self.loaderError(invalidResponseMessage)); return
                 }
                 var headers = upstream.allHeaderFields.reduce(into: [String: String]()) { result, pair in
                     if let name = pair.key as? String, let value = pair.value as? String { result[name] = value }
                 }
                 headers.removeValue(forKey: "Content-Length")
                 headers.removeValue(forKey: "Content-Encoding")
-                guard let proxyResponse = HTTPURLResponse(url: requestURL, statusCode: upstream.statusCode, httpVersion: "HTTP/1.1", headerFields: headers) else {
-                    schemeTask.didFailWithError(self.loaderError("The API response could not be forwarded.")); return
+                guard let proxyResponse = HTTPURLResponse(url: responseURL, statusCode: upstream.statusCode, httpVersion: "HTTP/1.1", headerFields: headers) else {
+                    schemeTask.didFailWithError(self.loaderError("The response could not be forwarded.")); return
                 }
                 schemeTask.didReceive(proxyResponse)
                 if let data, !data.isEmpty { schemeTask.didReceive(data) }

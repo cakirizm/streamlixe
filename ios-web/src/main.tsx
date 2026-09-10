@@ -11,6 +11,7 @@ declare global {
     __SLX_ASSET_BASE__?: string;
     __SLX_UI_BUILD__?: string;
     __SLX_UI_SOURCE__?: string;
+    __SLX_DIRECT_PLAYBACK__?: boolean;
     __SLX_LEGACY_EXPORT_BASE64__?: string;
   }
 }
@@ -18,6 +19,10 @@ declare global {
 const serviceOrigin = "https://streamlivex.com";
 const isBundledIOS = window.location.protocol === "streamlivex-local:";
 window.__SLX_PROXY_ORIGIN__ = window.location.origin;
+// Yayınlar cihazın kendi (residential) IP'sinden çekilmeli: /api/stream proxy'si Cloudflare
+// datacenter IP'sinden çıktığı için sağlayıcılar 404 veriyor. Bu bayrak PlayerApp'e ham
+// sağlayıcı adresini ilk aday yapmasını, proxy'yi yalnızca yedek olarak denemesini söyler.
+window.__SLX_DIRECT_PLAYBACK__ = isBundledIOS;
 window.__SLX_ASSET_BASE__ = new URL("./", document.baseURI).href;
 window.__SLX_UI_BUILD__ = import.meta.env.VITE_UI_BUILD_SHA || "local";
 window.__SLX_UI_SOURCE__ = "Bundled iOS Branch";
