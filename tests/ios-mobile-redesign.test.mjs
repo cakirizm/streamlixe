@@ -83,13 +83,20 @@ test("native player exposes seek, audio and subtitle controls", async () => {
   assert.match(controller, /videoSubTitlesNames/);
   assert.match(controller, /addPlaybackSlave/);
   assert.match(view, /gobackward\.10/);
-  assert.match(view, /confirmationDialog\("Altyazı"/);
+  // 873679b replaced the subtitle confirmationDialog with a full settings sheet.
+  assert.match(view, /private var subtitlePanel: some View/);
+  assert.match(view, /Section\("Altyazı parçası"\)/);
 });
 
 test("downloads use AVAssetDownloadURLSession and PIN uses Keychain", async () => {
   const [downloads, screen, parental, pin] = await Promise.all([read("ios/StreamLiveX/Downloads/NativeDownloadManager.swift"), read("ios/StreamLiveX/Downloads/NativeDownloadsScreen.swift"), read("ios/StreamLiveX/Security/NativeParentalScreen.swift"), read("ios/StreamLiveX/Security/SecurePinStore.swift")]);
   assert.match(downloads, /AVAssetDownloadURLSession/);
-  assert.match(downloads, /pathExtension\.lowercased\(\) == "m3u8"/);
+  // 873679b added direct VOD downloads: HLS still goes through AVAssetDownloadURLSession,
+  // MKV/MP4 and friends take the plain URLSession branch. Live is refused either way.
+  assert.match(downloads, /let ext = source\.pathExtension\.lowercased\(\)/);
+  assert.match(downloads, /if ext == "m3u8" \{[\s\S]*?makeAssetDownloadTask/);
+  assert.match(downloads, /\} else \{[\s\S]*?directSession\.downloadTask\(with: source\)/);
+  assert.match(downloads, /kind\.caseInsensitiveCompare\("live"\) != \.orderedSame else \{ return \}/);
   assert.match(screen, /AsyncImage\(url: item\.artworkURL\)/);
   assert.match(screen, /ByteCountFormatter/);
   assert.match(parental, /Kategori Kısıtlamaları/);

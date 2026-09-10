@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-const faviconLink = /<link(?=[^>]*\brel=["']icon["'])(?=[^>]*\bhref=["'][^"']*favicon\.svg["'])[^>]*>/i;
+// 9f329e9 dropped the SVG and .ico icons in favour of the PNG set; assert what the
+// branding actually ships now instead of the retired favicon.svg link.
+const faviconLink = /<link(?=[^>]*\brel=["']icon["'])(?=[^>]*\bhref=["'][^"']*favicon-32x32\.png["'])[^>]*>/i;
+const appleTouchIconLink = /<link(?=[^>]*\brel=["']apple-touch-icon["'])(?=[^>]*\bhref=["'][^"']*apple-touch-icon\.png["'])[^>]*>/i;
 
 test("renders site favicon metadata", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -28,5 +31,7 @@ test("renders site favicon metadata", async () => {
     response.headers.get("content-type") ?? "",
     /^text\/html\b/i,
   );
-  assert.match(await response.text(), faviconLink);
+  const html = await response.text();
+  assert.match(html, faviconLink);
+  assert.match(html, appleTouchIconLink);
 });

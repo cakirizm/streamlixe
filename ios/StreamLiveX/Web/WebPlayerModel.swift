@@ -38,6 +38,13 @@ final class WebPlayerModel: ObservableObject {
             if id == nil || fullScreenRequest?.id == id { closePlayer(notifyWeb: false) }
         case .closePreview(let id):
             if id == nil || previewRequest?.id == id { previewRequest = nil; previewBounds = nil; if fullScreenRequest == nil { player.stop() } }
+        case .download(let request):
+            NativeDownloadManager.shared.start(id: request.id,
+                                               title: request.item.name,
+                                               source: request.item.url,
+                                               artworkURL: request.item.artwork,
+                                               kind: request.item.kind)
+            downloadsPresented = true
         case .showDownloads:
             downloadsPresented = true
         case .showParental(let profileID, let categories):
@@ -72,6 +79,15 @@ final class WebPlayerModel: ObservableObject {
     func reportError(_ message: String) { dispatch("streamlivex:native-player-error", detail: message) }
     func setParentalSettings(_ enabled: Bool, restrictedGroups: [String]) { dispatch("streamlivex:native-settings", detail: ["parental": enabled, "hiddenGroups": restrictedGroups]) }
     func requestNext() { dispatch("streamlivex:native-player-next", detail: NSNull()) }
+    func requestPrevious() { dispatch("streamlivex:native-player-previous", detail: NSNull()) }
+    func updateSubtitlePreferences(_ preferences: PlaybackPreferences) {
+        dispatch("streamlivex:native-settings", detail: ["subtitleSize": preferences.subtitleSize,
+                                                          "subtitleColor": preferences.subtitleColor,
+                                                          "subtitleBackground": preferences.subtitleBackground,
+                                                          "subtitleBackgroundOpacity": preferences.subtitleBackgroundOpacity,
+                                                          "subtitleVerticalPosition": preferences.subtitleVerticalPosition,
+                                                          "playbackRate": preferences.playbackRate])
+    }
     func playOffline(_ download: OfflineDownload) {
         guard let localURL = download.localURL else { return }
         downloadsPresented = false

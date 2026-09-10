@@ -261,6 +261,92 @@ html.streamlivex-ios .ios-favorites>header span{font-size:10px;letter-spacing:.1
 html.streamlivex-ios .ios-favorites>header h1{margin:6px 0 0;font-size:28px}
 html.streamlivex-ios .ios-favorites .ios-chips{margin-bottom:16px}
 
+/* App interaction layer: isolated screen scrollers, native-like sheets and no browser focus chrome. */
+html.streamlivex-ios,html.streamlivex-ios body{width:100%;height:100%;overflow:hidden}
+html.streamlivex-ios *{box-sizing:border-box}
+html.streamlivex-ios button,html.streamlivex-ios input,html.streamlivex-ios select,html.streamlivex-ios a{-webkit-tap-highlight-color:transparent;outline:none!important}
+html.streamlivex-ios button:focus-visible,html.streamlivex-ios input:focus-visible,html.streamlivex-ios select:focus-visible,html.streamlivex-ios a:focus-visible{outline:none!important;box-shadow:none!important}
+html.streamlivex-ios .ios-app-shell{height:100dvh;min-height:0;overflow:hidden}
+html.streamlivex-ios .ios-screen{height:calc(100dvh - 58px - env(safe-area-inset-top) - 68px - env(safe-area-inset-bottom));min-height:0;overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;scrollbar-width:none;touch-action:pan-y}
+html.streamlivex-ios .ios-screen::-webkit-scrollbar{display:none}
+html.streamlivex-ios .ios-app-screen{min-height:100%;animation:ios-screen-in .18s ease-out both}
+@keyframes ios-screen-in{from{opacity:.5;transform:translateX(10px)}to{opacity:1;transform:none}}
+html.streamlivex-ios .ios-poster-card b{display:-webkit-box;min-height:30px;overflow:hidden;text-overflow:ellipsis;white-space:normal;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-height:1.25;overflow-wrap:anywhere}
+html.streamlivex-ios .ios-poster-card small,html.streamlivex-ios .ios-channel-open b,html.streamlivex-ios .ios-channel-open small,html.streamlivex-ios .ios-settings-group b,html.streamlivex-ios .ios-settings-group small{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+html.streamlivex-ios .ios-chips{overflow:hidden;margin-bottom:17px;padding-bottom:0}
+html.streamlivex-ios .ios-chips button{max-width:31%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+html.streamlivex-ios .ios-chips .ios-more-categories{max-width:none;display:flex;align-items:center;gap:5px;margin-left:auto;border-color:rgba(168,85,247,.35);color:#c084fc}
+html.streamlivex-ios .ios-sheet-backdrop{position:fixed;z-index:500;inset:0;display:flex;align-items:flex-end;padding:0;background:rgba(0,0,0,.62);backdrop-filter:blur(5px);animation:ios-fade-in .15s ease-out}
+html.streamlivex-ios .ios-category-sheet{width:100%;max-height:min(72dvh,620px);display:flex;flex-direction:column;padding:8px 14px calc(14px + env(safe-area-inset-bottom));border:1px solid rgba(255,255,255,.11);border-radius:24px 24px 0 0;background:#11131bf7;box-shadow:0 -24px 70px #000;animation:ios-sheet-up .22s cubic-bezier(.2,.8,.2,1)}
+html.streamlivex-ios .ios-category-sheet>i{width:38px;height:5px;margin:0 auto 9px;border-radius:99px;background:#4b4e59}
+html.streamlivex-ios .ios-category-sheet>header{display:flex;align-items:center;justify-content:space-between;padding:7px 2px 13px}
+html.streamlivex-ios .ios-category-sheet>header>div{display:flex;flex-direction:column;gap:2px}html.streamlivex-ios .ios-category-sheet>header b{font-size:20px}html.streamlivex-ios .ios-category-sheet>header small{color:#818490;font-size:11px}
+html.streamlivex-ios .ios-category-sheet>header>button{width:36px;height:36px;min-height:36px;border:0;border-radius:50%;background:#242630;color:#c5c7ce;font-size:22px}
+html.streamlivex-ios .ios-category-sheet>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+html.streamlivex-ios .ios-category-sheet>div>button{min-width:0;min-height:48px;display:flex;align-items:center;justify-content:space-between;gap:7px;padding:0 12px;border:1px solid rgba(255,255,255,.07);border-radius:11px;background:#181a23;color:#d5d6dc;text-align:left}
+html.streamlivex-ios .ios-category-sheet>div>button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}html.streamlivex-ios .ios-category-sheet>div>button.active{border-color:rgba(168,85,247,.5);background:#7c3aed2e;color:#fff}html.streamlivex-ios .ios-category-sheet>div>button.active svg{flex:none;color:#c084fc}
+html.streamlivex-ios .details-page,html.streamlivex-ios .player-page{height:100dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;animation:ios-screen-in .18s ease-out both}
+html.streamlivex-ios .details-page>header,html.streamlivex-ios .player-page>header{position:sticky;top:0;z-index:30}
+@keyframes ios-fade-in{from{opacity:0}to{opacity:1}}@keyframes ios-sheet-up{from{transform:translateY(100%)}to{transform:none}}
+
+/* Real-device fixes: category drawer, focus chrome, downloads and compact profile language. */
+html.streamlivex-ios :where(button,a,input,select,textarea):focus,html.streamlivex-ios :where(button,a,input,select,textarea):focus-visible{outline:0!important;box-shadow:none!important}
+html.streamlivex-ios .profile-page section button:focus i,html.streamlivex-ios .profile-page section button:focus-visible i,html.streamlivex-ios .profile-page section button:hover i{transform:none!important;outline:0!important;box-shadow:none!important}
+html.streamlivex-ios .ios-hero button:focus,html.streamlivex-ios .ios-hero button:focus-visible{outline:0!important;box-shadow:none!important}
+html.streamlivex-ios .standalone-language{top:max(8px,env(safe-area-inset-top));right:8px;max-width:116px}
+html.streamlivex-ios .standalone-language .language-switcher{width:112px!important;height:38px!important;padding:0 7px!important;border:1px solid rgba(255,255,255,.09)!important;border-radius:11px!important;background:#11131b!important;box-shadow:none!important}
+html.streamlivex-ios .standalone-language .language-switcher select{max-width:76px!important;min-width:0!important;font-size:11px!important;text-overflow:ellipsis}
+html.streamlivex-ios .clean-profiles>.logo{max-width:calc(100% - 126px)}
+html.streamlivex-ios .clean-profiles>.logo span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+html.streamlivex-ios .ios-category-trigger{width:100%;min-height:52px;display:grid;grid-template-columns:34px minmax(0,1fr) 20px;align-items:center;gap:10px;margin:0 0 17px;padding:7px 12px;border:1px solid rgba(255,255,255,.09);border-radius:13px;background:#11131b;color:#fff;text-align:left}
+html.streamlivex-ios .ios-category-trigger>svg:first-child{width:32px;height:32px;padding:7px;border-radius:9px;background:#7c3aed26;color:#c084fc}
+html.streamlivex-ios .ios-category-trigger>span{min-width:0;display:flex;flex-direction:column;gap:2px}
+html.streamlivex-ios .ios-category-trigger small{color:#777b88;font-size:8px;font-weight:800;letter-spacing:.12em}
+html.streamlivex-ios .ios-category-trigger b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+html.streamlivex-ios .ios-category-trigger>svg:last-child{color:#686b76}
+html.streamlivex-ios .ios-drawer-backdrop{position:fixed;z-index:520;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(5px);animation:ios-fade-in .15s ease-out}
+html.streamlivex-ios .ios-category-drawer{position:absolute;inset:0 auto 0 0;width:min(84vw,350px);display:flex;flex-direction:column;padding:calc(14px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom));border-right:1px solid rgba(255,255,255,.11);background:#0d0f16;box-shadow:22px 0 70px #000;animation:ios-drawer-in .22s cubic-bezier(.2,.8,.2,1)}
+html.streamlivex-ios .ios-category-drawer>header{display:flex;align-items:center;justify-content:space-between;padding:5px 4px 15px}
+html.streamlivex-ios .ios-category-drawer>header>div{display:flex;flex-direction:column;gap:3px}html.streamlivex-ios .ios-category-drawer>header b{font-size:22px}html.streamlivex-ios .ios-category-drawer>header small{color:#7e818d;font-size:11px}
+html.streamlivex-ios .ios-category-drawer>header>button{width:38px;height:38px;min-height:38px;border:0;border-radius:50%;background:#242630;color:#d0d1d7;font-size:23px}
+html.streamlivex-ios .ios-category-drawer>div{display:flex;flex-direction:column;gap:5px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+html.streamlivex-ios .ios-category-drawer>div>button{width:100%;min-height:48px;display:flex;align-items:center;justify-content:space-between;gap:9px;padding:9px 12px;border:0;border-radius:11px;background:transparent;color:#c6c8d0;text-align:left}
+html.streamlivex-ios .ios-category-drawer>div>button span{min-width:0;overflow-wrap:anywhere;line-height:1.3;font-size:13px}
+html.streamlivex-ios .ios-category-drawer>div>button.active{background:#7c3aed2b;color:#fff}html.streamlivex-ios .ios-category-drawer>div>button.active svg{flex:none;color:#c084fc}
+@keyframes ios-drawer-in{from{transform:translateX(-100%)}to{transform:none}}
+
+html.streamlivex-ios .ios-detail-download,html.streamlivex-ios .ios-episode-download{display:inline-flex!important;align-items:center;justify-content:center;gap:7px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+html.streamlivex-ios .ios-detail-download{border-color:rgba(168,85,247,.38)!important;color:#d8b4fe!important}
+html.streamlivex-ios .ios-episode-download{margin-left:7px!important;border:1px solid rgba(168,85,247,.35)!important;background:#7c3aed1f!important;color:#d8b4fe!important}
+html.streamlivex-ios .detail-actions{display:flex;flex-wrap:wrap;gap:8px}
+html.streamlivex-ios .detail-actions>button{max-width:100%;white-space:normal;line-height:1.25}
+html.streamlivex-ios .details-page h1,html.streamlivex-ios .details-page h2,html.streamlivex-ios .details-page h3,html.streamlivex-ios .ios-app-shell button,html.streamlivex-ios .ios-tabbar span{overflow-wrap:anywhere}
+html.streamlivex-ios .episode-cards h3{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+html.streamlivex-ios .episode-cards p{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:3}
+html.streamlivex-ios .ios-tabbar span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* iPhone width integrity and search keyboard/zoom behavior. */
+html.streamlivex-ios .ios-app-shell,html.streamlivex-ios .ios-screen,html.streamlivex-ios .ios-app-screen,html.streamlivex-ios .ios-section,html.streamlivex-ios .ios-catalog,html.streamlivex-ios .ios-live{width:100%;max-width:100%;min-width:0}
+html.streamlivex-ios .ios-section{overflow:hidden}
+html.streamlivex-ios .ios-rail{width:100%;max-width:100%;gap:11px;margin:0;padding:0 0 5px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scroll-padding-inline:0;overscroll-behavior-x:contain}
+html.streamlivex-ios .ios-rail .ios-poster-card{flex:0 0 calc((100% - 22px)/3);width:calc((100% - 22px)/3);max-width:calc((100% - 22px)/3);scroll-snap-align:start;scroll-snap-stop:always}
+html.streamlivex-ios .ios-poster-grid{width:100%;max-width:100%;grid-template-columns:repeat(3,minmax(0,1fr));overflow:hidden}
+html.streamlivex-ios .ios-poster-grid>*{width:100%;max-width:100%;min-width:0}
+html.streamlivex-ios .ios-app-shell .continue-row{width:100%;max-width:100%;margin:0 0 27px;padding:0 14px;overflow:hidden}
+html.streamlivex-ios .ios-app-shell .continue-row>div:last-child{width:100%;max-width:100%;gap:10px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;overscroll-behavior-x:contain}
+html.streamlivex-ios .ios-app-shell .continue-card{flex:0 0 calc((100% - 10px)/2);width:calc((100% - 10px)/2);max-width:calc((100% - 10px)/2);min-width:0;scroll-snap-align:start;scroll-snap-stop:always}
+html.streamlivex-ios .continue-card h3,html.streamlivex-ios .continue-card p{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+html.streamlivex-ios .ios-search{width:100%;max-width:100%;min-height:100%;padding:14px;overflow-x:hidden}
+html.streamlivex-ios .ios-search>header>div{display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;margin-bottom:12px}
+html.streamlivex-ios .ios-search>header>div h1{min-width:0;margin:0;text-align:center;font-size:24px}
+html.streamlivex-ios .ios-search-back{width:40px;height:40px;min-height:40px;padding:0;border:0;background:transparent;color:#fff}
+html.streamlivex-ios .ios-search-cancel{min-height:40px;padding:0 2px;border:0;background:transparent;color:#c084fc;font-size:14px}
+html.streamlivex-ios .ios-search>header label{width:100%;max-width:100%;height:48px}
+html.streamlivex-ios .ios-search>header input,html.streamlivex-ios .ios-live>header input,html.streamlivex-ios input,html.streamlivex-ios select,html.streamlivex-ios textarea{font-size:16px!important}
+html.streamlivex-ios .ios-search>header input{min-width:0;transform:none!important;zoom:1}
+@media(max-width:365px){html.streamlivex-ios .ios-poster-grid{grid-template-columns:repeat(2,minmax(0,1fr))}html.streamlivex-ios .ios-rail .ios-poster-card{flex-basis:calc((100% - 11px)/2);width:calc((100% - 11px)/2);max-width:calc((100% - 11px)/2)}}
+
 /* App Review 4.0 (Design) — "hard to read type". The ramp above was drawn at phone density and
    bottomed out at 7-9px; on the 11" iPad review device those captions are unreadable. Two fixes:
    raise the floor everywhere, then give tablets their own scale instead of stretching the phone

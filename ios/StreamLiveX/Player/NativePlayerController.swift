@@ -21,6 +21,9 @@ final class NativePlayerController: NSObject, ObservableObject, VLCMediaPlayerDe
     private var shouldResume = false
     private var preparationTimeout: Task<Void, Never>?
     private var pendingResumeMilliseconds: Double = 0
+    private var pendingAudioTrack: Int32?
+    private var pendingSubtitleTrack: Int32?
+    private var pauseAfterPreferenceReload = false
     private var externalSubtitleAttached = false
     var onError: ((String) -> Void)?
 
@@ -66,6 +69,15 @@ final class NativePlayerController: NSObject, ObservableObject, VLCMediaPlayerDe
         media.addOption(":http-user-agent=VLC/3.0 StreamLiveX-iOS/1.0")
         media.addOption(":http-reconnect")
         media.addOption(request.item.isLive ? ":network-caching=1500" : ":network-caching=3000")
+        media.addOption(":freetype-fontsize=\(subtitleFontSize(request.preferences.subtitleSize))")
+        media.addOption(":freetype-color=\(subtitleColorValue(request.preferences.subtitleColor))")
+        let subtitleBackgroundOpacity = request.preferences.subtitleBackground == "none" ? 0 : request.preferences.subtitleBackground == "box" ? 255 : Int(request.preferences.subtitleBackgroundOpacity * 255)
+        media.addOption(":freetype-background-opacity=\(subtitleBackgroundOpacity)")
+        media.addOption(":freetype-background-color=0")
+        media.addOption(":sub-margin=\(request.preferences.subtitleVerticalPosition * 4)")
+        if !request.item.isLive, pendingResumeMilliseconds > 0 {
+            media.addOption(":start-time=\(pendingResumeMilliseconds / 1000)")
+        }
         player.media = media
         player.rate = request.preferences.playbackRate
 
@@ -107,6 +119,19 @@ final class NativePlayerController: NSObject, ObservableObject, VLCMediaPlayerDe
 
     func selectAudioTrack(_ id: Int32) { player.currentAudioTrackIndex = id; selectedAudioTrack = id }
     func selectSubtitleTrack(_ id: Int32) { player.currentVideoSubTitleIndex = id; selectedSubtitleTrack = id }
+    func setPlaybackRate(_ rate: Float) { player.rate = min(2, max(0.5, rate)); if var request = currentRequest { request.preferences.playbackRate = player.rate; currentRequest = request } }
+    func applySubtitlePreferences(_ preferences: PlaybackPreferences) {
+        guard var request = currentRequest else { return }
+        let resume = currentSeconds * 1000
+        pendingAudioTrack = player.currentAudioTrackIndex
+        pendingSubtitleTrack = player.currentVideoSubTitleIndex
+        pauseAfterPreferenceReload = !player.isPlaying
+        request.preferences = preferences
+        currentRequest = request
+        pendingResumeMilliseconds = resume
+        externalSubtitleAttached = false
+        prepare(request, candidateIndex: candidateIndex)
+    }
 
     func stop() {
         preparationTimeout?.cancel()
@@ -156,7 +181,11 @@ final class NativePlayerController: NSObject, ObservableObject, VLCMediaPlayerDe
             }
             updateProgress()
             attachPreferredExternalSubtitleIfNeeded()
+            if let request = currentRequest {
+                player.currentVideoSubTitleDelay = Int(request.preferences.subtitleDelay * 1_000_000)
+            }
             refreshTracks()
+            restoreTracksAfterPreferenceReload()
         case .error:
             tryNextCandidate(message: "VLC medya akışını başlatamadı")
         default:
@@ -169,7 +198,7 @@ final class NativePlayerController: NSObject, ObservableObject, VLCMediaPlayerDe
         durationSeconds = max(0, Double(player.media?.length.intValue ?? 0) / 1000)
     }
 
-    private func refreshTracks() {
+    func refreshTracks() {
         let audioNames = player.audioTrackNames ?? []
         let audioIndexes = player.audioTrackIndexes ?? []
         audioTracks = zip(audioNames, audioIndexes).compactMap { name, index in
@@ -192,6 +221,37 @@ final class NativePlayerController: NSObject, ObservableObject, VLCMediaPlayerDe
         let preferred = request.item.subtitles.first(where: { request.preferences.subtitleLanguage == "auto" || $0.language.lowercased().hasPrefix(request.preferences.subtitleLanguage.lowercased()) }) ?? request.item.subtitles[0]
         externalSubtitleAttached = player.addPlaybackSlave(preferred.src, type: .subtitle, enforce: true) == 0
         player.currentVideoSubTitleDelay = Int(request.preferences.subtitleDelay * 1_000_000)
+    }
+
+    private func subtitleColorValue(_ value: String) -> Int {
+        Int(value.trimmingCharacters(in: CharacterSet(charactersIn: "#")), radix: 16) ?? 0xFFFFFF
+    }
+
+    private func subtitleFontSize(_ preference: Int) -> Int {
+        switch preference {
+        case ..<90: return 16
+        case ..<115: return 20
+        case ..<150: return 27
+        default: return 34
+        }
+    }
+
+    private func restoreTracksAfterPreferenceReload() {
+        guard pendingAudioTrack != nil || pendingSubtitleTrack != nil || pauseAfterPreferenceReload else { return }
+        let audio = pendingAudioTrack
+        let subtitle = pendingSubtitleTrack
+        let shouldPause = pauseAfterPreferenceReload
+        pendingAudioTrack = nil
+        pendingSubtitleTrack = nil
+        pauseAfterPreferenceReload = false
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(180))
+            guard let self else { return }
+            self.refreshTracks()
+            if let audio, self.audioTracks.contains(where: { $0.id == audio }) { self.selectAudioTrack(audio) }
+            if let subtitle, subtitle < 0 || self.subtitleTracks.contains(where: { $0.id == subtitle }) { self.selectSubtitleTrack(subtitle) }
+            if shouldPause { self.player.pause() }
+        }
     }
 
     private func tryNextCandidate(message: String) {

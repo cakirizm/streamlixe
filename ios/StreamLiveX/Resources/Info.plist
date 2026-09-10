@@ -13,8 +13,13 @@
 <key>ITSAppUsesNonExemptEncryption</key><false/>
 <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>com.streamlivex.ios.play</string><key>CFBundleURLSchemes</key><array><string>streamlivex</string></array></dict></array>
 <key>LSRequiresIPhoneOS</key><true/>
+<!-- IPTV provider hosts are user supplied and cannot be enumerated as ATS exception domains.
+     HTTPS keeps normal certificate validation. HTTP is admitted only so the app's explicitly
+     validated VOD playback/download URLs can use URLSession and AVFoundation, so that playlist
+     import can leave from the device's own IP (/native-fetch), and so the WKWebView fallback
+     player can load a stream when the native bridge is not up yet. -->
 <key>NSAppTransportSecurity</key><dict><key>NSAllowsArbitraryLoads</key><true/><key>NSAllowsArbitraryLoadsForMedia</key><true/><key>NSAllowsArbitraryLoadsInWebContent</key><true/></dict>
-<key>UILaunchScreen</key><dict><key>UIColorName</key><string>LaunchBackground</string><key>UIImageName</key><string>LaunchLogo</string></dict>
+<key>UILaunchScreen</key><dict><key>UIColorName</key><string>LaunchBackground</string></dict>
 <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
 <key>UISupportedInterfaceOrientations~ipad</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationPortraitUpsideDown</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
 </dict></plist>

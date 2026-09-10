@@ -21,13 +21,13 @@ Minimum iOS 16.0, Bundle ID `com.streamlivex.ios`, cihaz ailesi yalnızca iPhone
 
 ## Ağ, güvenlik ve gizlilik
 
-Uygulama, kullanıcının kendi girdiği IPTV sunucusuna bağlanır; adresler önceden bilinemez ve panellerin çoğu hâlâ düz HTTP sunar. Bu nedenle `NSAppTransportSecurity` altında üç anahtar bilinçli olarak açıktır ve `ios/scripts/validate-project.ps1` bunların varlığını doğrular:
+ATS kapsamında HTTPS sertifika doğrulaması açık kalır ve hiçbir URLSession güven temsilcisi sertifikayı atlamaz; yalnızca düz HTTP'ye izin verilir. Kullanıcıların sağlayıcı alan adları önceden bilinemediği ve panellerin çoğu hâlâ düz HTTP sunduğu için `NSAppTransportSecurity` altında üç anahtar bilinçli olarak açıktır; `ios/scripts/validate-project.ps1` üçünün de varlığını doğrular:
 
-- `NSAllowsArbitraryLoads` — oynatma listesi içe aktarmanın cihaz IP'sinden yapıldığı `URLSession` isteği (`/native-fetch`) için gerekli; ATS yalnızca URL Loading System'i kapsadığından bu anahtar olmadan HTTP paneller içe aktarılamaz.
-- `NSAllowsArbitraryLoadsForMedia` — AVFoundation tarafı (çevrimdışı HLS indirmeleri).
+- `NSAllowsArbitraryLoads` — HTTP MKV/MP4 gibi doğrudan dosyaların arka plan `URLSession` ile indirilebilmesi ve oynatma listesi içe aktarmanın cihazın kendi IP'sinden yapılması (`/native-fetch`) için gerekir. ATS yalnızca URL Loading System'i kapsadığından bu anahtar olmadan HTTP paneller içe aktarılamaz.
+- `NSAllowsArbitraryLoadsForMedia` — AVFoundation tarafı: HTTP HLS oynatma ve çevrimdışı indirme.
 - `NSAllowsArbitraryLoadsInWebContent` — native köprü hazır olmadığında devreye giren WKWebView yedek oynatıcısı.
 
-Hiçbiri HTTPS sertifika doğrulamasını kapatmaz: HTTPS adresler yine tam olarak doğrulanır, yalnızca düz HTTP'ye izin verilir. App Review'a gerekçe olarak "kullanıcı kendi sunucu adresini girer, uygulama sabit bir alan adına bağlanmaz" yazılmalıdır. Web kabuğunun kendisi yalnızca HTTPS ya da paket içi `streamlivex-local://` şemasından yüklenir. Kimlik bilgileri ve oynatma URL'leri loglanmaz.
+Uygulama bu istisnayı yalnızca bridge tarafından doğrulanan HTTP/HTTPS VOD medya adreslerine ve kullanıcının girdiği sağlayıcı/liste adreslerine uygular; canlı yayın indirmesi reddedilir, yerel ve link-local adresler `/native-fetch` tarafından engellenir. App Store inceleme notunda kullanıcı tarafından yapılandırılan eski IPTV sağlayıcılarının HTTP medya uyumluluğu ve uygulamanın sabit bir alan adına bağlanmadığı açıklanmalıdır. Web kabuğunun kendisi yalnızca HTTPS ya da paket içi `streamlivex-local://` şemasından yüklenir. Kimlik bilgileri ve oynatma URL'leri loglanmaz.
 
 Kamera, mikrofon, konum, fotoğraf ve kişi izni istenmez. Background audio ve Picture in Picture ürün/inceleme kapsamını gereksiz büyütmemek için etkin değildir.
 
