@@ -44,6 +44,16 @@ workflows:
           pod install
       - name: Sertifika + provisioning profile (yoksa olustur, varsa kullan)
         script: |
+          set -euo pipefail
+          # Bu adim sessizce hicbir sey yapmadan yesil donebiliyor; o zaman hata 5 adim sonra
+          # "requires a provisioning profile" olarak cikiyor ve sebebi gorunmuyor. Her varsayimi
+          # burada, olustugu yerde dogruluyoruz.
+          if [ -z "${CERTIFICATE_PRIVATE_KEY:-}" ]; then
+            echo "CERTIFICATE_PRIVATE_KEY bos. Codemagic > Environment variables icinde 'signing'"
+            echo "grubunun BU workflow'a bagli oldugunu ve degiskenin secure olarak tanimli"
+            echo "oldugunu dogrulayin."
+            exit 1
+          fi
           keychain initialize
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
@@ -55,6 +65,14 @@ workflows:
             --project "StreamLiveX.xcodeproj" \
             --archive-method app-store \
             --code-signing-setup-verbose-logging
+          # use-profiles hicbir profil eslestiremezse de 0 doner. Manuel imzada profil sart
+          # oldugu icin, arsivlemeye gecmeden once projeye gercekten yazildigini dogruluyoruz.
+          if ! xcodebuild -workspace "StreamLiveX.xcworkspace" -scheme "$XCODE_SCHEME" \
+                 -showBuildSettings 2>/dev/null | grep -q "PROVISIONING_PROFILE_SPECIFIER = ."; then
+            echo "Profil projeye uygulanmadi: PROVISIONING_PROFILE_SPECIFIER bos kaldi."
+            echo "Yukaridaki fetch-signing-files ciktisinda kac profil bulundugunu kontrol edin."
+            exit 1
+          fi
       - name: Build numarasini ayarla (Codemagic otomatik artirir)
         script: |
           cd ios
