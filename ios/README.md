@@ -7,6 +7,7 @@ Bu klasör, mevcut StreamLiveX web arayüzünü iPhone ve iPad'de `WKWebView` i�
 - Branch'e ait iOS web arayüzü `npm run build:ios-web` ile `Resources/Web` altına üretilir ve IPA içinde yerelden yüklenir. Üretim `/app` sayfası görsel kaynak değildir. Kalıcı `WKWebsiteDataStore` localStorage/IndexedDB'yi, profilleri, dil/RTL, tema, favoriler ve kategori konumlarını korur; sunucu gerektiren API uçları HTTPS hizmetine yönlendirilir.
 - `NativeBridge`, Android telefon/tablet uygulamasındaki `window.chrome.webview.postMessage` sözleşmesini aynen uygular: `play`, `preview`, `preview-layout`, `promote-preview`, `close` ve `close-preview`.
 - `VLCKit` canlı, HLS, ham MPEG-TS, VOD, film ve diziyi doğrudan sağlayıcı URL'sinden oynatır. Yayın, web proxy katmanından geçmez.
+- Oynatma listesi içe aktarma da cihazın kendi IP'sinden yapılır: `BundledWebSchemeHandler`, `streamlivex-local://app/native-fetch?url=…` uç noktasıyla M3U ve Xtream `player_api.php` isteklerini `URLSession` üzerinden doğrudan sağlayıcıya gönderir. `/api/import` Worker'ı datacenter IP'sinden çıktığı için birçok panel tarafından reddediliyordu; Worker artık yalnızca yedek yol (ve `xmltv_epg` ile mağaza demo hesabı için birincil yol). Uç nokta yalnızca http/https kabul eder ve yerel/özel ağ adreslerini reddeder.
 - Canlı önizleme ve tam ekran aynı VLCMediaPlayer'ı kullandığından geçişte medya yeniden hazırlanmaz.
 - iOS kabuğunda referans tasarıma uygun beş sekmeli mobil navigasyon, portre/landscape ve iPad uyarlaması bulunur. Bu tema `.streamlivex-ios` ile sınırlandığı için Android/TV görünümü değişmez.
 - HLS VOD içerikleri `AVAssetDownloadURLSession` ile arka planda indirilebilir, duraklatılabilir, sürdürülebilir, silinebilir ve yerel VLC oynatıcıda çevrimdışı açılabilir. Canlı TV kaydı desteklenmez.
@@ -20,7 +21,13 @@ Minimum iOS 16.0, Bundle ID `com.streamlivex.ios`, cihaz ailesi yalnızca iPhone
 
 ## Ağ, güvenlik ve gizlilik
 
-ATS doğrulaması açıktır; genel `NSAllowsArbitraryLoads` kullanılmaz. Web kabuğu yalnızca HTTPS yüklenir. Kullanıcıların mevcut HTTP IPTV medya akışları için Apple'ın medya ile sınırlı `NSAllowsArbitraryLoadsForMedia` anahtarı kullanılır; bu, HTTPS sertifika doğrulamasını kapatmaz ve WKWebView trafiğine uygulanmaz. Kimlik bilgileri ve oynatma URL'leri loglanmaz.
+Uygulama, kullanıcının kendi girdiği IPTV sunucusuna bağlanır; adresler önceden bilinemez ve panellerin çoğu hâlâ düz HTTP sunar. Bu nedenle `NSAppTransportSecurity` altında üç anahtar bilinçli olarak açıktır ve `ios/scripts/validate-project.ps1` bunların varlığını doğrular:
+
+- `NSAllowsArbitraryLoads` — oynatma listesi içe aktarmanın cihaz IP'sinden yapıldığı `URLSession` isteği (`/native-fetch`) için gerekli; ATS yalnızca URL Loading System'i kapsadığından bu anahtar olmadan HTTP paneller içe aktarılamaz.
+- `NSAllowsArbitraryLoadsForMedia` — AVFoundation tarafı (çevrimdışı HLS indirmeleri).
+- `NSAllowsArbitraryLoadsInWebContent` — native köprü hazır olmadığında devreye giren WKWebView yedek oynatıcısı.
+
+Hiçbiri HTTPS sertifika doğrulamasını kapatmaz: HTTPS adresler yine tam olarak doğrulanır, yalnızca düz HTTP'ye izin verilir. App Review'a gerekçe olarak "kullanıcı kendi sunucu adresini girer, uygulama sabit bir alan adına bağlanmaz" yazılmalıdır. Web kabuğunun kendisi yalnızca HTTPS ya da paket içi `streamlivex-local://` şemasından yüklenir. Kimlik bilgileri ve oynatma URL'leri loglanmaz.
 
 Kamera, mikrofon, konum, fotoğraf ve kişi izni istenmez. Background audio ve Picture in Picture ürün/inceleme kapsamını gereksiz büyütmemek için etkin değildir.
 

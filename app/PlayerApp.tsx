@@ -172,15 +172,91 @@ function parseM3U(text:string):Media[] {
 }
 
 async function fetchJSON(url:string){const r=await fetch(url);if(!r.ok)throw new Error(`Sunucu ${r.status} hatası verdi`);return r.json()}
+// /api/import bir Cloudflare Worker'ın içinde çalışır, yani yukarı akış isteği datacenter
+// IP'sinden çıkar; birçok IPTV paneli bu adresleri reddettiği için liste hiç inmez. Paketlenmiş
+// iOS uygulamasında aynı istekleri cihazın kendi (residential) IP'sinden yapan yerel şema uç
+// noktasını (WebContainer.swift → /native-fetch) kullanıyoruz. Uç nokta yoksa veya istek
+// başarısız olursa mevcut Worker yoluna düşülür — web ve TV davranışı değişmez.
+const nativeImportOrigin=()=>typeof window!=="undefined"&&window.location.protocol==="streamlivex-local:"?window.location.origin:"";
+// Worker'daki safeUrl ile aynı kurallar. Özel/yerel ağ engeli ayrıca Swift tarafında uygulanıyor.
+function upstreamUrl(value?:string){
+  const input=(value||"").trim();
+  if(!input)throw new Error("Sunucu adresi eksik");
+  let url:URL;
+  try{url=new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(input)?input:`http://${input}`)}
+  catch{throw new Error("Sunucu adresi geçerli değil")}
+  if(!/^https?:$/.test(url.protocol))throw new Error("Yalnızca HTTP veya HTTPS adresleri kullanılabilir");
+  return url;
+}
+function xtreamEndpoint(payload:Record<string,string>,action?:string,extra?:Record<string,string>){
+  const base=upstreamUrl(payload.server);
+  const url=new URL("player_api.php",base.href.endsWith("/")?base.href:`${base.href}/`);
+  url.searchParams.set("username",payload.username||"");url.searchParams.set("password",payload.password||"");
+  if(action)url.searchParams.set("action",action);
+  Object.entries(extra||{}).forEach(([key,value])=>url.searchParams.set(key,value));
+  return url;
+}
+async function deviceGet(url:URL){
+  const response=await fetch(`${nativeImportOrigin()}/native-fetch?url=${encodeURIComponent(url.href)}`);
+  const text=await response.text();
+  // Worker'ın durum kodu eşlemesiyle aynı: paneller hatalı giriş/süresi dolmuş abonelik için
+  // genelde bu kodları döndürür, kullanıcıya ne yapacağını anlatan mesaj gösteriyoruz.
+  if(!response.ok)throw new Error([401,403,404,512].includes(response.status)?"Bilgileriniz hatalı veya aboneliğinizin süresi dolmuş olabilir. Sunucu adresi, kullanıcı adı ve şifreyi kontrol edip tekrar deneyin.":`Yayın sunucusu ${response.status} hatası verdi`);
+  return text;
+}
+async function deviceGetJSON(url:URL){
+  const text=await deviceGet(url);
+  try{return JSON.parse(text)}
+  catch{
+    // 200 döndü ama gövde JSON değil: panel bu adreste Xtream API sunmuyor, protokol yanlış ya da
+    // araya bir güvenlik duvarı sayfası girmiş olabilir. Kimlik bilgisi sızdırmadan kısa bir örnek.
+    const snippet=text.replace(/\s+/g," ").trim().slice(0,160);
+    const hint=snippet?` Sunucu şunu döndürdü: "${snippet}"${/^<(!doctype|html)/i.test(snippet)?" — bu bir HTML sayfası, panel bu adreste Xtream API sunmuyor olabilir.":"."}`:"";
+    throw new Error(`Yayın sunucusu geçerli Xtream verisi döndürmedi.${hint}`);
+  }
+}
+// Mağaza QA demo hesabı Worker'ın kendisinde sabit veriyle yanıtlanır; cihazdan boşuna
+// denenmemesi için aynı kontrolü burada da yapıyoruz.
+const isDemoAccount=(payload:Record<string,string>)=>{
+  if(payload.username!=="demo"||payload.password!=="demo")return false;
+  try{return new URL(String(payload.server)).pathname.replace(/\/+$/,"")==="/demo"}catch{return false}
+};
+async function deviceImport(payload:Record<string,string>){
+  if(payload.method==="m3u"){
+    const text=await deviceGet(upstreamUrl(payload.url));
+    if(!text.includes("#EXTINF")&&!text.includes("#EXTM3U"))throw new Error("Adres geçerli bir M3U listesi döndürmedi");
+    return {text};
+  }
+  if(payload.method==="xtream"){
+    if(!payload.username?.trim()||!payload.password)throw new Error("Kullanıcı adı ve şifre gerekli");
+    const call=(action?:string)=>deviceGetJSON(xtreamEndpoint(payload,action));
+    const account=await call();
+    if(account?.user_info?.auth!==1&&account?.user_info?.auth!=="1")throw new Error(account?.user_info?.message||"Xtream kullanıcı bilgileri kabul edilmedi");
+    const [live,vod,series,liveCategories,vodCategories,seriesCategories]=await Promise.all([call("get_live_streams"),call("get_vod_streams"),call("get_series"),call("get_live_categories"),call("get_vod_categories"),call("get_series_categories")]);
+    return {live,vod,series,liveCategories,vodCategories,seriesCategories};
+  }
+  if(payload.method==="series_info")return deviceGetJSON(xtreamEndpoint(payload,"get_series_info",{series_id:payload.seriesId||""}));
+  if(payload.method==="vod_info")return deviceGetJSON(xtreamEndpoint(payload,"get_vod_info",{vod_id:payload.streamId||""}));
+  if(payload.method==="short_epg")return deviceGetJSON(xtreamEndpoint(payload,"get_short_epg",{stream_id:payload.streamId||"",limit:"8"}));
+  // xmltv_epg XML ayrıştırması Worker'da kalıyor; cihaz yolu bu yöntemi üstlenmez.
+  throw new Error("Bu yöntem cihaz üzerinden alınamaz");
+}
 async function importRequest(payload:Record<string,string>){
+  let deviceError:Error|undefined;
+  if(nativeImportOrigin()&&!isDemoAccount(payload)){
+    try{return await deviceImport(payload)}
+    catch(error){deviceError=error instanceof Error?error:new Error(String(error))}
+  }
   let r:Response;
   try{r=await fetch("/api/import",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})}
-  catch{throw new Error("Sunucuya bağlanılamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.")}
+  catch{throw deviceError||new Error("Sunucuya bağlanılamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.")}
   const text=await r.text();
   let data:any;
   try{data=JSON.parse(text)}
-  catch{throw new Error(r.ok?"Sunucudan beklenmeyen bir yanıt alındı. Lütfen tekrar deneyin.":"Sunucu yanıt vermedi ya da zaman aşımına uğradı. Lütfen tekrar deneyin.")}
-  if(!r.ok)throw new Error(data.error||"Liste alınamadı");
+  catch{throw deviceError||new Error(r.ok?"Sunucudan beklenmeyen bir yanıt alındı. Lütfen tekrar deneyin.":"Sunucu yanıt vermedi ya da zaman aşımına uğradı. Lütfen tekrar deneyin.")}
+  // Her iki yol da başarısızsa cihazın gördüğü hata daha doğru: doğrudan sağlayıcıdan gelir,
+  // Worker'ın datacenter IP'sinden aldığı jenerik engel mesajı değildir.
+  if(!r.ok)throw deviceError||new Error(data.error||"Liste alınamadı");
   return data
 }
 // Mutlaka mutlak adres üretir: mpegts.js enableWorker:true ile bir Web Worker içinden fetch
@@ -199,8 +275,15 @@ const assetUrl=(url?:string)=>url?`${proxyOrigin()}/api/stream?url=${encodeURICo
 const playbackUrl=(url?:string)=>{const proxied=assetUrl(url);return proxied?`${proxied}&startup=1`:""};
 type PlaybackCandidate={url:string;type:"transcode"|"hls"|"mpegts"|"native";label:string};
 // TV residential IP'de olduğundan yayınlar doğrudan ham URL ile oynatılır (proxy 404 veriyor).
-// __SLX_TV_DIRECT__ global'i TV paketinde ayarlanır; normal web'de tanımsız → eski davranış.
-const preferDirectHttp=(url:string)=>typeof window!=="undefined"&&(((window as any).__SLX_TV_DIRECT__===true&&/^https?:\/\//i.test(url))||(window.location.protocol==="http:"&&/^http:\/\//i.test(url)));
+// __SLX_TV_DIRECT__ global'i TV paketinde, __SLX_DIRECT_PLAYBACK__ ise paketlenmiş iOS
+// uygulamasında ayarlanır; ikisi de cihazın kendi (residential) IP'sinden çıktığı için proxy'ye
+// gerek yoktur. Normal web derlemesinde ikisi de tanımsız → eski davranış korunur.
+const preferDirectHttp=(url:string)=>typeof window!=="undefined"&&((((window as any).__SLX_TV_DIRECT__===true||(window as any).__SLX_DIRECT_PLAYBACK__===true)&&/^https?:\/\//i.test(url))||(window.location.protocol==="http:"&&/^http:\/\//i.test(url)));
+// iOS/Safari .m3u8'i AVPlayer ile doğrudan oynatır: MSE gerekmez ve <video src> CORS'a tabi
+// olmadığı için ham sağlayıcı adresi çalışır. Ham .ts adresi ise mpegts.js üzerinden fetch
+// gerektirir ve sağlayıcılar CORS başlığı göndermediği için düşer; bu yüzden doğrudan modda
+// .ts'in .m3u8 karşılığını proxy denemelerinden önce bir aday olarak ekliyoruz.
+const supportsNativeHls=()=>typeof document!=="undefined"&&Boolean(document.createElement("video").canPlayType("application/vnd.apple.mpegurl"));
 const isMpegTsUrl=(url:string)=>/(?:\.|\/)ts(?:$|[?#])/i.test(url);
 const hlsAlternativeUrl=(url:string)=>url.replace(/(?:\.|\/)ts(?=$|[?#])/i,match=>match.startsWith("/")?"/m3u8":".m3u8");
 const vodHlsAlternativeUrl=(url:string)=>url.replace(/(?:\.|\/)(?:mkv|mp4|avi|mov|m4v)(?=$|[?#])/i,match=>match.startsWith("/")?"/m3u8":".m3u8");
@@ -220,7 +303,11 @@ function playbackCandidates(original:string,kind:Kind):PlaybackCandidate[]{
     const hlsAlternative=vodHlsAlternativeUrl(original);
     rows=[{url:original,type:"transcode",label:"Web çoklu ses/altyazı"},...(hlsAlternative!==original?[{url:assetUrl(hlsAlternative),type:"hls" as const,label:"HLS · çoklu ses/altyazı"}]:[]),{url:proxy(original),type:"native",label:"Tarayıcı"},{url:original,type:"native",label:"Tarayıcı doğrudan"}];
   }
-  if(preferDirectHttp(original))rows.sort((a,b)=>Number(b.url===original)-Number(a.url===original));
+  if(preferDirectHttp(original)){
+    rows.sort((a,b)=>Number(b.url===original)-Number(a.url===original));
+    const directHls=isTs?hlsAlternativeUrl(original):"";
+    if(directHls&&directHls!==original&&supportsNativeHls())rows.splice(1,0,{url:directHls,type:"hls",label:"HLS doğrudan"});
+  }
   return rows.filter((row,index,list)=>list.findIndex(candidate=>candidate.url===row.url&&candidate.type===row.type)===index);
 }
 
@@ -752,7 +839,7 @@ function MiniLivePlayer({item,onFull,onSessionChange}:{item:Media|null;onFull:(i
   useEffect(()=>{const video=ref.current;if(!video||!item||nativePreview)return;let disposed=false;let generation=0;let cleanup:(()=>void)|undefined;let timer:ReturnType<typeof setTimeout>|undefined;
     const score=(source:Media)=>/h265|hevc/i.test(source.name)?0:/fhd|1080/i.test(source.name)?5:/hd|720/i.test(source.name)?4:/4k|uhd/i.test(source.name)?2:3;
     const sources:Media[]=(item.sources?.length?item.sources:[item]).slice().sort((a,b)=>score(b)-score(a));
-    const attempts=sources.reduce<LiveAttempt[]>((all,source)=>{const original=source.url.trim();const isTs=isMpegTsUrl(original);const hls=isTs?hlsAlternativeUrl(original):original;const next:LiveAttempt[]=isTs?[{url:playbackUrl(original),type:"mpegts",source},{url:playbackUrl(hls),type:"hls",source},{url:original,type:"mpegts",source}]:/\.m3u8($|\?)/i.test(original)?[{url:playbackUrl(original),type:"hls",source},{url:original,type:"hls",source}]:[{url:playbackUrl(original),type:"native",source},{url:original,type:"native",source}];if(preferDirectHttp(original))next.sort((a,b)=>Number(b.url===original)-Number(a.url===original));return[...all,...next]},[]);
+    const attempts=sources.reduce<LiveAttempt[]>((all,source)=>{const original=source.url.trim();const isTs=isMpegTsUrl(original);const hls=isTs?hlsAlternativeUrl(original):original;const next:LiveAttempt[]=isTs?[{url:playbackUrl(original),type:"mpegts",source},{url:playbackUrl(hls),type:"hls",source},{url:original,type:"mpegts",source}]:/\.m3u8($|\?)/i.test(original)?[{url:playbackUrl(original),type:"hls",source},{url:original,type:"hls",source}]:[{url:playbackUrl(original),type:"native",source},{url:original,type:"native",source}];if(preferDirectHttp(original)){next.sort((a,b)=>Number(b.url===original)-Number(a.url===original));if(isTs&&hls!==original&&supportsNativeHls())next.splice(1,0,{url:hls,type:"hls",source})}return[...all,...next]},[]);
     setState("loading");setSourceIndex(0);
     const clear=()=>{if(timer)clearTimeout(timer);cleanup?.();cleanup=undefined;video.onloadedmetadata=null;video.oncanplay=null;video.onerror=null;video.pause();video.removeAttribute("src");video.load()};
     const stop=()=>{disposed=true;generation++;clear()};stopRef.current=stop;

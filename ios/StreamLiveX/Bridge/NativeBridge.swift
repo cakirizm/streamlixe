@@ -2,6 +2,9 @@ import WebKit
 
 final class NativeBridge: NSObject, WKScriptMessageHandler {
     weak var model: WebPlayerModel?
+    var isLoadingLegacyMigration = false
+    var didStartLegacyExport = false
+    var requiresLegacyMigration: Bool { !UserDefaults.standard.bool(forKey: "SLXLocalWebMigrationCompleted") }
 
     init(model: WebPlayerModel) { self.model = model }
 
