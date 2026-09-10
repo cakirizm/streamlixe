@@ -260,3 +260,117 @@ html.streamlivex-ios .ios-favorites>header{margin:0 0 18px}
 html.streamlivex-ios .ios-favorites>header span{font-size:10px;letter-spacing:.14em;color:#a78bfa}
 html.streamlivex-ios .ios-favorites>header h1{margin:6px 0 0;font-size:28px}
 html.streamlivex-ios .ios-favorites .ios-chips{margin-bottom:16px}
+
+/* App Review 4.0 (Design) — "hard to read type". The ramp above was drawn at phone density and
+   bottomed out at 7-9px; on the 11" iPad review device those captions are unreadable. Two fixes:
+   raise the floor everywhere, then give tablets their own scale instead of stretching the phone
+   layout. Text inputs move to 16px so WKWebView stops zooming the page on focus. */
+html.streamlivex-ios input,html.streamlivex-ios select{font-size:16px}
+html.streamlivex-ios .setup-head span{font-size:12px}
+html.streamlivex-ios .method-tabs b{font-size:13px}
+html.streamlivex-ios form>label,html.streamlivex-ios .two label{font-size:14px}
+html.streamlivex-ios .privacy{font-size:12px}
+html.streamlivex-ios .setup-legal-links{font-size:13px}
+html.streamlivex-ios .setup-back{font-size:14px}
+html.streamlivex-ios .ios-hero span{font-size:11px}
+html.streamlivex-ios .ios-hero p{font-size:13px}
+html.streamlivex-ios .ios-hero small{font-size:12px}
+html.streamlivex-ios .ios-hero button{font-size:13px}
+html.streamlivex-ios .ios-tabbar button{font-size:11px}
+html.streamlivex-ios .ios-poster-card b{font-size:13px}
+html.streamlivex-ios .ios-poster-card small{font-size:11px}
+html.streamlivex-ios .ios-channel-card b{font-size:12px}
+html.streamlivex-ios .ios-channel-card small{font-size:10px}
+html.streamlivex-ios .ios-catalog>header span,html.streamlivex-ios .ios-live>header>div>span{font-size:11px}
+html.streamlivex-ios .ios-chips button{font-size:13px}
+html.streamlivex-ios .ios-live>header input{font-size:16px}
+html.streamlivex-ios .ios-channel-open b{font-size:15px}
+html.streamlivex-ios .ios-channel-open small{font-size:12px}
+html.streamlivex-ios .ios-channel-open em{font-size:10px}
+html.streamlivex-ios .ios-profile>header p{font-size:13px}
+html.streamlivex-ios .ios-profile-switch{font-size:13px}
+html.streamlivex-ios .ios-settings-label{font-size:11px}
+html.streamlivex-ios .ios-settings-group b{font-size:15px}
+html.streamlivex-ios .ios-settings-group small{font-size:11px}
+html.streamlivex-ios .ios-settings-group em{font-size:12px}
+html.streamlivex-ios .ios-setting-controls select{width:132px;font-size:15px}
+html.streamlivex-ios .ios-about p,html.streamlivex-ios .ios-about a{font-size:13px}
+html.streamlivex-ios .ios-result-row small{font-size:12px}
+html.streamlivex-ios .ios-search>header input{font-size:16px}
+html.streamlivex-ios .ios-favorites>header span{font-size:11px}
+html.streamlivex-ios .ios-empty{font-size:14px}
+/* "Ana Sayfa" is the longest tab label; below 360px it needs the smaller step to stay unclipped. */
+@media(max-width:360px){html.streamlivex-ios .ios-tabbar button{font-size:10px}}
+
+@media(min-width:768px){
+  html.streamlivex-ios .ios-app-shell{padding-top:calc(70px + env(safe-area-inset-top));padding-bottom:calc(88px + env(safe-area-inset-bottom))}
+  html.streamlivex-ios .ios-topbar{height:calc(70px + env(safe-area-inset-top));padding:env(safe-area-inset-top) 28px 11px}
+  html.streamlivex-ios .ios-topbar .logo img{width:36px;height:36px}
+  html.streamlivex-ios .ios-topbar .logo span{font-size:21px}
+  html.streamlivex-ios .ios-topbar>div>button{width:44px;height:44px;min-height:44px}
+  html.streamlivex-ios .ios-topbar .ios-top-avatar{font-size:15px}
+  /* A full-width five-column tab bar looks stranded on a tablet; centre the columns instead. */
+  html.streamlivex-ios .ios-tabbar{height:calc(78px + env(safe-area-inset-bottom));grid-template-columns:repeat(5,minmax(0,136px));justify-content:center;gap:8px}
+  html.streamlivex-ios .ios-tabbar button{height:68px;gap:5px;font-size:13px}
+  html.streamlivex-ios .ios-tabbar button svg{width:25px;height:25px}
+  html.streamlivex-ios .ios-hero>div{left:26px;right:26px;bottom:26px;max-width:62%}
+  html.streamlivex-ios .ios-hero span{font-size:13px}
+  html.streamlivex-ios .ios-hero h1{font-size:40px}
+  html.streamlivex-ios .ios-hero p{font-size:16px;-webkit-line-clamp:3}
+  html.streamlivex-ios .ios-hero small{font-size:14px}
+  html.streamlivex-ios .ios-hero button{min-height:46px;padding:0 20px;font-size:15px}
+  html.streamlivex-ios .ios-section>header h2,html.streamlivex-ios .ios-app-shell .continue-section h2{font-size:23px}
+  html.streamlivex-ios .ios-catalog>header h1,html.streamlivex-ios .ios-live>header h1,html.streamlivex-ios .ios-search>header h1,html.streamlivex-ios .ios-favorites>header h1{font-size:34px}
+  html.streamlivex-ios .ios-catalog>header span,html.streamlivex-ios .ios-live>header>div>span,html.streamlivex-ios .ios-favorites>header span{font-size:12px}
+  /* Four columns, not five: on a 1050px shell that keeps posters ~250px and captions legible. */
+  html.streamlivex-ios .ios-poster-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:30px 20px}
+  html.streamlivex-ios .ios-poster-card>button:first-child>img,html.streamlivex-ios .ios-poster-card>button:first-child>i{border-radius:16px}
+  html.streamlivex-ios .ios-poster-card b{font-size:16px}
+  html.streamlivex-ios .ios-poster-card small{font-size:13px}
+  html.streamlivex-ios .ios-rail{gap:16px}
+  html.streamlivex-ios .ios-rail .ios-poster-card{flex-basis:172px}
+  html.streamlivex-ios .ios-chips button{min-height:42px;padding:0 18px;font-size:15px}
+  html.streamlivex-ios .ios-channel-card{flex-basis:104px}
+  html.streamlivex-ios .ios-channel-card img,html.streamlivex-ios .ios-channel-card i{width:76px;height:76px;border-radius:21px}
+  html.streamlivex-ios .ios-channel-card b{font-size:13px}
+  html.streamlivex-ios .ios-channel-card small{font-size:11px}
+  html.streamlivex-ios .ios-channel-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  html.streamlivex-ios .ios-channel-open{min-height:78px;grid-template-columns:54px minmax(0,1fr) auto;gap:13px;padding:10px}
+  html.streamlivex-ios .ios-channel-open img,html.streamlivex-ios .ios-channel-open i{width:54px;height:54px}
+  html.streamlivex-ios .ios-channel-open b{font-size:16px}
+  html.streamlivex-ios .ios-channel-open small{font-size:13px}
+  html.streamlivex-ios .ios-channel-open em{font-size:11px}
+  html.streamlivex-ios .ios-live>header label{width:230px;height:44px}
+  html.streamlivex-ios .ios-settings-label{font-size:12px}
+  html.streamlivex-ios .ios-settings-group>button{min-height:68px;grid-template-columns:40px minmax(0,1fr) auto auto;gap:13px;padding:10px 16px}
+  html.streamlivex-ios .ios-settings-group>button>svg:first-child{width:36px;height:36px}
+  html.streamlivex-ios .ios-settings-group b{font-size:17px}
+  html.streamlivex-ios .ios-settings-group small{font-size:13px}
+  html.streamlivex-ios .ios-settings-group em{font-size:14px}
+  html.streamlivex-ios .ios-profile-avatar{width:92px;height:92px;min-height:92px;font-size:24px}
+  html.streamlivex-ios .ios-profile>header h1{font-size:29px}
+  html.streamlivex-ios .ios-profile>header p{font-size:15px}
+  html.streamlivex-ios .ios-profile-switch{min-height:40px;font-size:14px}
+  html.streamlivex-ios .ios-setting-controls>label{min-height:70px;padding:12px 16px;font-size:16px}
+  html.streamlivex-ios .ios-setting-controls select{width:170px;height:42px;font-size:16px}
+  html.streamlivex-ios .ios-result-row{min-height:84px}
+  html.streamlivex-ios .ios-result-row img,html.streamlivex-ios .ios-result-row i{width:56px;height:64px;flex-basis:56px}
+  html.streamlivex-ios .ios-result-row b{font-size:16px}
+  html.streamlivex-ios .ios-result-row small{font-size:13px}
+  html.streamlivex-ios .ios-search-groups h2,html.streamlivex-ios .ios-search-start h2{font-size:21px}
+  html.streamlivex-ios .ios-search-groups>section>header span{font-size:14px}
+  html.streamlivex-ios .ios-back{font-size:15px}
+  html.streamlivex-ios .ios-empty{font-size:16px}
+  html.streamlivex-ios .ios-about p,html.streamlivex-ios .ios-about a{font-size:15px}
+  /* Setup is the first screen App Review sees; it was a 560px phone card on a 1180pt display. */
+  html.streamlivex-ios .setup-card{width:min(100%,620px);padding:32px 8px 40px}
+  html.streamlivex-ios .setup-head h1{font-size:36px}
+  html.streamlivex-ios .setup-head p{font-size:17px}
+  html.streamlivex-ios .setup-head span{font-size:13px}
+  html.streamlivex-ios form>label,html.streamlivex-ios .two label{font-size:15px}
+  html.streamlivex-ios .two{grid-template-columns:1fr 1fr}
+  html.streamlivex-ios .primary{height:56px;font-size:17px}
+  html.streamlivex-ios .demo-link{font-size:16px}
+  html.streamlivex-ios .privacy{font-size:13px}
+  html.streamlivex-ios .setup-legal-links{font-size:14px}
+}
