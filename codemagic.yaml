@@ -5,6 +5,19 @@
 # IMZA: Dagitim sertifikasi, Codemagic'te "signing" grubunda tanimli
 # CERTIFICATE_PRIVATE_KEY guvenli degiskeniyle olusturulur/yeniden kullanilir.
 # Boylece her build ayni sertifikayi kullanir (Apple'in sertifika limitine takilmaz).
+#
+# Bu zincir kopabilir. Imza adimi soyle biterse:
+#   "Did not find any Signing Certificates for given private key"
+#   + 409 "You already have a current Distribution certificate"
+# demek ki Apple'daki dagitim sertifikalari artik bu private key'e ait degil ve limit
+# dolu oldugu icin yenisi de olusturulamiyor. Iki cikis yolu var:
+#   1) Eslesen private key hala elinizdeyse (.p12 disa aktarimi), CERTIFICATE_PRIVATE_KEY'i
+#      onunla degistirin -- hicbir sey iptal etmeniz gerekmez.
+#   2) Key kayipsa, developer.apple.com > Certificates altindan kullanilmayan dagitim
+#      sertifikalarini iptal edip build'i tekrar calistirin; --create bu kez basarili olur
+#      ve mevcut key'e ait yeni bir sertifika uretir. Iptal, App Store'da yayinda olan
+#      surumleri ve yuklenmis TestFlight build'lerini etkilemez (Apple onlari yeniden
+#      imzalar); yalnizca o sertifikayla imzalanmis ad-hoc/enterprise dagitimlar bozulur.
 workflows:
   ios-testflight:
     name: StreamLiveX iOS -> TestFlight
