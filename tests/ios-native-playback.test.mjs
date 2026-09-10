@@ -29,6 +29,10 @@ test("Codemagic installs MobileVLCKit and archives the CocoaPods workspace", asy
 
   assert.match(podfile, /pod ['"]MobileVLCKit['"]/);
   assert.match(workflow, /pod install/);
+  // The workflow refuses to ship an IPA from anything but the release branch. That guard
+  // hard-codes a branch name, so it silently breaks whenever the release branch moves —
+  // it already failed a build once after the branches were consolidated onto main.
+  assert.match(workflow, /\[ "\$CM_BRANCH" != "main" \]/);
   assert.match(workflow, /--workspace "StreamLiveX\.xcworkspace"/);
   assert.doesNotMatch(workflow, /build-ipa[\s\S]*--project "StreamLiveX\.xcodeproj"/);
 });

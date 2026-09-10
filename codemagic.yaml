@@ -25,8 +25,10 @@ workflows:
     scripts:
       - name: Branch iOS arayuzunu IPA icin paketle
         script: |
-          if [ "$CM_BRANCH" != "ios-mobile-redesign-v1" ]; then
-            echo "Bu workflow yalnizca ios-mobile-redesign-v1 dali icindir."
+          # Tum is 2026-09'da main'e merge edildi ve diger dallar silindi. Guard duruyor ki
+          # ileride acilacak bir ozellik dalindan yanlislikla TestFlight'a IPA gitmesin.
+          if [ "$CM_BRANCH" != "main" ]; then
+            echo "Bu workflow yalnizca main dali icindir (calisan dal: $CM_BRANCH)."
             exit 1
           fi
           npm ci
