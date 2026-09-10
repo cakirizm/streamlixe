@@ -104,4 +104,11 @@ workflows:
     publishing:
       app_store_connect:
         auth: integration
-        submit_to_testflight: true   # derleme biter bitmez TestFlight'a yukle
+        # IPA yine App Store Connect'e yuklenir ve islenir; App Review'a gonderim ve dahili
+        # TestFlight testi icin gereken tek sey budur. Kapali olan yalnizca HARICI TestFlight
+        # beta incelemesine otomatik gonderim: o cagri (POST /v1/betaAppReviewSubmissions)
+        # "Beta contract is missing" 422'si veriyordu -- hesapta Free/Paid Apps sozlesmeleri
+        # Active oldugu halde. Yukleme basariliyken workflow'un son adimda kirmizi bitmesi
+        # ucretsiz katmanin dakikalarini yiyordu. Harici beta gonderimi ASC > TestFlight
+        # arayuzunden elle yapilir; orasi hatanin gercek sebebini de daha net soyluyor.
+        submit_to_testflight: false
